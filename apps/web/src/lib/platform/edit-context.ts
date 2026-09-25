@@ -30,12 +30,14 @@ import {
   type RehabSchedule,
 } from "./rehab-schedule";
 import { daysBetweenYmd, mondayOfYmd, todayYmd } from "@/lib/dates";
+import { loadTrainingSchedule } from "@/lib/schedule/storage";
 
 /** Foreign strength-only programs the edit flow supports (own cardio is wizard-added). */
 const EDITABLE_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
 
 export interface ProgramEditContext {
   blockId: string;
+  editRevision: string;
   programId: string;
   /** The raw wizard setup values captured at deploy (program-specific). */
   setupValues: Record<string, unknown>;
@@ -68,6 +70,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
   if (!user) return null;
 
   const supabase = await createClient();
+  const snapshot = await loadTrainingSchedule(supabase);
 
   const { data: block } = await supabase
     .from("training_blocks")
@@ -165,6 +168,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
 
   return {
     blockId,
+    editRevision: snapshot.revision,
     programId,
     setupValues,
     strengthWeekdays,

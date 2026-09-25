@@ -612,6 +612,26 @@ test.describe("Modular program builder", () => {
     expect(await replay.text()).toContain(rows[0]!.block_id);
     expect((await actor.from("training_blocks").select("id")).data).toHaveLength(1);
     expect((await planned(actor)).map((row) => row.id)).toEqual(rows.map((row) => row.id));
+    const otherTab = await page.context().newPage();
+    try {
+      const editUrl = `/app/program/build?edit=${rows[0]!.block_id}&workout=${rows[0]!.id}`;
+      await page.goto(editUrl); await otherTab.goto(editUrl);
+      await page.getByLabel("Reps", { exact: true }).fill("8");
+      await otherTab.getByLabel("Reps", { exact: true }).fill("12");
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      await save(page, actor, "strength");
+      await otherTab.getByRole("button", { name: "Review changes", exact: true }).click();
+      await expect(otherTab.getByRole("alert")).toBeVisible();
+      await expect(otherTab.getByLabel("Reps", { exact: true })).toHaveValue("12");
+      expect((await planned(actor)).find((row) => row.id === rows[0]!.id)?.prescription.items[0]?.reps).toBe(8);
+      await otherTab.getByRole("button", { name: "Reload current version", exact: true }).click();
+      await expect(otherTab.getByRole("region", { name: "Current program" })).toBeVisible();
+      await otherTab.screenshot({ path: test.info().outputPath("prescription-conflict.png"), fullPage: true });
+      await otherTab.getByRole("button", { name: "Reapply my changes", exact: true }).click();
+      await otherTab.getByRole("button", { name: "Review changes", exact: true }).click();
+      await save(otherTab, actor, "strength");
+      expect((await planned(actor)).find((row) => row.id === rows[0]!.id)?.prescription.items[0]?.reps).toBe(12);
+    } finally { await otherTab.close(); }
   });
 
   test("M6 DC-SW8: two users cannot read or change each other's programs", async ({ page, actor, catalog, admin, browser, seedConfig, baseURL }) => {
@@ -995,6 +1015,47 @@ test.describe("Modular program builder", () => {
         { block_id: running.block_id, status: "active", deleted_at: null },
         { block_id: strength.block_id, status: "archived", deleted_at: null },
       ]));
+      const primaryBeforeSwimReplacement = await planned(actor);
+      await page.goto("/app/programs");
+      await page.getByRole("button", { name: "New program", exact: true }).click();
+      await page.getByRole("button", { name: /Swimming.*Replace/ }).click();
+      await expect(page).toHaveURL(new RegExp(`/app/swim/setup\\?replace=${swimming.plan.id}$`));
+      await page.getByRole("link", { name: "Import a swimming plan", exact: true }).click();
+      const source = syntheticCourse();
+      await page.getByLabel("Prepared plan file").setInputFiles({
+        name: "replacement-course.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(source)),
+      });
+      await expect(page.getByRole("heading", { name: source.title, exact: true })).toBeVisible();
+      await page.getByLabel("Start date", { exact: true }).fill(today());
+      const sunday = new Date(`${today()}T00:00:00Z`).getUTCDay();
+      for (const day of [sunday, (sunday + 2) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
+      await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
+      await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
+      await page.getByLabel("Freestyle", { exact: true }).check();
+      await page.getByRole("button", { name: "Review plan", exact: true }).click();
+      await page.getByLabel("I have reviewed the workouts, dates and pools").check();
+      const overlap = page.locator('input[name="acceptOverlap"]');
+      if (await overlap.count()) await overlap.check();
+      await page.getByRole("button", { name: "Import plan", exact: true }).click();
+      const swimDialog = page.getByRole("dialog", { name: /^Replace / });
+      await expect(swimDialog).toBeVisible();
+      await page.screenshot({ path: test.info().outputPath("swim-replacement.png"), fullPage: true });
+      await swimDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      expect(await swimSnapshot()).toEqual(beforeSwim);
+      await page.getByRole("button", { name: "Import plan", exact: true }).click();
+      const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"]);
+      await swimDialog.getByRole("button", { name: "Replace program", exact: true }).click();
+      const request = await posted;
+      await expect(page).toHaveURL(/\/app\/swim\?plan=/);
+      const afterSwim = await swimSnapshot();
+      expect(afterSwim.plans).toHaveLength(2);
+      expect(afterSwim.plans?.find((plan) => plan.id === swimming.plan.id)?.status).toBe("finished");
+      expect(afterSwim.plans?.filter((plan) => plan.status === "active")).toHaveLength(1);
+      expect(afterSwim.workouts?.filter((workout) => workout.plan_id === swimming.plan.id)).toEqual(beforeSwim.workouts);
+      const replay = await page.request.post(request.url(), { headers: request.headers(), data: request.postDataBuffer()! });
+      expect(replay.ok()).toBe(true);
+      expect(await swimSnapshot()).toEqual(afterSwim);
+      expect(await planned(actor)).toEqual(primaryBeforeSwimReplacement);
     });
 
   ownedTest("M11 DC-K4/DC-SW7: trash restore and a shorter program ending preserve the longer calendars",

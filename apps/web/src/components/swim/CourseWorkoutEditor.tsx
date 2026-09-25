@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { SwimCourseItem } from "@hta/domain";
-import { previewPrivateSwimEdit, savePrivateSwimEdit } from "@/lib/swim/course-actions";
+import { previewPrivateSwimEdit, savePrivateSwimEdit, reloadPrivateSwimEdit } from "@/lib/swim/course-actions";
 import type { SwimCourseEditInput, SwimCourseEditPreview } from "@/lib/swim/course-view";
 import { SWIM_STROKE_LABEL } from "@/lib/swim/presentation";
 import { PlanPreview } from "./PlanPreview";
@@ -13,6 +13,8 @@ export function CourseWorkoutEditor({ context, busy = false, onBusyChange }: {
   context: Omit<SwimCourseEditInput, "reason">; busy?: boolean; onBusyChange?: (busy: boolean) => void;
 }) {
   const router = useRouter();
+  const [baseline, setBaseline] = useState(context);
+  const [current, setCurrent] = useState<typeof context | null>(null);
   const [workout, setWorkout] = useState(context.workout);
   const [reason, setReason] = useState("");
   const [preview, setPreview] = useState<SwimCourseEditPreview | null>(null);
@@ -39,7 +41,7 @@ export function CourseWorkoutEditor({ context, busy = false, onBusyChange }: {
       inFlight.current = true;
       onBusyChange?.(true);
       setError(null);
-      const input = { ...context, workout, reason };
+      const input = { ...baseline, workout, reason };
       startTransition(async () => {
         try {
           if (preview) {
@@ -109,6 +111,29 @@ export function CourseWorkoutEditor({ context, busy = false, onBusyChange }: {
         <PlanPreview plan={preview.plan} title="Edited workout" />
       </>}
       {error && <p className={styles.error} role="alert">{error}</p>}
+      {error && <button type="button" className={styles.button} disabled={pending || busy}
+        onClick={() => startTransition(async () => {
+          try {
+            const result = await reloadPrivateSwimEdit(context.workoutId);
+            if (result.context) setCurrent(result.context);
+            else setError(result.error ?? "Couldn't reload this workout.");
+          } catch { setError("Couldn't reload this workout."); }
+        })}>Reload current version</button>}
+      {current && <section className={styles.section} aria-label="Current workout">
+        <h3>Current workout</h3>
+        {current.workout.sections.map((section, index) => <div key={index}>
+          <h4>{section.label}</h4>
+          <p>{section.rounds} rounds</p>
+          {section.items.map((item, itemIndex) => <p key={itemIndex}>
+            {item.repeats} x {item.distanceMetres} m {SWIM_STROKE_LABEL[item.stroke]}
+            {item.sendoffSeconds !== undefined ? `, send-off ${item.sendoffSeconds}s`
+              : item.restSeconds !== undefined ? `, rest ${item.restSeconds}s` : ""}
+          </p>)}
+        </div>)}
+        <button type="button" className={styles.button} disabled={pending || busy} onClick={() => {
+          setBaseline(current); setCurrent(null); setPreview(null); setError(null);
+        }}>Reapply my changes</button>
+      </section>}
       {warning && <p className={styles.warning} role="status">{warning}</p>}
       {!saved && <button className={styles.button} disabled={pending || busy}>{pending ? "Saving..." : preview ? "Save changes" : "Review changes"}</button>}
     </form>

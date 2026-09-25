@@ -8,6 +8,7 @@ export type SwimCourseEditInput = {
 export type SwimCourseEditPreview = { id: string; before: string; after: string; plan: SwimPlanPreview };
 
 export type SwimCourseImportPreview = {
+  replaces?: { id: string; revision: number; name: string };
   id: string;
   title: string;
   plan: SwimPlanPreview;

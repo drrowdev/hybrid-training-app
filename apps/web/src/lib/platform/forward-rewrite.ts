@@ -63,7 +63,16 @@ function stableJson(value: unknown): string {
 }
 
 export function prescriptionsEquivalent(left: unknown, right: unknown): boolean {
-  return stableJson(left) === stableJson(right);
+  const withoutRevision = (value: unknown) => {
+    if (typeof value !== "object" || value === null || !("meta" in value) ||
+        typeof value.meta !== "object" || value.meta === null || !("editRevision" in value.meta)) return value;
+    const meta: Record<string, unknown> = { ...value.meta };
+    delete meta.editRevision;
+    const result: Record<string, unknown> = { ...value, meta };
+    if (Object.keys(meta).length === 0) delete result.meta;
+    return result;
+  };
+  return stableJson(withoutRevision(left)) === stableJson(withoutRevision(right));
 }
 
 export function planForwardOnlyRewrite(args: {

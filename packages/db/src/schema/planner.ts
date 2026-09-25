@@ -470,6 +470,7 @@ export type Prescription = {
    * every other session.
    */
   meta?: {
+    editRevision?: string;
     authoredWorkout?: AuthoredWorkout;
     swimRehab?: {
       version: 1;

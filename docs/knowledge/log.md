@@ -5831,6 +5831,23 @@ AGENTS now distinguishes UI/copy/test-only review from full data/security
 safeguards; changed copy gets one review round. No product, schema or migration
 changes; acceptance evidence will be recorded in the PR.
 
+## [2026-09-25] decision | Prescription concurrency and atomic Swimming replacement
+
+Migrations0159/0160 add owner-scoped prescription CAS and one-transaction
+Swimming replacement with request replay. Revision tokens live in existing
+prescription metadata, not new top-level columns. Authored and template program
+edits retain their opening schedule revision; movement edits use row revisions;
+swim edits retain existing plan/workout revisions. Stale drafts remain available
+for explicit reapplication (DC-K4). Derived autoregulation/limitation updates
+also compare their source prescription revision before writing.
+
+The replacement finishes only the selected active/paused swim plan and retains
+issued/completed history and rehab links (DC-SW5/DC-SW7/DC-SW8). CI coverage adds
+separate-connection conflicts, rollback/replay, owner denial and browser recovery
+and confirmation. Evidence is pending CI. See [pool swimming](pool-swimming.md)
+for additive DB-first deployment and app-first rollback with written downs.
+No production changes, merge or deployment are authorized.
+
 ## [2026-09-25] refine | Confirmed-save lists and Recovery presentation
 
 Program history removes a deleted row only after server success, including its

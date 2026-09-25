@@ -25,6 +25,8 @@ import { isSystemLoadMovementSlug, resolveProgramWorkingMax } from "@hta/domain"
 import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
+import { savePrescription, type PrescriptionSaveResult } from "./save-prescription";
+import { loadedPrescriptionConflict } from "./prescription-revision";
 import {
   resolveWarmupPreference,
   type WarmupPreference,
@@ -57,7 +59,7 @@ const swapActiveSchema = z.object({
   freeformReason: z.string().max(280).optional(),
 });
 
-export type SwapActiveResult = {
+export type SwapActiveResult = PrescriptionSaveResult & {
   ok?: true;
   error?: string;
   /** Returned so the client can repaint the active movement instantly. */
@@ -69,6 +71,7 @@ export type SwapActiveResult = {
     isSystemLoad: boolean;
     bodyweightCapable: boolean;
   };
+
   /**
    * Non-blocking warning for a replacement with no load anchor. The swap is
    * still persisted, but stale absolute loads are removed and the user must
@@ -76,6 +79,22 @@ export type SwapActiveResult = {
    */
   warning?: string;
 };
+
+export async function loadSwapPrescription(sessionId: string): Promise<PrescriptionSaveResult> {
+  const id = z.string().uuid().parse(sessionId);
+  const { data: { user } } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+  const client = await createClient();
+  const planned = await client.from("planned_sessions").select("prescription")
+    .eq("completed_session_id", id).eq("user_id", user.id).maybeSingle();
+  if (planned.error) return { error: planned.error.message };
+  if (planned.data) return { ok: true, prescription: planned.data.prescription };
+  const session = await client.from("sessions").select("prescription")
+    .eq("id", id).eq("user_id", user.id).is("deleted_at", null).maybeSingle();
+  if (session.error) return { error: session.error.message };
+  if (!session.data) return { error: "Workout not found." };
+  return { ok: true, prescription: session.data.prescription ?? { items: [] } };
+}
 
 async function loadSwapPrescriptionContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -263,6 +282,8 @@ export async function swapActiveMovement(
   const sourcePrescription = planned?.prescription
     ? (planned.prescription as Prescription)
     : sessionRx;
+  const conflict = sourcePrescription && loadedPrescriptionConflict(sourcePrescription, formData.get("expectedRevision"));
+  if (conflict) return conflict;
   let requiresManualLoad = false;
   if (sourcePrescription) {
     try {
@@ -336,13 +357,10 @@ export async function swapActiveMovement(
       { rehab: parsed.data.rehab },
       rebuildContext,
     );
-    const { error: updateError } = await supabase
-      .from("planned_sessions")
-      .update({ prescription: updated })
-      .eq("id", planned.id as string)
-      .eq("user_id", user.id);
-    if (updateError) return { error: updateError.message };
-    updatedPrescription = updated;
+    const saved = await savePrescription(supabase, "planned_sessions", planned.id,
+      formData.get("expectedRevision"), updated);
+    if (!saved.ok) return saved;
+    updatedPrescription = saved.prescription;
   } else if (sessionRx) {
     const updated = swapMovementInPrescription(
       sessionRx,
@@ -352,14 +370,10 @@ export async function swapActiveMovement(
       { rehab: parsed.data.rehab },
       rebuildContext,
     );
-    const { error: updateError } = await supabase
-      .from("sessions")
-      .update({ prescription: updated })
-      .eq("id", parsed.data.sessionId)
-      .eq("user_id", user.id)
-      .is("deleted_at", null);
-    if (updateError) return { error: updateError.message };
-    updatedPrescription = updated;
+    const saved = await savePrescription(supabase, "sessions", parsed.data.sessionId,
+      formData.get("expectedRevision"), updated);
+    if (!saved.ok) return saved;
+    updatedPrescription = saved.prescription;
   } else {
     // Quick/freestyle workout: `session_movements` IS the persistence layer
     // for "which movements are in this session" (the page unions it with the

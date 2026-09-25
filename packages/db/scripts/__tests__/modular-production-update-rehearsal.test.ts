@@ -12,7 +12,8 @@ function source() {
     version: string; dialect: string;
     entries: { idx: number; version: string; tag: string; when: number; breakpoints: boolean }[];
   } = JSON.parse(readFileSync(new URL("../../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  return { journal, migrations: readMigrationFiles({ migrationsFolder: "./drizzle" }) };
+  return { journal: { ...journal, entries: journal.entries.slice(0, 159) },
+    migrations: readMigrationFiles({ migrationsFolder: "./drizzle" }).slice(0, 159) };
 }
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -26,9 +27,10 @@ describe("DC-SW8 exact modular updater rehearsal stays separate from production"
     expect(migrations).toEqual(before);
   });
 
-  it("shares the exact159 loader with production and rejects the obsolete0156-only batch", () => {
+  it("keeps production closed to new migrations and rejects the obsolete0156-only batch", () => {
     const { journal, migrations } = source();
-    expect(modularUpdateMigrations()).toEqual(modularRehearsalMigrations(journal, migrations));
+    expect(modularRehearsalMigrations(journal, migrations)).toHaveLength(159);
+    expect(() => modularUpdateMigrations()).toThrow("migration_source");
     expect(() => modularRehearsalMigrations({ ...journal, entries: journal.entries.slice(0, 157) }, migrations.slice(0, 157)))
       .toThrow("migration_source");
   });

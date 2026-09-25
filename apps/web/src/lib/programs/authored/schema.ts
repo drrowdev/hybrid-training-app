@@ -84,10 +84,14 @@ export const authoredSaveSchema = z.object({
   definition: authoredProgramSchema,
   startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   editBlockId: id.optional(),
+  editRevision: z.string().regex(/^[a-f0-9]{32}$/).optional(),
   workoutId: id.optional(),
   scope: z.enum(["program", "workout", "future"]).default("program"),
   plannedSessionId: id.optional(),
 }).strict().superRefine((input, ctx) => {
+  if (input.editBlockId && !input.editRevision) {
+    ctx.addIssue({ code: "custom", message: "Reload this program before editing." });
+  }
   if (input.scope !== "program" && (!input.editBlockId || !input.workoutId || !input.plannedSessionId)) {
     ctx.addIssue({ code: "custom", message: "Choose the workout to edit." });
   }

@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState, useTransition } from "react";
-import type { PrescriptionItem } from "@hta/db";
+import type { Prescription, PrescriptionItem } from "@hta/db";
 import {
   isSwapped,
   originalMovementName,
@@ -77,6 +77,7 @@ export type CardioListItem = {
 
 export function CardioPrescriptionList({
   plannedSessionId,
+  expectedRevision = "0",
   items,
   ownedCardio,
   swapAction,
@@ -85,6 +86,7 @@ export function CardioPrescriptionList({
   pageTitle,
 }: {
   plannedSessionId: string | null;
+  expectedRevision?: string;
   items: CardioListItem[];
   ownedCardio: readonly CardioMachineType[];
   swapAction: SwapAction;
@@ -112,6 +114,7 @@ export function CardioPrescriptionList({
   const [overrides, setOverrides] = useState<Record<number, PrescriptionItem>>(
     {},
   );
+  const [revision, setRevision] = useState(expectedRevision);
 
   if (items.length === 0) return null;
 
@@ -151,6 +154,11 @@ export function CardioPrescriptionList({
           <CardioPrescriptionRow
             key={`cardio-rx-${itemIndex}`}
             plannedSessionId={plannedSessionId}
+            expectedRevision={revision}
+            onPrescription={(prescription) => {
+              setRevision(prescription.meta?.editRevision ?? "0");
+              setOverrides(Object.fromEntries(prescription.items.map((item, index) => [index, item])));
+            }}
             itemIndex={itemIndex}
             item={live}
             modalityLabel={modalityLabel ?? null}
@@ -352,6 +360,8 @@ function ExternalCardioRow({
 
 function CardioPrescriptionRow({
   plannedSessionId,
+  expectedRevision,
+  onPrescription,
   itemIndex,
   item,
   modalityLabel,
@@ -362,6 +372,8 @@ function CardioPrescriptionRow({
   onSwap,
 }: {
   plannedSessionId: string | null;
+  expectedRevision: string;
+  onPrescription: (prescription: Prescription) => void;
   itemIndex: number;
   item: PrescriptionItem;
   modalityLabel: string | null;
@@ -408,14 +420,15 @@ function CardioPrescriptionRow({
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("itemIndex", String(itemIndex));
+      fd.set("expectedRevision", expectedRevision);
       fd.set("newMovementId", cand.id);
       const res = await swapAction(fd);
       if (res?.error) {
         setError(res.error);
-        onSwap(item); // rollback
+        if (res.currentPrescription) { onPrescription(res.currentPrescription); setOpen(true); }
+        else onSwap(item);
       } else if (res?.prescription) {
-        const persisted = res.prescription.items?.[itemIndex];
-        if (persisted) onSwap(persisted);
+        onPrescription(res.prescription);
       }
     });
   };

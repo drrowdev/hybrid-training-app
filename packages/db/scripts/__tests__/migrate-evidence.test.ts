@@ -316,26 +316,26 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
     }
   });
 
-  it.each([148, 157, 158, 159])("attributes the final statement within a bounded %i-migration source", (count) => {
+  it.each([148, 157, 158, 159, 160, 161])("attributes the final statement within a bounded %i-migration source", (count) => {
     const migrations = Array.from({ length: count }, (_, index) => ({ sql: [`canonical-${index}`] }));
     const error = new DrizzleQueryError(`canonical-${count - 1}`, [], native());
     expect(projectMigrationError(error, () => migrations).position).toEqual({
       status: "matched", migrationIndex: count - 1, statementIndex: 0,
     });
     expect(projectMigrationError(error, () => [
-      ...migrations, ...Array.from({ length: 160 - count }, () => ({ sql: ["outside-bound"] })),
+      ...migrations, ...Array.from({ length: 162 - count }, () => ({ sql: ["outside-bound"] })),
     ]).position).toEqual({ status: "unmatched" });
   });
 
-  posixIt("accepts index158 evidence and rejects index159 without emitting SQL", () => fixture((path) => {
+  posixIt("accepts index160 evidence and rejects index161 without emitting SQL", () => fixture((path) => {
     const writer = openMigrationEvidence(path);
     writer.terminal({ event: "terminal", status: "failure", phase: "migrate",
       error: projectMigrationError(native()).error,
-      position: { status: "matched", migrationIndex: 158, statementIndex: 0 } });
+      position: { status: "matched", migrationIndex: 160, statementIndex: 0 } });
     expect(readMigrationEvidence(path)).toMatchObject({
-      status: "complete", terminal: { position: { migrationIndex: 158, statementIndex: 0 } },
+      status: "complete", terminal: { position: { migrationIndex: 160, statementIndex: 0 } },
     });
-    writeFileSync(path, readFileSync(path, "utf8").replace('"migrationIndex":158', '"migrationIndex":159'));
+    writeFileSync(path, readFileSync(path, "utf8").replace('"migrationIndex":160', '"migrationIndex":161'));
     expect(readMigrationEvidence(path)).toEqual({ status: "incomplete" });
   }));
 

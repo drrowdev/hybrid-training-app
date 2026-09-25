@@ -71,6 +71,9 @@ async function prepare(raw: AuthoredSaveInput) {
   await requireIndependentPrograms(client);
   // Capture before any dependent read, then revalidate inside the write transaction.
   const snapshot = await loadTrainingSchedule(client);
+  if (input.editBlockId && input.editRevision !== snapshot.revision) {
+    throw new Error("This program changed in another tab. Your changes have not been saved. Reload the current version before reapplying.");
+  }
   const protocols = await loadOwnedRehabProtocols(client, user.id, authoredRehabProtocolIds(input.definition));
   const movementIds = [...new Set([...authoredMovementIds(input.definition), ...protocols.flatMap((protocol) => protocol.items.map((item) => item.movementId))])];
   const [catalogResult, limitationsResult, profileResult, activeResult] = await Promise.all([
@@ -287,4 +290,11 @@ export async function loadAuthoredProgram(blockId: string) {
     .eq("user_id", user.id).eq("status", "active").is("deleted_at", null).maybeSingle();
   if (result.error || !result.data) throw new Error("This program is no longer available to edit.");
   return authoredProgramSchema.parse(result.data.instance);
+}
+
+export async function reloadAuthoredProgram(blockId: string) {
+  const client = await createClient();
+  const snapshot = await loadTrainingSchedule(client);
+  const definition = await loadAuthoredProgram(blockId);
+  return { revision: snapshot.revision, definition };
 }

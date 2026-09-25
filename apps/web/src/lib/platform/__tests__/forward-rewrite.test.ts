@@ -11,6 +11,12 @@ function strengthWeek(week: number, days: number[]): NewSessionLite[] {
 }
 
 describe("planForwardOnlyRewrite", () => {
+  it("DC-K4 compares prescription content without mistaking revision stamps for edits", () => {
+    const first = { items: [], meta: { note: "Keep", editRevision: "first" } };
+    expect(prescriptionsEquivalent(first, { ...first, meta: { note: "Keep", editRevision: "second" } })).toBe(true);
+    expect(prescriptionsEquivalent(first, { ...first, meta: { note: "Changed", editRevision: "second" } })).toBe(false);
+    expect(prescriptionsEquivalent({ items: [] }, { items: [], meta: { editRevision: "first" } })).toBe(true);
+  });
   it("freezes weeks <= currentWeekIndex and only regenerates the future", () => {
     // A 4-week block, currently in week 1. New plan keeps the same shape.
     const newSessions: NewSessionLite[] = [0, 1, 2, 3].flatMap((w) =>

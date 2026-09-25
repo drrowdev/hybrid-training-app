@@ -74,6 +74,7 @@ export type SwimPlanPreview = {
 };
 
 export type SwimSetupPreview = SwimPlanPreview & {
+  replaces?: { id: string; revision: number; name: string };
   id: string;
   scheduleRevision: string;
   overlaps: TrainingCommitment[];

@@ -8,7 +8,7 @@ import {
   type AuthoredCatalogMovement, type AuthoredMovement, type AuthoredProgramDefinition,
   type AuthoredWorkout, type AuthoredWorkoutPart, type ProgramActivity, type TrainingCommitment,
 } from "@hta/domain";
-import { previewAuthoredProgram, saveAuthoredProgram, type AuthoredPreview } from "@/lib/programs/authored/actions";
+import { previewAuthoredProgram, saveAuthoredProgram, reloadAuthoredProgram, type AuthoredPreview } from "@/lib/programs/authored/actions";
 import { ProgramConfirmation } from "./ProgramDialog";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import styles from "./ProgramBuilder.module.css";
@@ -133,15 +133,18 @@ function PartEditor({ part, catalog, rehabProtocols, onChange }: {
   </>;
 }
 
-export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitments, initial, editBlockId, initialStartDate, activity = "hybrid", swimHref, workoutId, plannedSessionId, activitySelected = false, replacesName }: {
+export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitments, initial, editBlockId, initialStartDate, initialRevision, activity = "hybrid", swimHref, workoutId, plannedSessionId, activitySelected = false, replacesName }: {
   catalog: AuthoredCatalogMovement[]; today: string; commitments: TrainingCommitment[];
   rehabProtocols?: RehabChoice[];
   initial?: AuthoredProgramDefinition; editBlockId?: string; initialStartDate?: string; activity?: ProgramActivity; swimHref?: string | null;
   workoutId?: string; plannedSessionId?: string;
+  initialRevision?: string;
   activitySelected?: boolean; replacesName?: string;
 }) {
   const router = useRouter();
   const [definition, setDefinition] = useState<AuthoredProgramDefinition>(initial ?? { version: 1, activity, name: "", weeks: 6, workouts: [] });
+  const [editRevision, setEditRevision] = useState(initialRevision);
+  const [current, setCurrent] = useState<Awaited<ReturnType<typeof reloadAuthoredProgram>> | null>(null);
   const [startedOn, setStartedOn] = useState(initialStartDate ?? today);
   const [step, setStep] = useState(workoutId ? 3 : initial ? 2 : activitySelected ? 1 : 0);
   const [selectedId, setSelectedId] = useState<string | null>(workoutId ?? null);
@@ -153,7 +156,7 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const selected = definition.workouts.find((workout) => workout.id === selectedId);
-  const input = { definition, startedOn, scope, ...(editBlockId ? { editBlockId } : {}), ...(workoutId ? { workoutId, plannedSessionId } : {}) };
+  const input = { definition, startedOn, scope, ...(editBlockId ? { editBlockId, editRevision } : {}), ...(workoutId ? { workoutId, plannedSessionId } : {}) };
   const update = (next: AuthoredProgramDefinition) => {
     setDefinition(next); setPreview(null); setRequestId(null); setAcceptOverlap(false); setConfirmReplacement(false); setError(null);
   };
@@ -209,6 +212,23 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
       aria-current={step === index ? "step" : undefined} disabled={pending || index === 4 || (index === 3 && !selected) || (!!editBlockId && index === 0)}
       onClick={() => setStep(index)}>{index + (activitySelected ? 0 : 1)}. {label}</button>)}</nav>
     {error && <p role="alert" className={styles.error}>{error}</p>}
+    {error && editBlockId && <button type="button" className={styles.button} disabled={pending}
+      onClick={() => startTransition(async () => {
+        try { setCurrent(await reloadAuthoredProgram(editBlockId)); }
+        catch { setError("Couldn't reload the program. Your changes are still here."); }
+      })}>Reload current version</button>}
+    {current && <section className={styles.panel} aria-label="Current program">
+      <h2>{current.definition.name}</h2>
+      {current.definition.workouts.map((workout) => <p key={workout.id}>{DAYS[workout.weekday]}: {workout.name}</p>)}
+      <Link className={styles.button} href={`/app/plan?block=${editBlockId}`} target="_blank">View current workouts</Link>
+      <button type="button" className={styles.button} onClick={() => {
+        const draftWorkout = definition.workouts.find((entry) => entry.id === workoutId);
+        if (scope !== "program" && draftWorkout) {
+          setDefinition({ ...current.definition, workouts: current.definition.workouts.map((entry) => entry.id === workoutId ? draftWorkout : entry) });
+        }
+        setEditRevision(current.revision); setCurrent(null); setPreview(null); setRequestId(null); setError(null);
+      }}>Reapply my changes</button>
+    </section>}
     {step === 0 && <section className={styles.cards}>
       {(Object.keys(ACTIVITY_LABELS) as ProgramActivity[]).map((value) => <button key={value} type="button" className={styles.card} aria-pressed={definition.activity === value}
         onClick={() => update({ ...definition, activity: value })}><strong>{ACTIVITY_LABELS[value]}</strong><span className={styles.muted}>

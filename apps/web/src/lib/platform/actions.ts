@@ -529,6 +529,7 @@ const createProgramInstanceSchema = z
       movementId: z.string().uuid(), oneRmKg: z.number().positive().max(1000),
     }).strict()).max(32).optional(),
     review: scheduleReviewSchema.extend({ previewId: z.string().regex(/^[a-f0-9]{64}$/) }).optional(),
+    editRevision: z.string().regex(/^[a-f0-9]{32}$/).optional(),
     programId: z.string().min(1),
     /** Engine setup values (template, cycle structure, …) — engine-specific. */
     setupValues: z.record(z.unknown()).default({}),
@@ -865,6 +866,9 @@ async function runProgramInstance(
     }
   }
   const flow = await programReviewContext(supabase, user.id, requestInput, previewOnly, review);
+  if (editBlockId && parsed.data.editRevision !== flow.snapshot.revision) {
+    return { ok: false, error: "This program changed in another tab. Your changes have not been saved. Reload the current version before reapplying." };
+  }
   if (seasonBlockId) {
     if (editBlockId) throw new Error("A roadmap block must start a new program.");
     flow.season = await loadSeasonProgramOrigin(supabase, user.id, seasonBlockId);

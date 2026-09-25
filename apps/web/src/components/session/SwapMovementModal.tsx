@@ -23,7 +23,8 @@ import {
   useState,
   useTransition,
 } from "react";
-import { swapActiveMovement, type SwapActiveResult } from "@/lib/sessions/swap-actions";
+import { loadSwapPrescription, swapActiveMovement, type SwapActiveResult } from "@/lib/sessions/swap-actions";
+import { prescriptionRevision } from "@/lib/sessions/prescription-revision";
 import type { Prescription } from "@hta/db";
 
 export type ConfirmedMovementSwap = {
@@ -90,9 +91,26 @@ export function SwapMovementModal({
   const [pending, startTransition] = useTransition();
   const searchRef = useRef<HTMLInputElement | null>(null);
   const titleId = useId();
+  const [expectedRevision, setExpectedRevision] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<SwapActiveResult["currentPrescription"]>();
+  const [conflictChoice, setConflictChoice] = useState<SwapMovementCatalogRow | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    loadSwapPrescription(sessionId).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) setError(result.error ?? "Couldn't load the workout.");
+      else setExpectedRevision(prescriptionRevision(result.prescription));
+    }).catch(() => { if (!cancelled) setError("Couldn't load the workout. Close and try again."); });
+    return () => { cancelled = true; };
+  }, [open, sessionId]);
 
   const handleClose = useCallback(() => {
     setWarning(null);
+    setExpectedRevision(null);
+    setConflict(undefined);
+    setConflictChoice(null);
     if (pendingSwap) {
       const completed = pendingSwap;
       setPendingSwap(null);
@@ -134,7 +152,6 @@ export function SwapMovementModal({
           .then((body) => {
             if (!cancelled) {
               setCandidates(body.movements ?? []);
-              setError(null);
             }
           })
           .catch((e) => {
@@ -181,7 +198,7 @@ export function SwapMovementModal({
       key={c.id}
       type="button"
       onClick={() => confirm(c)}
-      disabled={pending || pendingSwap != null}
+      disabled={pending || pendingSwap != null || expectedRevision === null}
       data-testid={`swap-modal-candidate-${c.slug}`}
       style={{
         textAlign: "left",
@@ -239,6 +256,7 @@ export function SwapMovementModal({
     setPendingSwap(null);
     const fd = new FormData();
     fd.set("sessionId", sessionId);
+    fd.set("expectedRevision", expectedRevision ?? "");
     fd.set("originalMovementId", original.id);
     if (original.rehab != null) {
       fd.set("rehab", String(original.rehab));
@@ -250,6 +268,11 @@ export function SwapMovementModal({
       const res = await swapActiveMovement(fd);
       if (res.error || !res.newMovement) {
         setError(res.error ?? "Swap failed.");
+        if (res.currentPrescription) {
+          setConflict(res.currentPrescription);
+          setConflictChoice(pick);
+          setExpectedRevision(prescriptionRevision(res.currentPrescription));
+        }
         return;
       }
       const next = { ...res.newMovement, ...(res.prescription ? { prescription: res.prescription } : {}),
@@ -262,7 +285,7 @@ export function SwapMovementModal({
         return;
       }
       onSwapped(next);
-      onClose();
+      handleClose();
     });
   };
 
@@ -396,6 +419,13 @@ export function SwapMovementModal({
               {error}
             </div>
           )}
+          {conflict && <div role="status">
+            <strong>Current workout</strong>
+            <p>{[...new Set(conflict.items.map((item) => item.movementName))].filter(Boolean).join(", ")}</p>
+            {conflictChoice && <button type="button" className="cp-btn" disabled={pending} onClick={() => confirm(conflictChoice)}>
+              Reapply {conflictChoice.display_name}
+            </button>}
+          </div>}
           {warning && (
             <div
               role="status"

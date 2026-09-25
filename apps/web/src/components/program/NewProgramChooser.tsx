@@ -40,11 +40,10 @@ export function NewProgramChooser({ programs, type, swimHref, onSelect, onClose 
         const program = programs.find((candidate) => candidate.kind === kind);
         const locked = !!legacy && kind !== "swimming";
         return <button key={kind} type="button" className={styles.typeOption} data-kind={kind}
-          disabled={locked || (kind === "swimming" && !program && !swimHref)} onClick={() => onSelect(kind)}>
+          disabled={locked || (kind === "swimming" && !swimHref)} onClick={() => onSelect(kind)}>
           <span className={styles.typeIcon}><ProgramIcon kind={kind} /></span>
           <span><strong>{PROGRAM_LABELS[kind]}</strong>
             {locked ? <small><ProgramIcon kind="lock" />End {legacy.name} first</small>
-              : kind === "swimming" && program ? <small>End {program.name} first</small>
               : program ? <small><ProgramIcon kind="swap" />Replace {program.name}</small>
                 : kind === "hybrid" ? <small>Combine training types</small> : null}
           </span>

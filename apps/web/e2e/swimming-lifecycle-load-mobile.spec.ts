@@ -1012,8 +1012,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       week_index: 1, role: "deload", prescription,
     }).eq("user_id", userId).eq("block_id", recovery.block_id).eq("id", recovery.id)
       .select("id,role,prescription").single();
+    const editRevision = saved.data?.prescription?.meta?.editRevision;
     expect(saved.error === null && saved.data?.id === recovery.id && saved.data.role === "deload" &&
-      isDeepStrictEqual(saved.data.prescription, prescription)).toBe(true);
+      isUuid(editRevision) &&
+      isDeepStrictEqual(saved.data.prescription, { ...prescription, meta: { editRevision } })).toBe(true);
     return { snapshot: primary.snapshot, initial: await primary.snapshot() };
   }
 

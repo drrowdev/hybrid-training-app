@@ -1,5 +1,35 @@
 # Native pool swimming
 
+## Concurrent edits and replacement - 2026-09-25
+
+Pending release: migrations 0159/0160 add prescription revision checks and an
+atomic swimming replacement operation. Program editors retain the revision they
+opened; a conflicting save keeps the draft and requires an explicit reapply.
+Swimming keeps its existing plan/workout revision checks. The New program
+chooser can replace the selected active or paused Swimming program after the
+same confirmation used for other program types. The transaction finishes the
+old plan, creates the new one and records an idempotent receipt. Issued workouts,
+completed results and old rehab bindings remain with the old plan; primary
+programs are not ended or rewritten (DC-K4, DC-SW5, DC-SW7, DC-SW8).
+
+Both migrations are additive functions/triggers, with no row backfill, new
+top-level column, RLS policy change or relaxation of migration 0158. Apply
+0159 then 0160 with owner approval before deploying the new app; the old app
+continues to work during that interval. Rolling back requires the old app first,
+then the written 0160 and 0159 down scripts in reverse order. Retain revision
+metadata, lifecycle history and receipts; down does not undo a user's replacement.
+No production migration, merge or deployment is authorized by this change.
+
+Prescription writer inventory: authored program/workout and template slot/link
+edits use schedule CAS plus the editor's opening revision. Planned add/remove/
+swap, single-item swaps and active-session/HYROX swaps use row CAS. Deload and
+autoregulation/limitation rewrites compare their loaded prescription before
+updating; calendar swaps already compare the complete prescription. Swim course,
+pool and week writers retain plan/workout CAS. Inserts and immutable issued/log
+snapshots are not editor overwrites. The existing production0156-0158 updater
+remains closed to the expanded journal; its historical CI fixture is separate
+from the full current-journal migration rehearsal.
+
 ## Explicit imported outcomes - 2026-09-23
 
 [ADR0086](../adr/0086-standalone-swim-import-outcomes.md) adds owner-confirmed

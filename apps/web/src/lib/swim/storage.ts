@@ -6,7 +6,7 @@ import type {
   SwimActualResult,
 } from "@hta/db";
 import { requireSwimSetup } from "./capability";
-import { commitTrainingSchedule, type ScheduleReview } from "@/lib/schedule/storage";
+import { commitTrainingSchedule, scheduleInputHash, type ScheduleReview } from "@/lib/schedule/storage";
 
 export type SwimPlanStatus = "active" | "paused" | "finished" | "archived";
 export type SwimWorkoutStatus = "scheduled" | "started" | "completed" | "skipped";
@@ -36,6 +36,7 @@ export type CreateSwimPlanInput = {
   state: SwimPlanState; workouts: SwimWorkoutInput[];
   scheduleReview?: ScheduleReview;
   scheduleInput?: unknown;
+  replaces?: { id: string; revision: number };
 };
 export type UpdateSwimPlanInput = {
   planId: string; expectedRevision: number; definition: SwimPlanDefinition; state: SwimPlanState;
@@ -103,6 +104,14 @@ export async function createSwimPlan(client: SupabaseClient, input: CreateSwimPl
     p_started_on: input.startedOn, p_ends_on: input.endsOn,
     p_definition: input.definition, p_state: input.state, p_workouts: input.workouts,
   };
+  if (input.replaces) {
+    if (!input.scheduleReview) throw new Error("Review the swimming replacement before saving.");
+    return rpc(client, "replace_swim_plan_atomically", {
+      p_plan_id: input.replaces.id, p_plan_revision: input.replaces.revision, p_args: args,
+      p_expected_revision: input.scheduleReview.revision, p_request_id: input.scheduleReview.requestId,
+      p_input_hash: scheduleInputHash(input.scheduleInput), p_accept_overlap: input.scheduleReview.acceptOverlap,
+    });
+  }
   return input.scheduleReview
     ? scheduledRpc(client, "swim-create", args, input.scheduleReview, input.scheduleInput)
     : rpc(client, "swim_create_plan", args);

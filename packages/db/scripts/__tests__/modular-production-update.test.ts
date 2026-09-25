@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { modularUpdateDispatch, modularMergeCandidate, modularQualifiedRun, modularQualifiedJobs, modularQualifiedNativeRun, requireModularProductionBindings } from "../update-modular-production";
 import { productionSettings } from "../swim-production-readonly-guards";
 import { MODULAR_PREFLIGHT, MODULAR_DISABLED_OPERATIONS } from "../modular-production-preflight-guards";
-import { modularUpdateInventory, modularUpdateMigrations, MODULAR_PRODUCTION_BASELINE } from "../modular-production-update-storage";
+import { modularUpdateInventory, MODULAR_PRODUCTION_BASELINE } from "../modular-production-update-storage";
+import { historicalModularRehearsalMigrations } from "../../integration-tests/modular-production-update-rehearsal";
 import { productionHistoryFingerprint } from "../swim-production-reconciliation";
 
 const sha = "c".repeat(40), candidate = "d".repeat(40), tree = "e".repeat(40);
@@ -95,7 +96,7 @@ describe("DC-K4/DC-SW8 modular production update preserves qualified source and 
     expect(requested).toEqual([failed.id]);
   });
   it("recognizes only unchanged legacy history and exact source156-158 appends", () => {
-    const migrations = modularUpdateMigrations();
+    const migrations = historicalModularRehearsalMigrations();
     const retained = Array.from({ length: 203 }, (_, index) => ({
       id: index + 1, hash: migrations[index % 146]!.hash, created_at: String(migrations[index % 146]!.folderMillis),
     }));

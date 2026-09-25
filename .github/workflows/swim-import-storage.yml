@@ -18,6 +18,9 @@ on:
       - "packages/db/integration-tests/modular-production-update-rehearsal.ts"
       - "packages/db/integration-tests/modular-production-legacy-graph.ts"
       - "packages/db/integration-tests/independent-programs-rehearsal.ts"
+      - "packages/db/integration-tests/prescription-safety-rehearsal.ts"
+      - "packages/db/rollbacks/0159_prescription_edit_revisions.down.sql"
+      - "packages/db/rollbacks/0160_atomic_swimming_replacement.down.sql"
       - "packages/db/rollbacks/0158_independent_program_ownership.down.sql"
       - "packages/db/scripts/__tests__/modular-production*.test.ts"
       - "packages/db/rollbacks/0157_standalone_swim_import_outcomes.down.sql"
@@ -119,4 +122,15 @@ jobs:
       - name: Install test browser
         run: pnpm --filter @hta/web exec playwright install --with-deps chromium
       - name: Verify pool and import controls without external services
+        env:
+          UI_REVIEW_DIR: ${{ runner.temp }}/swim-ui-review
         run: pnpm --filter @hta/web exec node scripts/test-swim-pool-ui.mjs
+      - name: Retain synthetic replacement screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: swimming-replacement-ui
+          path: |
+            ${{ runner.temp }}/swim-ui-review/generated-swim-replacement-*.png
+            ${{ runner.temp }}/swim-ui-review/chooser-four-*.png
+          if-no-files-found: error
+          retention-days: 7

@@ -46,6 +46,8 @@ import { loggedSetKindForItemKind } from "./set-kind";
 import { recomputeAfterCompletedSessionMutation } from "./post-completion-recompute";
 import { resolveBarWeightKg } from "./bar-kind";
 import { applyPrescriptionSwap, SWAP_PROGRAM_LOAD_REQUIRED_WARNING } from "./prescription-mutations";
+import { savePrescription, type PrescriptionSaveResult } from "./save-prescription";
+import { loadedPrescriptionConflict } from "./prescription-revision";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import {
@@ -2338,7 +2340,7 @@ const swapItemSchema = z.object({
  */
 export async function swapPrescriptionItem(
   formData: FormData,
-): Promise<{ ok?: true; error?: string; prescription?: Prescription; warning?: string }> {
+): Promise<PrescriptionSaveResult & { warning?: string }> {
   const parsed = swapItemSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     itemIndex: formData.get("itemIndex"),
@@ -2374,6 +2376,8 @@ export async function swapPrescriptionItem(
   if (!newMov) return { error: "Replacement movement not found." };
 
   const prescription = (plannedRow.prescription as Prescription | null) ?? { items: [] };
+  const conflict = loadedPrescriptionConflict(prescription, formData.get("expectedRevision"));
+  if (conflict) return conflict;
   if (parsed.data.itemIndex >= (prescription.items?.length ?? 0)) {
     return { error: "Item index out of range." };
   }
@@ -2397,12 +2401,9 @@ export async function swapPrescriptionItem(
   const warning = originalItem?.percentTm != null && originalItem.meta?.programLoadBasis != null &&
     nextPrescription.items[parsed.data.itemIndex]?.percentTm == null ? SWAP_PROGRAM_LOAD_REQUIRED_WARNING : undefined;
 
-  const { error: uErr } = await supabase
-    .from("planned_sessions")
-    .update({ prescription: nextPrescription })
-    .eq("id", parsed.data.plannedSessionId)
-    .eq("user_id", user.id);
-  if (uErr) return { error: uErr.message };
+  const saved = await savePrescription(supabase, "planned_sessions", parsed.data.plannedSessionId,
+    formData.get("expectedRevision"), nextPrescription);
+  if (!saved.ok) return saved;
 
   // DC-K4 audit-log write — best-effort, fire-and-forget. Even if it
   // fails the legacy `meta.swappedFrom` JSONB write above survives so
@@ -2450,7 +2451,7 @@ export async function swapPrescriptionItem(
     revalidatePath(`/app/sessions/${linked.completed_session_id}`);
   }
 
-  return { ok: true, prescription: nextPrescription, ...(warning ? { warning } : {}) };
+  return { ...saved, ...(warning ? { warning } : {}) };
 }
 
 /* ─────────────────────────────────────────────────────────────────────

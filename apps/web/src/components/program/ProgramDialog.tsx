@@ -28,9 +28,9 @@ export function ProgramDialog({ title, children, onClose, onBack, busy = false }
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
     }}>
     <header className={styles.dialogHeader}>
-      {onBack && <button className={styles.dialogIconButton} onClick={onBack} disabled={busy} aria-label="Back"><ProgramIcon kind="back" /></button>}
+      {onBack && <button type="button" className={styles.dialogIconButton} onClick={onBack} disabled={busy} aria-label="Back"><ProgramIcon kind="back" /></button>}
       <h2 id={titleId}>{title}</h2>
-      <button className={styles.dialogIconButton} onClick={onClose} disabled={busy} aria-label="Close"><ProgramIcon kind="close" /></button>
+      <button type="button" className={styles.dialogIconButton} onClick={onClose} disabled={busy} aria-label="Close"><ProgramIcon kind="close" /></button>
     </header>
     {children}
   </dialog>;

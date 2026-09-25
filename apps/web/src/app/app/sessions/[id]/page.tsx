@@ -1535,6 +1535,7 @@ export default async function SessionDetailPage({
         >
           {cardioItemsIndexed.length > 0 && (
             <CardioPrescriptionList
+              expectedRevision={plannedPrescription?.meta?.editRevision ?? "0"}
               plannedSessionId={(planned?.id as string | undefined) ?? null}
               pageTitle={session.title ?? null}
               items={cardioItemsIndexed.map(({ it, itemIndex }) => {

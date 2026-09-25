@@ -127,6 +127,33 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     }
   });
 
+  it("DC-K4 rejects the second tab's stale prescription and preserves the winning save", async () => {
+    const otherTab = createClient(smokeEnv!.url, anonKey!, { auth: { autoRefreshToken: false, persistSession: false } });
+    const session = (await alice.auth.getSession()).data.session!;
+    expect((await otherTab.auth.setSession(session)).error).toBeNull();
+    const inserted = await alice.from("sessions").insert({
+      user_id: aliceId, title: "Concurrent prescription", prescription: { items: [] },
+    }).select("id").single();
+    expect(inserted.error).toBeNull();
+    const id = inserted.data!.id;
+    const save = (client: SupabaseClient, revision: string, note: string) => client.rpc("save_prescription_if_current", {
+      p_target: "sessions", p_id: id, p_expected_revision: revision, p_prescription: { items: [], userEdited: true, meta: { note } },
+    });
+    const [first, second] = await Promise.all([save(alice, "0", "first"), save(otherTab, "0", "second")]);
+    expect(first.error).toBeNull(); expect(second.error).toBeNull();
+    expect([first.data.conflict, second.data.conflict].sort()).toEqual([false, true]);
+    const winner = first.data.conflict ? second.data : first.data;
+    const stored = await alice.from("sessions").select("prescription").eq("id", id).single();
+    expect(stored.error).toBeNull();
+    expect(stored.data?.prescription).toEqual(winner.prescription);
+    expect((await save(bob, winner.prescription.meta.editRevision, "foreign")).error?.code).toBe("42501");
+    const stale = await save(alice, "0", "stale");
+    expect(stale.data).toEqual({ conflict: true, prescription: winner.prescription });
+    const reapplied = await save(alice, winner.prescription.meta.editRevision, "reapplied");
+    expect(reapplied.error).toBeNull(); expect(reapplied.data.conflict).toBe(false);
+    expect(reapplied.data.prescription.meta.note).toBe("reapplied");
+  });
+
   afterAll(async () => {
     for (const id of users) {
       const { error } = await admin.auth.admin.deleteUser(id);
