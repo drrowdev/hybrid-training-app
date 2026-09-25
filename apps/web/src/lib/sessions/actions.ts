@@ -47,6 +47,7 @@ import { recomputeAfterCompletedSessionMutation } from "./post-completion-recomp
 import { resolveBarWeightKg } from "./bar-kind";
 import { applyPrescriptionSwap, SWAP_PROGRAM_LOAD_REQUIRED_WARNING } from "./prescription-mutations";
 import { savePrescription, type PrescriptionSaveResult } from "./save-prescription";
+import { loadedPrescriptionConflict } from "./prescription-revision";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import {
@@ -2375,6 +2376,8 @@ export async function swapPrescriptionItem(
   if (!newMov) return { error: "Replacement movement not found." };
 
   const prescription = (plannedRow.prescription as Prescription | null) ?? { items: [] };
+  const conflict = loadedPrescriptionConflict(prescription, formData.get("expectedRevision"));
+  if (conflict) return conflict;
   if (parsed.data.itemIndex >= (prescription.items?.length ?? 0)) {
     return { error: "Item index out of range." };
   }

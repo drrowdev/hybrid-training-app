@@ -26,6 +26,7 @@ import {
 } from "@hta/hyrox";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { savePrescription, type PrescriptionSaveResult } from "@/lib/sessions/save-prescription";
+import { loadedPrescriptionConflict } from "@/lib/sessions/prescription-revision";
 
 export type StationSwapResult = PrescriptionSaveResult;
 
@@ -67,6 +68,8 @@ export async function setHyroxStationOverride(formData: FormData): Promise<Stati
   if (!planned) return { error: "Planned session not found." };
 
   const prescription = (planned.prescription as Prescription | null) ?? { items: [] };
+  const conflict = loadedPrescriptionConflict(prescription, formData.get("expectedRevision"));
+  if (conflict) return conflict;
   const programRef = (prescription as Prescription & { programRef?: string }).programRef;
   if (!programRef) return { error: "This session isn't a structured HYROX workout." };
 

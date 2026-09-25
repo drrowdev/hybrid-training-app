@@ -23,7 +23,8 @@ BEGIN
   IF p_expected_revision IS DISTINCT FROM public.training_schedule_snapshot()->>'revision' THEN
     RAISE EXCEPTION 'Your schedule changed. Review the dates again.' USING ERRCODE='40001';
   END IF;
-  SELECT * INTO plan FROM public.swim_plans WHERE id=p_plan_id AND user_id=u FOR UPDATE;
+  -- Swim writers already hold the shared schedule lock; callers retain read-only table grants.
+  SELECT * INTO plan FROM public.swim_plans WHERE id=p_plan_id AND user_id=u;
   IF NOT FOUND THEN RAISE EXCEPTION 'Swimming plan not found.' USING ERRCODE='42501'; END IF;
   IF plan.status NOT IN ('active','paused') OR plan.revision IS DISTINCT FROM p_plan_revision THEN
     RAISE EXCEPTION 'Swimming plan changed. Review the replacement again.' USING ERRCODE='40001';

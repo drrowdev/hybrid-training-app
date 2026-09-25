@@ -26,6 +26,7 @@ import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import { savePrescription, type PrescriptionSaveResult } from "./save-prescription";
+import { loadedPrescriptionConflict } from "./prescription-revision";
 import {
   resolveWarmupPreference,
   type WarmupPreference,
@@ -281,6 +282,8 @@ export async function swapActiveMovement(
   const sourcePrescription = planned?.prescription
     ? (planned.prescription as Prescription)
     : sessionRx;
+  const conflict = sourcePrescription && loadedPrescriptionConflict(sourcePrescription, formData.get("expectedRevision"));
+  if (conflict) return conflict;
   let requiresManualLoad = false;
   if (sourcePrescription) {
     try {

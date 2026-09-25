@@ -84,6 +84,15 @@ function input() {
 }
 
 describe("DC-R6 planned movement load ownership", () => {
+  it("DC-K4 returns the current workout before validating a movement removed by another editor", async () => {
+    prescription = { items: [], meta: { editRevision: crypto.randomUUID() } };
+    const result = await swapPlannedMovement(input());
+    expect(result.ok).toBeUndefined();
+    expect(result.currentPrescription).toEqual(prescription);
+    expect(result.error).toBeTruthy();
+    expect(updates).toEqual([]);
+    expect(requests.some((request) => request.method === "POST" || request.method === "PATCH")).toBe(false);
+  });
   it("saves rebuilt warm-ups with the same program basis and an owned, unstarted target", async () => {
     const result = await swapPlannedMovement(input());
     expect(result.ok).toBe(true);
