@@ -35,7 +35,7 @@ const items: RehabProtocolItem[] = [
     side: "both",
   },
 ];
-const noop = async () => ({ ok: true as const });
+const noop = async () => ({ ok: true as const, id: "adductor", syncedPrograms: [] });
 
 describe("rehab protocol with dynamic and isometric Copenhagen entries", () => {
   it("counts three variants and nine sets in Settings and the program picker summary", () => {

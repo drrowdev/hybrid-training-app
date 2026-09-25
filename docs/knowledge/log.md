@@ -5847,3 +5847,18 @@ separate-connection conflicts, rollback/replay, owner denial and browser recover
 and confirmation. Evidence is pending CI. See [pool swimming](pool-swimming.md)
 for additive DB-first deployment and app-first rollback with written downs.
 No production changes, merge or deployment are authorized.
+
+## [2026-09-25] refine | Confirmed-save lists and Recovery presentation
+
+Program history removes a deleted row only after server success, including its
+empty month group; Undo clears that local removal only after a successful
+restore. Rehab creation fills the confirmed-save refresh gap by server-issued
+ID, then hands back to the server row without duplication. Failed actions retain
+the existing error and list state. Template review dates use the existing
+weekday formatter with timezone-neutral calendar dates and `dateTime`.
+Recovery retains `/app/stats/engine`, existing chart values and user change
+notes, with methodology in one closed disclosure instead of decision narration.
+DC-C2, DC-C14, DC-C9/DC-K1 and DC-K4 presentation only; no calculation, schema,
+RPC, migration, Today or prescription changes. Local component-browser evidence
+covers 375/1280 px, held refreshes, failure paths, canonical reconciliation and
+Undo. Linux automatic PR CI and owner approval remain acceptance gates.

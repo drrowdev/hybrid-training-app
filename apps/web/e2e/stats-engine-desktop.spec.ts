@@ -3,27 +3,10 @@ import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 import { seedEngineState } from "./fixtures/seed-engine";
 
-/**
- * Desktop /app/stats/engine — Phase 6 engine page.
- *
- * Pre-condition (seeded via service-role admin client):
- *  - Active Strength Focus block starting today
- *  - One planned session for today titled "Squat day" with Back Squat
- *    as the main item
- *  - region_state rows for `knee` (loaded) + `shoulder_scapular` (fresh)
- *  - One skipped planned session + one movement swap → two override rows
- *
- * The spec asserts:
- *  - all five sections render
- *  - the decision-trace headline + archetype name appear
- *  - the "Why?" tooltip on a bucket exposes a popover with explanation
- *  - the recent overrides list has at least one row
- */
-
 test.describe("@desktop /app/stats/engine", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("renders all sections + decision trace + bucket why", async ({
+  test("renders recovery charts and opens the calculation disclosure", async ({
     page,
     context,
     freshUser,
@@ -32,7 +15,7 @@ test.describe("@desktop /app/stats/engine", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
-    const seeded = await seedEngineState(admin, freshUser.userId);
+    await seedEngineState(admin, freshUser.userId);
 
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
     await page.goto("/app/stats/engine");
@@ -40,50 +23,32 @@ test.describe("@desktop /app/stats/engine", () => {
 
     // ── Header ────────────────────────────────────────────────
     await expect(page.getByTestId("stats-engine-header")).toBeVisible();
-    await expect(page.getByTestId("stats-engine-header")).toContainText(
-      /How the planner sees you/i,
-    );
-
-    // ── A · Decision trace ────────────────────────────────────
-    const trace = page.getByTestId("stats-engine-decision-trace");
-    await expect(trace).toBeVisible();
-    await expect(page.getByTestId("stats-engine-decision-headline")).toContainText(
-      seeded.todayPlannedTitle,
-    );
-    const reasons = page.getByTestId("stats-engine-decision-reason");
-    expect(await reasons.count()).toBeGreaterThanOrEqual(2);
-    await expect(trace).toContainText(seeded.archetypeName);
 
     // ── B · Region freshness ──────────────────────────────────
     const regions = page.getByTestId("stats-engine-regions");
     await expect(regions).toBeVisible();
     const regionRows = page.getByTestId("stats-engine-region-row");
     expect(await regionRows.count()).toBeGreaterThanOrEqual(1);
-    // Cache footnote — confirms the page is now backed by
-    // region_state_history rather than re-deriving from set_logs.
-    await expect(page.getByTestId("stats-engine-regions-footnote")).toContainText(
-      /Updated daily at 03:00 UTC/i,
-    );
+    await expect(regionRows.first().getByRole("img")).toBeVisible();
 
-    // ── C · Bucket pressure + "Why?" tooltip ──────────────────
+    // ── C · Training load ──────────────────
     const buckets = page.getByTestId("stats-engine-buckets");
     await expect(buckets).toBeVisible();
     const bucketRows = page.getByTestId("stats-engine-bucket-row");
     expect(await bucketRows.count()).toBeGreaterThanOrEqual(1);
-    // Click the first "Why?" affordance and assert the explainer pop
-    // is part of the DOM (Clawpilot .cp-info pop opens on focus).
-    const firstWhy = page.getByTestId("stats-engine-bucket-why").first();
-    await firstWhy.focus();
-    await expect(
-      page.getByTestId("stats-engine-bucket-why-pop").first(),
-    ).toContainText(/pressure|EWMA|ceiling|interference|tendon|GRM|MEV/i);
+    await expect(bucketRows.first().getByTestId("pressure-meter")).toBeVisible();
 
     // ── D · Ceiling explainer (DC-C9 · DC-K1 — median of recovered weeks) ─
     await expect(page.getByTestId("stats-engine-ceiling")).toBeVisible();
     await expect(page.getByTestId("stats-engine-ceiling-final")).toContainText(
       /kg/i,
     );
-    // The DC-K1 recovered-weeks badge must render with a formula attribute.
+    const disclosure = page.getByTestId("recovery-calculation");
+    await expect(disclosure).not.toHaveAttribute("open");
+    await expect(page.getByTestId("stats-engine-ceiling-recovered-badge")).toBeHidden();
+    await disclosure.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).toHaveAttribute("open", "");
     await expect(
       page.getByTestId("stats-engine-ceiling-recovered-badge"),
     ).toBeVisible();
@@ -159,10 +124,8 @@ test.describe("@desktop /app/stats/engine", () => {
       .getByTestId("stats-engine-region-row")
       .filter({ hasText: /Knees|Quads/ });
     await expect(kneeRow).toBeVisible();
-    // Cache footnote present whenever the section is non-empty.
-    await expect(page.getByTestId("stats-engine-regions-footnote")).toContainText(
-      /Updated daily at 03:00 UTC/i,
-    );
+    await expect(kneeRow.getByTestId("miniline")).toBeVisible();
+    await expect(kneeRow.getByTestId("miniline").locator("path").first()).toHaveAttribute("d", /L/);
   });
 
   test("empty state for a fresh user with no block", async ({
@@ -178,9 +141,6 @@ test.describe("@desktop /app/stats/engine", () => {
     await page.goto("/app/stats/engine");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByTestId("stats-engine-decision-headline")).toContainText(
-      /No active block/i,
-    );
     await expect(page.getByTestId("stats-engine-regions")).toHaveAttribute(
       "data-empty",
       "true",

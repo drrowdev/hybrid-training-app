@@ -7,6 +7,7 @@
  * errors rather than pre-emptively.
  */
 import { useId, useMemo, useRef, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { formatRehabReps } from "@hta/domain";
 import type { RehabProtocolItem, RehabProtocolRow } from "@/lib/rehab-protocols/queries";
 import {
@@ -21,20 +22,22 @@ import { formatProtocolSummary } from "@/lib/rehab-protocols/summary";
 import type { SessionLink } from "@/lib/platform/session-links";
 import { rehabLinkableMovements } from "@/lib/platform/rehab-links";
 import { SessionLinkEditor } from "@/components/program/SessionLinkEditor";
+import { useConfirmedList } from "@/components/ui/useConfirmedList";
+import type { ProtocolActionResult } from "@/lib/rehab-protocols/actions";
 
 export type PickerMovement = { id: string; name: string; pattern: string };
 
-type SaveResult = { ok: true; syncedPrograms: string[] } | { ok: false; error: string };
 type PlainResult = { ok: true } | { ok: false; error: string };
+type DisplayProtocol = Pick<RehabProtocolRow, "id" | "name" | "items" | "links" | "usedBy">;
 
 type Props = {
   protocols: RehabProtocolRow[];
   movements: PickerMovement[];
-  createAction: (input: unknown) => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>;
+  createAction: (input: unknown) => Promise<ProtocolActionResult>;
   updateAction: (
     id: string,
     input: unknown,
-  ) => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>;
+  ) => Promise<ProtocolActionResult>;
   duplicateAction: (id: string) => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>;
   deleteAction: (id: string) => Promise<PlainResult>;
 };
@@ -53,13 +56,15 @@ const SIDES = [
 ] as const;
 
 export function RehabProtocolsClient({
-  protocols,
+  protocols: serverProtocols,
   movements,
   createAction,
   updateAction,
   duplicateAction,
   deleteAction,
 }: Props) {
+  const { rows, add } = useConfirmedList<DisplayProtocol>(serverProtocols);
+  const protocols = rows.toSorted((a, b) => a.name.localeCompare(b.name));
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -71,7 +76,7 @@ export function RehabProtocolsClient({
     setDraft({ id: null, name: "", items: [], links: [] });
   };
 
-  const openEdit = (protocol: RehabProtocolRow) => {
+  const openEdit = (protocol: DisplayProtocol) => {
     setError(null);
     setNotice(null);
     setDraft({
@@ -96,19 +101,22 @@ export function RehabProtocolsClient({
     const payload = parsed.value;
     startTransition(async () => {
       const result = draft.id
-        ? ((await updateAction(draft.id, payload)) as unknown as SaveResult)
-        : ((await createAction(payload)) as unknown as SaveResult);
+        ? await updateAction(draft.id, payload)
+        : await createAction(payload);
       if (!result.ok) {
         setError(result.error);
         return;
       }
       const synced = result.syncedPrograms ?? [];
-      setNotice(synced.length > 0 ? `Saved · ${synced.join(", ")} updated` : "Saved");
-      setDraft(null);
+      flushSync(() => {
+        if (!draft.id) add({ id: result.id, name: payload.name, ...payload.definition, usedBy: [] });
+        setNotice(synced.length > 0 ? `Saved · ${synced.join(", ")} updated` : "Saved");
+        setDraft(null);
+      });
     });
   };
 
-  const remove = (protocol: RehabProtocolRow) => {
+  const remove = (protocol: DisplayProtocol) => {
     setError(null);
     setNotice(null);
     startTransition(async () => {
@@ -117,7 +125,7 @@ export function RehabProtocolsClient({
     });
   };
 
-  const duplicate = (protocol: RehabProtocolRow) => {
+  const duplicate = (protocol: DisplayProtocol) => {
     setError(null);
     setNotice(null);
     startTransition(async () => {
