@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BackLink } from "@/components/ui/BackLink";
+import { formatDate } from "@/lib/format/datetime";
 import { ProgramConfirmation } from "./ProgramDialog";
 import {
   AB_TRIAD_MOVEMENTS,
@@ -5774,19 +5775,21 @@ export function ProgramPicker({
           <h2 className={styles.h1}>Review dates</h2>
           <div className="cp-card" style={{ maxHeight: 320, overflowY: "auto", padding: 16 }}>
             {reviewed.preview.dates.map((row, index) => <p key={`${row.date}:${index}`} style={{ margin: "8px 0" }}>
-              <time dateTime={row.date}>{row.date}</time> · {row.title}
+              <time dateTime={row.date}>{formatDate(row.date, { timezone: "UTC" }, "weekday_short")}</time> · {row.title}
             </p>)}
           </div>
           {reviewed.preview.overlaps.length > 0 && <>
             <ul>{reviewed.preview.overlaps.map((entry) => <li key={`${entry.source}:${entry.id}`}>
-              {entry.date} · {entry.title}
+              <time dateTime={entry.date}>{formatDate(entry.date, { timezone: "UTC" }, "weekday_short")}</time> · {entry.title}
             </li>)}</ul>
             <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <input type="checkbox" checked={acceptOverlap} onChange={(event) => setAcceptOverlap(event.target.checked)} />
               Train on these occupied days
             </label>
           </>}
-          {reviewed.preview.plannedRest.length > 0 && <p>Planned rest: {[...new Set(reviewed.preview.plannedRest.map((entry) => entry.date))].join(", ")}</p>}
+          {reviewed.preview.plannedRest.length > 0 && <p>Planned rest: {[...new Set(reviewed.preview.plannedRest.map((entry) => entry.date))].map((date, index) => <span key={date}>
+            {index > 0 ? ", " : ""}<time dateTime={date}>{formatDate(date, { timezone: "UTC" }, "weekday_short")}</time>
+          </span>)}</p>}
         </section>}
       </fieldset>
 

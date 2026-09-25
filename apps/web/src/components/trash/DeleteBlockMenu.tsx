@@ -12,9 +12,11 @@
  * server-side in queries.ts).
  */
 import { useRouter } from "next/navigation";
+import { flushSync } from "react-dom";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteBlock } from "@/lib/planner/actions";
 import { dispatchUndoBanner } from "@/components/trash/UndoBanner";
+import { useConfirmBlockDeletion } from "@/components/program/BlockHistoryList";
 
 export function DeleteBlockMenu({
   blockId,
@@ -24,6 +26,7 @@ export function DeleteBlockMenu({
   archetypeName: string;
 }): React.ReactElement {
   const router = useRouter();
+  const confirmDeletion = useConfirmBlockDeletion();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +52,10 @@ export function DeleteBlockMenu({
         setError(result.error);
         return;
       }
-      setOpen(false);
+      flushSync(() => {
+        setOpen(false);
+        confirmDeletion?.(result.blockId);
+      });
       dispatchUndoBanner({
         kind: "block",
         id: result.blockId,

@@ -7,8 +7,8 @@
  * week + day; logged sessions link to the session detail page.
  *
  * Pagination is offset-based via `?page=N` (1-indexed). Server
- * component — no client JS for the list itself; expansion is a
- * native `<details>` for zero-JS mobile friendliness.
+ * component with a small client list boundary for confirmed deletes;
+ * expansion remains a native `<details>`.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/planner/queries";
 import { DeleteBlockMenu } from "@/components/trash/DeleteBlockMenu";
 import { ProgramHistory, ProgramHistorySummary } from "@/components/program/ProgramHistory";
+import { BlockHistoryList } from "@/components/program/BlockHistoryList";
 import styles from "@/components/program/ProgramBuilder.module.css";
 import { groupBlocksByMonth } from "@/lib/plan/history-grouping";
 import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
@@ -124,7 +125,15 @@ export default async function PlanHistoryPage({
   return (
     <ProgramHistory>
 
-      {pageBlocks.length === 0 && swimHistory.length === 0 ? (
+      <BlockHistoryList groups={groupBlocksByMonth(pageBlocks).map((group) => ({
+        key: group.key,
+        label: group.label,
+        rows: group.blocks.map((block) => ({
+          id: block.id,
+          content: <BlockHistoryRow block={block} sessions={sessionsByBlock.get(block.id) ?? []}
+            customized={customizedBlockIds.has(block.id)} />,
+        })),
+      }))} empty={swimHistory.length === 0 ? (
         <section
           className="cp-card"
           style={{ padding: 24, display: "grid", gap: 10, justifyItems: "start" }}
@@ -134,46 +143,7 @@ export default async function PlanHistoryPage({
             Start your first program
           </Link>
         </section>
-      ) : (
-        <div
-          data-testid="plan-history-list"
-          style={{ display: "grid", gap: 14 }}
-        >
-          {groupBlocksByMonth(pageBlocks).map((group) => (
-            <section key={group.key} data-testid="plan-history-month-group" data-month={group.key}>
-              <h2
-                data-testid="plan-history-month-header"
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 1,
-                  margin: 0,
-                  padding: "8px 4px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: "var(--cp-text-muted)",
-                  background: "var(--cp-bg)",
-                  borderBottom: "1px solid var(--cp-border)",
-                }}
-              >
-                {group.label}
-              </h2>
-              <ul className={styles.historyList}>
-                {group.blocks.map((b) => (
-                  <BlockHistoryRow
-                    key={b.id}
-                    block={b}
-                    sessions={sessionsByBlock.get(b.id) ?? []}
-                    customized={customizedBlockIds.has(b.id)}
-                  />
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      )}
+      ) : null} />
 
       <SwimProgramHistory programs={swimHistory} />
       <Pagination page={page} hasNext={hasNext} />
@@ -217,7 +187,6 @@ function BlockHistoryRow({
   const weekIndices = Array.from(byWeek.keys()).sort((a, b) => a - b);
 
   return (
-    <li>
       <details
         data-testid="block-history-row"
         data-block-id={block.id}
@@ -279,7 +248,6 @@ function BlockHistoryRow({
           </div>
         )}
       </details>
-    </li>
   );
 }
 
