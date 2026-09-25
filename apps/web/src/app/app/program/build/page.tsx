@@ -29,8 +29,8 @@ export default async function ProgramBuildPage({ searchParams }: {
   const params = await searchParams;
   if (!params.edit && !["strength", "running", "hybrid"].includes(params.activity ?? "")) redirect("/app/programs?new=1");
   const editBlockId = params.edit ? z.string().uuid().parse(params.edit) : undefined;
-  const [snapshot, profileResult, initial, navigation, courses, rehabProtocols, active] = await Promise.all([
-    loadAvailableTrainingSchedule(client),
+  const snapshot = await loadAvailableTrainingSchedule(client);
+  const [profileResult, initial, navigation, courses, rehabProtocols, active] = await Promise.all([
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
     editBlockId ? loadAuthoredProgram(editBlockId) : undefined,
     getSwimNavigation(client, user.id),
@@ -76,6 +76,6 @@ export default async function ProgramBuildPage({ searchParams }: {
     activitySelected replacesName={!editBlockId && replacing ? archetypeDisplayName(replacing.archetype, replacing.notes) : undefined}
     rehabProtocols={rehabProtocols.map((protocol) => ({ id: protocol.id, name: protocol.name, summary: formatProtocolSummary(protocol.items) }))}
     commitments={snapshot.entries} activity={activity} initial={initial} editBlockId={editBlockId} initialStartDate={initialStartDate}
-    workoutId={workoutId} plannedSessionId={plannedSessionId}
+    workoutId={workoutId} plannedSessionId={plannedSessionId} initialRevision={snapshot.revision}
     swimHref={navigation.setupEnabled && courses ? "/app/swim/import" : navigation.hasPlans ? "/app/swim" : null} />;
 }

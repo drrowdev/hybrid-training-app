@@ -14,13 +14,14 @@ import { parseSetupForm } from "./forms";
 import { swimContext, swimActionFailure, SwimActionError, ownedSwimPlan, ownedSwimWorkout } from "./server-context";
 import { checkSwimWorkouts } from "./workout-safety";
 import { loadSwimStrengthContext } from "./strength-schedule";
-import { swimInputId, swimToday } from "./queries";
+import { swimInputId, swimToday, swimWorkoutViewFromRow } from "./queries";
 import { createSwimPlan, listSwimPlans, updateSwimPlan } from "./storage";
 import type { SwimCourseImportPreview, SwimCourseEditInput, SwimCourseEditPreview } from "./course-view";
 import { SWIM_REFRESH_WARNING } from "./action-feedback";
 import { isPrivateSwimPlan, swimWorkoutDefinition } from "./model";
 import { workoutPresentation } from "./presentation";
 import { loadTrainingSchedule, scheduleReplay } from "@/lib/schedule/storage";
+import { loadSwimReplacement, replacementPlanId } from "./replacement";
 
 const choicesSchema = z.array(z.object({
   weekIndex: z.number().int().min(0).max(15),
@@ -34,6 +35,7 @@ const choicesSchema = z.array(z.object({
 async function prepare(form: FormData) {
   const { client, user } = await swimContext(true);
   const schedule = await loadTrainingSchedule(client);
+  const replaces = await loadSwimReplacement(client, user.id, replacementPlanId(form));
   if (!await privateSwimCourseAvailable(client)) throw new SwimActionError("Plan imports are unavailable.", "validation");
   const source = parseSwimCourseFile(z.string().parse(form.get("courseFile")));
   const fields = new FormData();
@@ -48,14 +50,15 @@ async function prepare(form: FormData) {
   const strengthContext = await loadSwimStrengthContext(client, user.id);
   const advice = swimScheduleAdvice(strengthContext, input.startDate, source.weeks.length, input.weekdays);
   const conflicts = advice.conflicts.map((day) => day.label);
-  const sharedAdvice = trainingScheduleAdvice(schedule.entries, planned.workouts.map((workout) => workout.scheduled_date));
+  const sharedAdvice = trainingScheduleAdvice(schedule.entries, planned.workouts.map((workout) => workout.scheduled_date),
+    replaces ? { source: "swim", programId: replaces.id } : undefined);
   await checkSwimWorkouts(client, user.id, planned.workouts.map((row) => row.definition.issued));
   const id = swimInputId({
     userId: user.id, definition: planned.definition, workouts: planned.workouts,
-    totals: planned.totals, today, strengthContext, confirmationKey: advice.confirmationKey, scheduleRevision: schedule.revision,
+    totals: planned.totals, today, strengthContext, confirmationKey: advice.confirmationKey, scheduleRevision: schedule.revision, replaces,
   });
   const preview: SwimCourseImportPreview = {
-    id, title: source.title, plan: planned.preview, totals: planned.totals, strengthDays: conflicts,
+    id, title: source.title, plan: planned.preview, totals: planned.totals, strengthDays: conflicts, replaces,
     scheduleRevision: schedule.revision, overlaps: sharedAdvice.overlaps,
   };
   return { client, user, planned, preview, input };
@@ -66,6 +69,16 @@ const editSchema = z.object({
   workoutId: z.string().uuid(), workoutRevision: z.number().int().positive(),
   workout: swimCourseWorkoutSchema, reason: z.string().trim().min(1).max(1000),
 }).strict();
+
+export async function reloadPrivateSwimEdit(workoutId: string): Promise<ActionResult & { context?: Omit<SwimCourseEditInput, "reason"> }> {
+  try {
+    const { client, user } = await swimContext();
+    const row = await ownedSwimWorkout(client, user.id, workoutId);
+    const current = await swimWorkoutViewFromRow(client, user.id, row);
+    if (!current?.courseEditing) throw new SwimActionError("This workout is no longer available to edit.", "validation");
+    return { ok: true, context: current.courseEditing };
+  } catch (error) { return swimActionFailure(error); }
+}
 
 async function prepareEdit(value: SwimCourseEditInput) {
   const input = editSchema.parse(value);
@@ -154,12 +167,13 @@ export async function importPrivateSwimCourse(
   try {
     const requestId = z.string().uuid().parse(form.get("requestId"));
     const requestInput = [...form.entries()].filter(([key]) =>
-      !["requestId", "reviewed", "acceptSetTotals", "acceptOverlap"].includes(key)).sort(([a], [b]) => a.localeCompare(b));
+      !["requestId", "reviewed", "acceptSetTotals", "acceptOverlap", "acceptReplacement"].includes(key)).sort(([a], [b]) => a.localeCompare(b));
     const context = await swimContext(true);
-    const replay = await scheduleReplay(context.client, requestId, "swim-create", requestInput);
+    const replay = await scheduleReplay(context.client, requestId, replacementPlanId(form) ? "swim-replace" : "swim-create", requestInput);
     if (replay) return { ok: true, planId: z.object({ plan: z.object({ id: z.string().uuid() }) }).parse(replay).plan.id };
     const prepared = await prepare(form);
     const { client, planned, preview, input } = prepared;
+    if (preview.replaces && form.get("acceptReplacement") !== "on") throw new SwimActionError("Confirm the swimming program replacement.", "validation");
     if (preview.id !== expectedPreview) throw new SwimActionError("The plan changed. Review it again.", "validation");
     if (form.get("reviewed") !== "on" ||
         (preview.totals.length > 0 && form.get("acceptSetTotals") !== "on") ||
@@ -171,10 +185,11 @@ export async function importPrivateSwimCourse(
       plan.definition.generatorVersion === SWIM_COURSE_VERSION &&
       plan.state.decisions.some((entry) => entry.id === preview.id && entry.inputSnapshot.operation === "course-import"));
     if (previous) return { ok: true, planId: previous.id };
-    if (plans.some((plan) => plan.status === "active")) {
+    if (plans.some((plan) => plan.status === "active" && plan.id !== preview.replaces?.id)) {
       throw new SwimActionError("Finish or archive your current swimming plan before importing another.", "validation");
     }
     const result = await createSwimPlan(client, {
+      replaces: preview.replaces,
       scheduleReview: { revision: preview.scheduleRevision!, requestId, acceptOverlap: form.get("acceptOverlap") === "on" },
       scheduleInput: requestInput,
       startedOn: input.startDate,

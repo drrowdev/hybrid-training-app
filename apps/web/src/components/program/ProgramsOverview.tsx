@@ -46,7 +46,7 @@ export function ProgramsOverview({ programs, entries, today, swimHref, templateB
   function select(kind: ProgramType | null) {
     if (kind === "swimming") {
       const swimming = active.find((program) => program.kind === "swimming");
-      if (swimming || swimHref) router.push(swimming?.href ?? swimHref!);
+      if (swimHref) router.push(swimming ? `${swimHref}?replace=${swimming.id}` : swimHref);
       return;
     }
     if (kind === "running") { router.push("/app/program/build?activity=running"); return; }

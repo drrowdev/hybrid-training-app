@@ -6,6 +6,7 @@ import { DEFAULT_SWIM_POOL, MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_W
 import { createSwimPlan, previewSwimPlan } from "@/lib/swim/actions";
 import type { SwimSetupPreview } from "@/lib/swim/view-types";
 import { PlanPreview } from "./PlanPreview";
+import { ProgramConfirmation } from "@/components/program/ProgramDialog";
 import styles from "./Swim.module.css";
 
 export function BenchmarkFields() {
@@ -35,7 +36,7 @@ export function StrokeSelect({ name, defaultValue = "freestyle" }: { name: strin
   </select>;
 }
 
-export function SetupForm({ today, schedule = [] }: { today: string; schedule?: TrainingCommitment[] }) {
+export function SetupForm({ today, schedule = [], replacePlanId }: { today: string; schedule?: TrainingCommitment[]; replacePlanId?: string }) {
   const router = useRouter();
   const [pool, setPool] = useState(`${DEFAULT_SWIM_POOL.numerator}m`);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function SetupForm({ today, schedule = [] }: { today: string; schedule?: 
   const [weeks, setWeeks] = useState(6);
   const [days, setDays] = useState(() => swimScheduleAdvice({ blockId: null, sessions: schedule }, today, 6).defaults);
   const [preview, setPreview] = useState<SwimSetupPreview | null>(null);
+  const [replacementForm, setReplacementForm] = useState<FormData | null>(null);
   const [acceptOverlap, setAcceptOverlap] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -56,10 +58,13 @@ export function SetupForm({ today, schedule = [] }: { today: string; schedule?: 
   const end = Date.parse(`${startDate}T00:00:00Z`) + weeks * 7 * 86_400_000;
   const commitments = schedule.filter((entry) => entry.date >= startDate && Date.parse(`${entry.date}T00:00:00Z`) < end);
 
-  function submit(form: FormData, mode: "preview" | "create") {
+  function submit(form: FormData, mode: "preview" | "create", replace = false) {
     if (busy.current || savedId) return;
+    if (replacePlanId) form.set("replacePlanId", replacePlanId);
     if (mode === "create") {
       if (!preview || !requestId.current) { setError("Preview the plan before saving."); return; }
+      if (preview.replaces && !replace) { setReplacementForm(form); return; }
+      if (replace) form.set("acceptReplacement", "on");
       form.set("requestId", requestId.current);
       form.set("previewId", preview.id);
     }
@@ -102,6 +107,9 @@ export function SetupForm({ today, schedule = [] }: { today: string; schedule?: 
       const submitter = (event.nativeEvent as SubmitEvent | undefined)?.submitter;
       submit(new FormData(event.currentTarget), submitter?.getAttribute("value") === "preview" ? "preview" : "create");
     }} className={styles.form}>
+      {replacementForm && preview?.replaces && <ProgramConfirmation
+        name={preview.replaces.name} pending={pending} error={error}
+        onCancel={() => setReplacementForm(null)} onConfirm={() => submit(replacementForm, "create", true)} />}
       <fieldset className={styles.formFields} disabled={pending || !!savedId}
         onChange={() => { request.current++; setPreview(null); requestId.current = null; setAcceptOverlap(false); setError(null); }}>
       <section className={styles.section}>

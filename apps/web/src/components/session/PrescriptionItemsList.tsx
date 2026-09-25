@@ -31,6 +31,7 @@ import { useState, useEffect, useRef, useTransition } from "react";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap, isSwapped, originalMovementName } from "@/lib/sessions/prescription-mutations";
 import type { swapPrescriptionItem } from "@/lib/sessions/actions";
+import { prescriptionRevision } from "@/lib/sessions/prescription-revision";
 
 type SwapAction = typeof swapPrescriptionItem;
 
@@ -118,11 +119,18 @@ export function PrescriptionItemsList({
     startTransition(async () => {
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
+      fd.set("expectedRevision", prescriptionRevision(prev));
       fd.set("itemIndex", String(index));
       fd.set("newMovementId", cand.id);
       if (reason.length > 0) fd.set("reason", reason.slice(0, 280));
       try {
         const result = await swapAction(fd);
+        if (result.currentPrescription) {
+          setPrescription(result.currentPrescription);
+          setErrorByIndex((errors) => ({ ...errors, [index]: result.error! }));
+          setOpenIndex(index);
+          return;
+        }
         if (result?.error || !result?.prescription) throw new Error(result?.error ?? "Swap failed.");
         setPrescription(result.prescription);
         if (result.warning) setWarning(`${cand.display_name}: ${result.warning}`);

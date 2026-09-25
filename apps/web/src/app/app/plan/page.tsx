@@ -312,6 +312,7 @@ export default async function PlanPage({
       skipped: !!p.skippedAt,
       slot: p.slot,
       items,
+      prescriptionRevision: p.prescription?.meta?.editRevision ?? "0",
       estDurationMin: dur,
       notes: p.notes,
       completedSessionId: p.completedSessionId,

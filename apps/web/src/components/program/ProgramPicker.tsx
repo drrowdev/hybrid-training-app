@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BackLink } from "@/components/ui/BackLink";
 import { ProgramConfirmation } from "./ProgramDialog";
+import { getBlockEditContext } from "@/lib/platform/edit-context";
 import {
   AB_TRIAD_MOVEMENTS,
   TB_TIMED_HOLD_DOSE,
@@ -1317,6 +1318,7 @@ function upcomingMondayYmd(ymd: string): string {
 
 export interface ProgramEditContextProp {
   blockId: string;
+  editRevision?: string;
   programId: string;
   setupValues: Record<string, unknown>;
   strengthWeekdays: number[];
@@ -1410,6 +1412,8 @@ export function ProgramPicker({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<CreateProgramInstanceResult | null>(null);
+  const [editRevision, setEditRevision] = useState(editContext?.editRevision);
+  const [currentEdit, setCurrentEdit] = useState<Awaited<ReturnType<typeof getBlockEditContext>>>(null);
   const [reviewed, setReviewed] = useState<{
     input: CreateProgramInstanceInput; preview: ProgramSchedulePreview; requestId: string;
   } | null>(null);
@@ -3056,7 +3060,7 @@ export function ProgramPicker({
           : {}),
         ...(customization ? { customization } : {}),
         ...(rehabSchedule ? { rehabSchedule } : {}),
-        ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
+        ...(isEditing && editContext ? { editBlockId: editContext.blockId, editRevision } : {}),
         ...(!isEditing && linkSeason && seasonBlockId ? { seasonBlockId } : {}),
         ...(setupRecommendation ? { sourceRecommendationId: setupRecommendation.recommendationId } : {}),
         ...(recoveryAdvised && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
@@ -5789,6 +5793,22 @@ export function ProgramPicker({
           {reviewed.preview.plannedRest.length > 0 && <p>Planned rest: {[...new Set(reviewed.preview.plannedRest.map((entry) => entry.date))].join(", ")}</p>}
         </section>}
       </fieldset>
+
+      {result && !result.ok && editContext && <div className={styles.step}>
+        <button type="button" className={styles.btn} disabled={pending} onClick={() => startTransition(async () => {
+          try {
+            const current = await getBlockEditContext(editContext.blockId);
+            if (!current) { setResult({ ok: false, error: "This program is no longer available to edit." }); return; }
+            setCurrentEdit(current);
+          } catch { setResult({ ok: false, error: "Couldn't reload the program. Your changes are still here." }); }
+        })}>Reload current version</button>
+        {currentEdit && <>
+          <Link href={`/app/plan?block=${editContext.blockId}`} target="_blank">View current workouts</Link>
+          <button type="button" className={styles.btn} onClick={() => {
+            setEditRevision(currentEdit.editRevision); setCurrentEdit(null); setReviewed(null); setResult(null);
+          }}>Reapply my changes</button>
+        </>}
+      </div>}
 
       <div className={styles.nav}>
         {step > minStep ? (

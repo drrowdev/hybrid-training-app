@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { wendler531Engine } from "@hta/wendler";
+import type { Prescription } from "@hta/db";
 
 type Movement = { id: string; slug: string; display_name: string };
 type SessionRow = { id: string; user_id: string; deleted_at: string | null };
@@ -48,6 +49,13 @@ let plannedUpdateError: string | null = null;
 let sessionUpdateError: string | null = null;
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("../save-prescription", () => ({
+  savePrescription: async (_client: unknown, target: string, _id: string, _revision: unknown, prescription: Prescription) => {
+    const error = target === "planned_sessions" ? plannedUpdateError : sessionUpdateError;
+    (target === "planned_sessions" ? plannedUpdates : sessionUpdates).push({ prescription });
+    return error ? { error } : { ok: true, prescription };
+  },
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({

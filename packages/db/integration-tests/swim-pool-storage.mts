@@ -22,6 +22,7 @@ import { modularHistoricalAssertionLine as projectHistoricalAssertionLine } from
 import { ModularCatalogRefusal, type ModularCatalogDiagnostic } from "../scripts/modular-production-catalog.ts";
 import { ModularUpdateSqlFailure, type ModularUpdateDiagnostic, type ModularUpdateSubstep } from "../scripts/modular-production-update-storage.ts";
 import { IndependentProgramsAssertion, rehearseIndependentPrograms, type OwnershipAssertionDiagnostic } from "./independent-programs-rehearsal.ts";
+import { rehearsePrescriptionSafety } from "./prescription-safety-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { MigrationRunnerRehearsalError, rehearseMigrationRunner } from "./migration-runner-rehearsal.ts";
@@ -740,6 +741,7 @@ try {
     });
   }
   stages.push(...await rehearseIndependentPrograms(database, (name) => { stage = name; }));
+  stages.push(...await rehearsePrescriptionSafety(database, (name) => { stage = name; }));
   status = "passed";
 } catch (error) {
   modularUpdateSubstep = projectModularUpdateSubstep(stage, currentModularUpdateSubstep);

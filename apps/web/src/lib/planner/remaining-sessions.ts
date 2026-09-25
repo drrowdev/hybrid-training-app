@@ -157,9 +157,14 @@ export async function applyPrescriptionUpdates(
       expected != null
         ? updateBase.eq("completed_session_id", expected)
         : updateBase.is("completed_session_id", null);
-    const { error, count } = await guarded
+    const revision = u.prescription.meta?.editRevision;
+    const revisionGuarded = revision
+      ? guarded.eq("prescription->meta->>editRevision", revision)
+      : guarded.is("prescription->meta->>editRevision", null);
+    const { error, count } = await revisionGuarded
       .is("skipped_at", null);
     if (error) return { updated, error: error.message };
+    if (!count) return { updated, error: "A workout changed. Review the adjustment again." };
     updated += count ?? 0;
   }
   return { updated };

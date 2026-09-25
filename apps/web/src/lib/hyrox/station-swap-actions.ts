@@ -25,8 +25,9 @@ import {
   type StationOverrides,
 } from "@hta/hyrox";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { savePrescription, type PrescriptionSaveResult } from "@/lib/sessions/save-prescription";
 
-export type StationSwapResult = { ok?: true; error?: string; prescription?: Prescription };
+export type StationSwapResult = PrescriptionSaveResult;
 
 const schema = z.object({
   plannedSessionId: z.string().uuid(),
@@ -133,16 +134,13 @@ export async function setHyroxStationOverride(formData: FormData): Promise<Stati
   nextItems[idx] = nextItem;
   const next: Prescription = { ...prescription, items: nextItems };
 
-  const { error: uErr } = await supabase
-    .from("planned_sessions")
-    .update({ prescription: next })
-    .eq("id", plannedSessionId)
-    .eq("user_id", user.id);
-  if (uErr) return { error: uErr.message };
+  const saved = await savePrescription(supabase, "planned_sessions", plannedSessionId,
+    formData.get("expectedRevision"), next);
+  if (!saved.ok) return saved;
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
   const completedSessionId = planned.completed_session_id as string | null;
   if (completedSessionId) revalidatePath(`/app/sessions/${completedSessionId}`);
-  return { ok: true, prescription: next };
+  return saved;
 }

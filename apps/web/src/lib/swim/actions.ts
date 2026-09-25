@@ -38,6 +38,7 @@ import { loadSwimStrengthContext } from "./strength-schedule";
 import { swimPoolEditingAvailable, swimProgrammePool } from "./pool-editing";
 import type { SwimPoolEditInput, SwimPoolEditPreview } from "./view-types";
 import { loadTrainingSchedule, scheduleReplay, scheduleRequestId, scheduleReviewSchema } from "@/lib/schedule/storage";
+import { loadSwimReplacement, replacementPlanId } from "./replacement";
 
 function refreshSwims(sessionId?: string) {
   for (const path of ["/app", "/app/plan", "/app/swim", "/app/stats", "/app/sessions"]) revalidatePath(path);
@@ -113,6 +114,7 @@ type SwimSetupResponse = ActionResult & {
 async function prepareSwimPlan(form: FormData) {
   const { client, user } = await swimContext(true);
   const schedule = await loadTrainingSchedule(client);
+  const replaces = await loadSwimReplacement(client, user.id, replacementPlanId(form));
   const input = parseSetupForm(form);
   const { today } = await swimToday(client, user.id);
   if (input.startDate < today) throw new SwimActionError("Choose today or a future start date.", "validation");
@@ -138,10 +140,12 @@ async function prepareSwimPlan(form: FormData) {
     return [{ scheduled_date: slot.dateISO, slot: "single" as const, definition }];
   }));
   await checkWorkouts(client, user.id, workouts.map((row) => row.definition.issued));
-  const advice = trainingScheduleAdvice(schedule.entries, workouts.map((row) => row.scheduled_date));
+  const advice = trainingScheduleAdvice(schedule.entries, workouts.map((row) => row.scheduled_date),
+    replaces ? { source: "swim", programId: replaces.id } : undefined);
   const preview: SwimSetupPreview = {
     ...planPreviewPresentation(generated.value),
-    id: swimInputId({ userId: user.id, input, generated: generated.value, today, scheduleRevision: schedule.revision }),
+    id: swimInputId({ userId: user.id, input, generated: generated.value, today, scheduleRevision: schedule.revision, replaces }),
+    replaces,
     scheduleRevision: schedule.revision, overlaps: advice.overlaps,
   };
   return { ok: true as const, client, input, preview, generated: generated.value, workouts };
@@ -158,13 +162,15 @@ export async function previewSwimPlan(form: FormData): Promise<SwimSetupResponse
 export async function createSwimPlan(form: FormData): Promise<SwimSetupResponse> {
   try {
     const requestId = z.string().uuid().parse(form.get("requestId"));
-    const requestInput = { input: parseSetupForm(form), previewId: String(form.get("previewId") ?? "") };
+    const replacePlanId = replacementPlanId(form);
+    const requestInput = { input: parseSetupForm(form), previewId: String(form.get("previewId") ?? ""), ...(replacePlanId ? { replacePlanId } : {}) };
     const context = await swimContext(true);
-    const replay = await scheduleReplay(context.client, requestId, "swim-create", requestInput);
+    const replay = await scheduleReplay(context.client, requestId, replacePlanId ? "swim-replace" : "swim-create", requestInput);
     if (replay) return { ok: true, planId: z.object({ plan: z.object({ id: z.string().uuid() }) }).parse(replay).plan.id };
     const prepared = await prepareSwimPlan(form);
     if (!prepared.ok) return prepared.response;
     const { client, input, preview, generated, workouts } = prepared;
+    if (preview.replaces && form.get("acceptReplacement") !== "on") throw new SwimActionError("Confirm the swimming program replacement.", "validation");
     if (requestInput.previewId !== preview.id) throw new SwimActionError("The plan changed. Preview it again before saving.", "validation");
     const overlapConfirmed = form.get("acceptOverlap") === "on";
     if (preview.overlaps.length && !overlapConfirmed) {
@@ -176,6 +182,7 @@ export async function createSwimPlan(form: FormData): Promise<SwimSetupResponse>
       initialDose: generated.dose,
     };
     const created = await storage.createSwimPlan(client, {
+      replaces: preview.replaces,
       scheduleReview: { revision: preview.scheduleRevision, requestId, acceptOverlap: overlapConfirmed },
       scheduleInput: requestInput,
       startedOn: input.startDate, endsOn: addDaysToYmd(input.startDate, input.weeks * 7 - 1), definition,

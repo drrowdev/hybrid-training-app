@@ -38,6 +38,17 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       requests.push({ url, method });
       const table = url.pathname.split("/").at(-1);
+      if (table === "save_prescription_if_current" && method === "POST") {
+        const body = JSON.parse(String(init?.body));
+        if (body.p_id !== plannedId || body.p_target !== "planned_sessions" || body.p_expected_revision !== "0") {
+          return Response.json({ message: "Unexpected prescription target" }, { status: 400 });
+        }
+        if (startBeforeWrite) linkedSessionId = sessionId;
+        if (body.p_require_unstarted && linkedSessionId) return Response.json({ message: "Workout started" }, { status: 400 });
+        prescription = body.p_prescription;
+        updates.push(prescription);
+        return Response.json({ conflict: false, prescription });
+      }
       if (table === "planned_sessions") {
         if (url.searchParams.get("id") !== `eq.${plannedId}` || url.searchParams.get("user_id") !== `eq.${owner}`) {
           return Response.json([]);
@@ -68,6 +79,7 @@ function input() {
   form.set("plannedSessionId", plannedId);
   form.set("movementId", originalId);
   form.set("newMovementId", replacementId);
+  form.set("expectedRevision", "0");
   return form;
 }
 
@@ -78,10 +90,8 @@ describe("DC-R6 planned movement load ownership", () => {
     expect(result.prescription?.items).toHaveLength(4);
     expect(result.prescription?.items.every((item) => item.meta?.programLoadBasis)).toBe(true);
     expect(updates).toEqual([result.prescription]);
-    const write = requests.find((request) => request.method === "PATCH")!;
-    expect(write.url.searchParams.get("id")).toBe(`eq.${plannedId}`);
-    expect(write.url.searchParams.get("user_id")).toBe(`eq.${owner}`);
-    expect(write.url.searchParams.get("completed_session_id")).toBe("is.null");
+    const write = requests.find((request) => request.method === "POST")!;
+    expect(write.url.pathname).toContain("save_prescription_if_current");
   });
 
   it("refuses a concurrent start rather than shifting logged item indices", async () => {

@@ -10,13 +10,15 @@ import { parseSwimCourseFile } from "@/lib/swim/course-file";
 import { previewPrivateSwimCourse, importPrivateSwimCourse } from "@/lib/swim/course-actions";
 import type { SwimCourseImportPreview } from "@/lib/swim/course-view";
 import { PlanPreview } from "./PlanPreview";
+import { ProgramConfirmation } from "@/components/program/ProgramDialog";
 import styles from "./Swim.module.css";
 
-export function CourseImportForm({ today, schedule = [] }: { today: string; schedule?: TrainingCommitment[] }) {
+export function CourseImportForm({ today, schedule = [], replacePlanId }: { today: string; schedule?: TrainingCommitment[]; replacePlanId?: string }) {
   const router = useRouter();
   const [source, setSource] = useState<SwimCourse | null>(null);
   const [pool, setPool] = useState("50m");
   const [preview, setPreview] = useState<SwimCourseImportPreview | null>(null);
+  const [replacementForm, setReplacementForm] = useState<FormData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -54,8 +56,11 @@ export function CourseImportForm({ today, schedule = [] }: { today: string; sche
     if (file && fileRevision.current === 0) void chooseFile(file);
   }, [chooseFile]);
 
-  function submit(form: FormData) {
+  function submit(form: FormData, replace = false) {
     if (!source || busy.current || reading || savedId) return;
+    if (replacePlanId) form.set("replacePlanId", replacePlanId);
+    if (preview?.replaces && !replace) { setReplacementForm(form); return; }
+    if (replace) form.set("acceptReplacement", "on");
     busy.current = true;
     setError(null);
     setWarning(null);
@@ -109,6 +114,9 @@ export function CourseImportForm({ today, schedule = [] }: { today: string; sche
     event.preventDefault();
     submit(new FormData(event.currentTarget));
   }}>
+    {replacementForm && preview?.replaces && <ProgramConfirmation
+      name={preview.replaces.name} pending={pending} error={error}
+      onCancel={() => setReplacementForm(null)} onConfirm={() => submit(replacementForm, true)} />}
     <fieldset className={styles.formFields} disabled={pending || !!savedId}
       onChange={() => { setPreview(null); setError(null); }}>
       <section className={styles.section}>

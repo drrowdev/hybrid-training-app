@@ -19,6 +19,7 @@ import { z } from "zod";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isRehabItem } from "@hta/domain";
+import { savePrescription, type PrescriptionSaveResult } from "./save-prescription";
 import { resolveWarmupPreference } from "@/lib/planner/warmups";
 import {
   programIdFromJoinedBlock,
@@ -35,7 +36,7 @@ import {
   addMovementToPrescription,
 } from "./prescription-mutations";
 
-export type PlannedEditResult = {
+export type PlannedEditResult = PrescriptionSaveResult & {
   ok?: true;
   error?: string;
   prescription?: Prescription;
@@ -73,33 +74,18 @@ async function loadPlannedForEdit(
 
 async function persistPlannedPrescription(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
   plannedSessionId: string,
   next: Prescription,
   completedSessionId: string | null,
+  expectedRevision: FormDataEntryValue | null,
   requireUnstarted = false,
 ): Promise<PlannedEditResult> {
-  const update = supabase
-    .from("planned_sessions")
-    .update({ prescription: next })
-    .eq("id", plannedSessionId)
-    .eq("user_id", userId);
-  const guarded = requireUnstarted
-    ? update.is("completed_session_id", null)
-    : update;
-  const { data, error } = await guarded.select("id").maybeSingle();
-  if (error) return { error: error.message };
-  if (!data) {
-    return {
-      error: requireUnstarted
-        ? "This workout has started. Reload it before editing."
-        : "Planned session not found.",
-    };
-  }
+  const result = await savePrescription(supabase, "planned_sessions", plannedSessionId, expectedRevision, next, requireUnstarted);
+  if (!result.ok) return result;
   revalidatePath("/app");
   revalidatePath("/app/plan");
   if (completedSessionId) revalidatePath(`/app/sessions/${completedSessionId}`);
-  return { ok: true, prescription: next };
+  return result;
 }
 
 const removeMovementSchema = z.object({
@@ -150,10 +136,10 @@ export async function removePlannedMovement(formData: FormData): Promise<Planned
   }
   return persistPlannedPrescription(
     supabase,
-    user.id,
     parsed.data.plannedSessionId,
     next,
     loaded.completedSessionId,
+    formData.get("expectedRevision"),
     true,
   );
 }
@@ -273,10 +259,10 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
   );
   const persisted = await persistPlannedPrescription(
     supabase,
-    user.id,
     parsed.data.plannedSessionId,
     next,
     loaded.completedSessionId,
+    formData.get("expectedRevision"),
     loaded.completedSessionId == null,
   );
   return persisted.ok && warning ? { ...persisted, warning } : persisted;
@@ -319,9 +305,9 @@ export async function addPlannedMovement(formData: FormData): Promise<PlannedEdi
   });
   return persistPlannedPrescription(
     supabase,
-    user.id,
     parsed.data.plannedSessionId,
     next,
     loaded.completedSessionId,
+    formData.get("expectedRevision"),
   );
 }

@@ -104,6 +104,7 @@ export type PlanSessionInput = {
   skipped: boolean;
   slot: "single" | "am" | "pm";
   items: PrescriptionItem[];
+  prescriptionRevision?: string;
   // Estimated duration (minutes) for the drawer meta line. Derived
   // upstream from prescription so the client doesn't have to redo it.
   estDurationMin: number | null;
@@ -2860,6 +2861,7 @@ export function SessionDrawer({
           {editing && !completedSessionHref ? (
             <MovementEditList
               plannedSessionId={session.id}
+              expectedRevision={session.prescriptionRevision ?? "0"}
               items={session.items}
               canRemoveMovements={!session.completedSessionId}
               onChanged={() => router.refresh()}
@@ -3425,11 +3427,13 @@ function SetRowValue({ value }: { value: string }) {
  */
 function MovementEditList({
   plannedSessionId,
+  expectedRevision,
   items,
   canRemoveMovements,
   onChanged,
 }: {
   plannedSessionId: string;
+  expectedRevision: string;
   items: PrescriptionItem[];
   canRemoveMovements: boolean;
   onChanged: () => void;
@@ -3462,6 +3466,7 @@ function MovementEditList({
         <MovementEditRow
           key={`${m.rehab ? "rehab" : "core"}:${m.movementId}`}
           plannedSessionId={plannedSessionId}
+          expectedRevision={expectedRevision}
           movementId={m.movementId}
           rehab={m.rehab}
           name={m.name}
@@ -3474,9 +3479,9 @@ function MovementEditList({
         />
       ))}
       {movements.length > 0 && (
-        <AddMovementControl plannedSessionId={plannedSessionId} onChanged={onChanged} />
+        <AddMovementControl plannedSessionId={plannedSessionId} expectedRevision={expectedRevision} onChanged={onChanged} />
       )}
-      <StationEditList plannedSessionId={plannedSessionId} items={items} onChanged={onChanged} />
+      <StationEditList plannedSessionId={plannedSessionId} expectedRevision={expectedRevision} items={items} onChanged={onChanged} />
     </div>
   );
 }
@@ -3488,10 +3493,12 @@ function MovementEditList({
  */
 function StationEditList({
   plannedSessionId,
+  expectedRevision,
   items,
   onChanged,
 }: {
   plannedSessionId: string;
+  expectedRevision: string;
   items: PrescriptionItem[];
   onChanged: () => void;
 }) {
@@ -3521,6 +3528,7 @@ function StationEditList({
         <StationEditRow
           key={s.key}
           plannedSessionId={plannedSessionId}
+          expectedRevision={expectedRevision}
           stationKey={s.key}
           name={s.name}
           current={s.current}
@@ -3533,12 +3541,14 @@ function StationEditList({
 
 function StationEditRow({
   plannedSessionId,
+  expectedRevision,
   stationKey,
   name,
   current,
   onChanged,
 }: {
   plannedSessionId: string;
+  expectedRevision: string;
   stationKey: string;
   name: string;
   current?: string;
@@ -3556,9 +3566,10 @@ function StationEditRow({
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("stationKey", stationKey);
+      fd.set("expectedRevision", expectedRevision);
       fd.set("substituteKey", substituteKey);
       const r = await setHyroxStationOverride(fd);
-      if (r.error) setError(r.error);
+      if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else {
         setOpen(false);
         onChanged();
@@ -3648,6 +3659,7 @@ function StationEditRow({
 
 function MovementEditRow({
   plannedSessionId,
+  expectedRevision,
   movementId,
   rehab,
   name,
@@ -3656,6 +3668,7 @@ function MovementEditRow({
   onChanged,
 }: {
   plannedSessionId: string;
+  expectedRevision: string;
   movementId: string;
   rehab: boolean;
   name: string;
@@ -3675,9 +3688,10 @@ function MovementEditRow({
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("movementId", movementId);
+      fd.set("expectedRevision", expectedRevision);
       fd.set("rehab", String(rehab));
       const r = await removePlannedMovement(fd);
-      if (r.error) setError(r.error);
+      if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else onChanged();
     });
   };
@@ -3691,8 +3705,9 @@ function MovementEditRow({
       fd.set("movementId", movementId);
       fd.set("rehab", String(rehab));
       fd.set("newMovementId", m.id);
+      fd.set("expectedRevision", expectedRevision);
       const r = await swapPlannedMovement(fd);
-      if (r.error) setError(r.error);
+      if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else {
         setSwapping(false);
         onChanged();
@@ -3772,9 +3787,11 @@ function MovementEditRow({
 
 function AddMovementControl({
   plannedSessionId,
+  expectedRevision,
   onChanged,
 }: {
   plannedSessionId: string;
+  expectedRevision: string;
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -3788,8 +3805,9 @@ function AddMovementControl({
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("movementId", m.id);
+      fd.set("expectedRevision", expectedRevision);
       const r = await addPlannedMovement(fd);
-      if (r.error) setError(r.error);
+      if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else {
         setOpen(false);
         onChanged();
