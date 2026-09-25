@@ -46,6 +46,7 @@ export type UndoTarget = {
 };
 
 const EVENT_NAME = "hta-undo-banner";
+export const RESTORED_EVENT_NAME = "hta-restored";
 const AUTO_DISMISS_MS = 10_000;
 
 /** Dispatch from any client component after a successful soft-delete. */
@@ -125,6 +126,7 @@ export function UndoBanner(): React.ReactElement | null {
         setRestoreError(action.message);
         return;
       }
+      window.dispatchEvent(new CustomEvent<UndoTarget>(RESTORED_EVENT_NAME, { detail: target }));
       dismiss();
       router.refresh();
     } catch {

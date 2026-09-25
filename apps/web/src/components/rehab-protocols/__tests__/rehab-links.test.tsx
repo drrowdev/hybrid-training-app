@@ -28,7 +28,7 @@ const item = (movementId: string, movementName: string) => ({
   reps: 15,
 });
 
-const noop = async () => ({ ok: true as const, syncedPrograms: [] });
+const noop = async () => ({ ok: true as const, id: A, syncedPrograms: [] });
 
 describe("rehab supersets survive the round trip", () => {
   const items = [item(A, "Wrist Curl"), item(B, "Reverse Wrist Curl"), item(C, "Pronation")];

@@ -18,6 +18,48 @@ import {
 test.describe("@desktop /plan/history", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only for first PR");
 
+  test("deletes only after confirmation and restores through Undo", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+    const id = await seedRecentBlock(admin, freshUser.userId, {
+      archetype: "strength_anchor", daysPerWeek: 3, status: "completed", startedOn: "2026-09-01",
+    });
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/plan/history");
+    const row = page.locator(`[data-block-id="${id}"]`);
+    await expect(row).toBeVisible();
+
+    let release!: () => void;
+    let observed!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { observed = resolve; });
+    await page.route("**/app/plan/history*", async (route) => {
+      if (route.request().method() === "POST") {
+        observed();
+        await held;
+      }
+      await route.continue();
+    });
+    await row.getByTestId("block-actions-trigger").click();
+    const response = page.waitForResponse((res) =>
+      res.request().method() === "POST" && !!res.request().headers()["next-action"]);
+    await row.getByTestId("delete-block-menu-item").click();
+    await started;
+    try {
+      await expect(row).toBeVisible();
+      await expect(page.getByTestId("undo-banner")).toHaveCount(0);
+    } finally {
+      release();
+    }
+    await (await response).finished();
+    await expect(row).toHaveCount(0);
+    await page.getByTestId("undo-banner-undo").click();
+    await expect(row).toBeVisible();
+    await page.reload();
+    await expect(page.locator(`[data-block-id="${id}"]`)).toHaveCount(1);
+  });
+
   test("lists completed + active blocks and expands sessions", async ({
     page,
     context,
