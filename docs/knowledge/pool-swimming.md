@@ -20,6 +20,16 @@ then the written 0160 and 0159 down scripts in reverse order. Retain revision
 metadata, lifecycle history and receipts; down does not undo a user's replacement.
 No production migration, merge or deployment is authorized by this change.
 
+Prescription writer inventory: authored program/workout and template slot/link
+edits use schedule CAS plus the editor's opening revision. Planned add/remove/
+swap, single-item swaps and active-session/HYROX swaps use row CAS. Deload and
+autoregulation/limitation rewrites compare their loaded prescription before
+updating; calendar swaps already compare the complete prescription. Swim course,
+pool and week writers retain plan/workout CAS. Inserts and immutable issued/log
+snapshots are not editor overwrites. The existing production0156-0158 updater
+remains closed to the expanded journal; its historical CI fixture is separate
+from the full current-journal migration rehearsal.
+
 ## Explicit imported outcomes - 2026-09-23
 
 [ADR0086](../adr/0086-standalone-swim-import-outcomes.md) adds owner-confirmed

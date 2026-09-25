@@ -14,6 +14,13 @@ import { modularCatalog } from "../scripts/modular-production-catalog";
 import { createModularHistoricalGraph } from "./modular-production-legacy-graph";
 
 export const modularRehearsalMigrations = validateModularUpdateMigrations;
+export function historicalModularRehearsalMigrations() {
+  const journal = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
+  const migrations = readMigrationFiles({ migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) });
+  // Rehearse the previously qualified batch without authorizing later migrations.
+  assert.throws(() => modularUpdateMigrations(), /migration_source/);
+  return modularRehearsalMigrations({ ...journal, entries: journal.entries.slice(0, 159) }, migrations.slice(0, 159));
+}
 export const MODULAR_UPDATE_REHEARSAL_STAGES = [
   "modular-production-update-159-guard",
   "modular-production-update-function-metadata",
@@ -74,11 +81,7 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
   assert.deepEqual(database.options.port, [5432]);
   assert.equal(process.platform, "linux");
   assert.equal((await database`SELECT current_database() AS name`)[0]!.name, "swim_pool_test");
-  const migrations = modularRehearsalMigrations(
-    JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")),
-    readMigrationFiles({ migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) }),
-  );
-  assert.deepEqual(migrations, modularUpdateMigrations());
+  const migrations = historicalModularRehearsalMigrations();
   pass(0);
   mark(1);
   await database.begin(async (tx) => {

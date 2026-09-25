@@ -100,7 +100,8 @@ export async function acceptDeloadSkip(blockId?: string): Promise<AcceptDeloadSk
       )
       .eq("id", r.id)
       .eq("user_id", user.id)
-      .eq("block_id", offer.blockId);
+      .eq("block_id", offer.blockId)
+      .eq("prescription", JSON.stringify(r.prescription));
     const guarded =
       r.completed_session_id != null
         ? updateBase.eq(
@@ -111,6 +112,7 @@ export async function acceptDeloadSkip(blockId?: string): Promise<AcceptDeloadSk
     const { error, count } = await guarded
       .is("skipped_at", null);
     if (error) return { ok: false, error: error.message };
+    if (!count) return { ok: false, error: "A workout changed. Review the adjustment again." };
     updated += count ?? 0;
   }
 

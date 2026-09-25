@@ -96,7 +96,8 @@ export async function acceptEarlyDeload(blockId?: string): Promise<AcceptEarlyDe
       )
       .eq("id", r.id)
       .eq("user_id", user.id)
-      .eq("block_id", reco.blockId);
+      .eq("block_id", reco.blockId)
+      .eq("prescription", JSON.stringify(r.prescription));
     const guarded =
       r.completed_session_id != null
         ? updateBase.eq(
@@ -107,6 +108,7 @@ export async function acceptEarlyDeload(blockId?: string): Promise<AcceptEarlyDe
     const { error, count } = await guarded
       .is("skipped_at", null);
     if (error) return { ok: false, error: error.message };
+    if (!count) return { ok: false, error: "A workout changed. Review the adjustment again." };
     updated += count ?? 0;
   }
 
