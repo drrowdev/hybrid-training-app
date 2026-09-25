@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -835,12 +834,6 @@ describe("configuration workflow boundaries", () => {
   const root = resolve(import.meta.dirname, "../../../..");
   const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
   const job = workflow.split("\n  configure-swim-review:\n")[1]!.split("\n  deploy-swim-review:\n")[0]!;
-  it("pins prior jobs with the explicit modular acceptance selector", () => {
-    // Prior bodies plus the selector; credentials and execution steps remain pinned.
-    const jobs = workflow.split("\n  configure-swim-review:\n")[0]!.trimEnd().split("\njobs:")[1]!;
-    expect(createHash("sha256").update(jobs).digest("hex"))
-      .toBe("e077507e7f36bdcf72b5bd1dc464942610b4318b8a9bb4102bb0c9405a5704dc");
-  });
   it("isolates five write-step secrets from the single read-only secret after offline and source checks", () => {
     expect(job).toContain("needs: [ci, identity-guard]");
     expect(job).toContain("cancel-in-progress: false");

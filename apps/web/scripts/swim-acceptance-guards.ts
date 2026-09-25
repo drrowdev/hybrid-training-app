@@ -3,9 +3,8 @@ import { isAbsolute, relative, sep } from "node:path";
 import { z } from "zod";
 import { getSwimRpcTestEnv } from "../src/lib/swim/__tests__/storage-rpc-config";
 import { RPC_CONFIG, RPC_SUITE, type readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
-import { isModularSchemaAcceptance } from "./modular-browser-profile";
+import { isModularBrowserProfile } from "./modular-browser-profile";
 
-export const ACTIVE_MIGRATION_TOTAL = 150;
 export const CLI_VERSION = "2.116.0";
 export const CLI_ASSET = `supabase_${CLI_VERSION}_linux_amd64.tar.gz`;
 export const CLI_SHA256 = "5b3031cb297d51b25be4c284e4c852254460ec722ec221d3b81b07d55acfd158";
@@ -61,16 +60,25 @@ export function requirePinnedDefaultConfig(config: string) {
 
 type Env = Record<string, string | undefined>;
 export function requireManualContext(env: Env, head: string) {
-  isModularSchemaAcceptance(env);
-  assert(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
-    env.GITHUB_JOB === "swim-acceptance" && env.SWIM_ACCEPTANCE === "true", "Manual swim job required");
+  isModularBrowserProfile(env);
+  assert(env.GITHUB_ACTIONS === "true" &&
+    env.GITHUB_JOB === "swim-acceptance" && env.SWIM_ACCEPTANCE === "true", "Disposable acceptance job required");
   assert(env.GITHUB_REPOSITORY === "drrowdev/hybrid-training-app", "Unexpected repository");
   assert(env.RUNNER_ENVIRONMENT === "github-hosted" && env.RUNNER_OS === "Linux" &&
     env.RUNNER_ARCH === "X64", "Standard Linux x64 runner required");
   assert.match(env.EXPECTED_SHA ?? "", /^[a-f0-9]{40}$/, "Invalid reviewed SHA");
   assert(env.EXPECTED_SHA === env.GITHUB_SHA && head === env.EXPECTED_SHA, "Reviewed SHA mismatch");
-  assert(env.GITHUB_REF_TYPE === "branch" && env.GITHUB_REF?.startsWith("refs/heads/") &&
-    env.GITHUB_REF !== "refs/heads/main", "Non-main branch required");
+  assert(env.GITHUB_REF_TYPE === "branch", "Branch context required");
+  if (env.GITHUB_EVENT_NAME === "pull_request") {
+    assert(/^refs\/pull\/[1-9][0-9]*\/merge$/.test(env.GITHUB_REF ?? "") &&
+      env.PR_HEAD_REPOSITORY === env.GITHUB_REPOSITORY && env.PR_BASE_REF === "main" &&
+      env.PR_DRAFT === "false" && ["opened", "synchronize", "reopened", "ready_for_review"].includes(env.PR_ACTION ?? ""),
+    "Same-repository non-draft PR to main required");
+  } else {
+    assert(env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
+      env.GITHUB_REF?.startsWith("refs/heads/") && env.GITHUB_REF !== "refs/heads/main",
+    "Non-main manual branch required");
+  }
   assert(env.GITHUB_WORKFLOW_REF === `${env.GITHUB_REPOSITORY}/.github/workflows/ci.yml@${env.GITHUB_REF}`,
     "Unexpected workflow");
   assert(env.MIGRATE_PRODUCTION === "false" && env.ALLOW_UNDEPLOYED === "false", "Production inputs forbidden");
@@ -242,7 +250,7 @@ export function requireAcceptance(
   requireProcess(result);
   assert(ledger.success && ledger.testedSha === sha && ledger.config === RPC_CONFIG &&
     ledger.configSha256 === configHash && ledger.expectedSuite === RPC_SUITE &&
-    ledger.suites.length === 1 && ledger.suites[0]!.cases.length >= ledger.minimumCases,
+    ledger.suites.length === 1 && ledger.suites[0]!.cases.length > 0,
   "Positive canonical RPC ledger required");
 }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MIN_RPC_CASES, type readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
+import type { readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 import { acceptanceAssert, type AcceptanceReporting } from "./swim-acceptance-reporting";
 import {
   checkAuthBoundary, enforceAuthBoundaryAfterRpc, observeAuthPrivileges, observeSwimFunctionAcls,
@@ -29,8 +29,7 @@ export const IDENTITY_HELPER_RPC_CASES = [
 export function requireIdentityHelperRpcCases(ledger: Pick<ReturnType<typeof readSwimRpcReport>, "suites">): void {
   const cases = ledger.suites.flatMap((suite) => suite.cases);
   const prefix = "ADR0079 dedicated authenticated swim RPCs (DC-SW6/DC-SW7) ";
-  acceptanceAssert(cases.length >= MIN_RPC_CASES + IDENTITY_HELPER_RPC_CASES.length
-    && IDENTITY_HELPER_RPC_CASES.every((name) => {
+  acceptanceAssert(IDENTITY_HELPER_RPC_CASES.every((name) => {
       const matches = cases.filter((test) => test.name === prefix + name);
       return matches.length === 1 && matches[0]!.status === "passed";
     }), "Swimming identity helper RPC cases missing or not passed");

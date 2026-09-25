@@ -96,6 +96,11 @@ Log meaningful decisions, migrations, acceptance evidence and handoffs, not ever
 
 ## Tests
 
+- **Two-tier validation:** UI, copy and test-only changes need automatic CI,
+  screenshots where UI changed, and owner approval before merge. DB, RLS, auth,
+  security and production-data changes retain the full safeguards. Review changed
+  copy only, in one round. Validation runs on Linux CI; Windows-only local
+  failures are not acceptance evidence.
 - **Unit / domain** — Vitest in `packages/domain` and `packages/engine`. Coverage ≥ 80%.
 - **Integration** — Vitest + a real Postgres test instance (Docker locally, testcontainers in CI). RLS policies tested explicitly.
 - **E2E** — Playwright in `apps/web`. Critical paths: auth + log + program-run.

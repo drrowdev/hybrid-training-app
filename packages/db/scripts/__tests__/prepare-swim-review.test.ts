@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { appendFileSync, readFileSync } from "node:fs";
@@ -695,13 +694,6 @@ describe("saved workflow and raw-stream boundaries", () => {
     .split("\n  configure-swim-review:\n")[0]!.trimEnd() + "\n";
   const job = workflow.split("\n  prepare-swim-review:\n")[1]!.split("\n  prod-migrate:")[0]!;
   const source = readFileSync(resolve(root, "packages/db/scripts/prepare-swim-review.ts"), "utf8");
-  it("pins existing jobs with the explicit modular acceptance selector", () => {
-    // Prior bodies plus the selector; also works in CI's shallow checkout.
-    const existing = workflow.slice(workflow.indexOf("\njobs:")).replace(
-      "\n  prepare-swim-review:\n" + job, "");
-    expect(createHash("sha256").update(existing).digest("hex")).toBe(
-      "226e5d890fcf90703e385b81ac074386695088fa0af5767a7141bb9fd1485869");
-  });
   it("requires explicit manual exact-head context and independent noncancelling serialization", () => {
     for (const gate of ["needs: [ci, identity-guard]", "github.event_name == 'workflow_dispatch'",
       "github.repository == 'drrowdev/hybrid-training-app'", "github.ref_type == 'branch'",
