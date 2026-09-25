@@ -110,16 +110,13 @@ test.describe("@desktop program run", () => {
       plannedSessionId: seed.todayPlannedId,
     });
 
-    // 4) Refresh /app. The today-card test-id for today's row is gone
-    //    (it transitions into the "completedToday" / "Session logged"
-    //    branch of TodaySessionCard). The dedicated "Up next this week"
-    //    section was removed from Today in feat/today-v3-simplify —
-    //    /app/plan owns that surface now.
+    // 4) The same workout becomes a logged-session link, without a start action.
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId(`today-card-${seed.todayPlannedId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`today-card-${seed.todayPlannedId}`)).toHaveAttribute("data-state", "done");
+    await expect(page.getByTestId(`today-card-${seed.todayPlannedId}`)).toHaveAttribute("href", `/app/sessions/${sessionId}`);
     await expect(page.getByTestId("today-logged")).toBeVisible();
-    await expect(page.getByText(/session logged/i)).toBeVisible();
+    await expect(page.getByTestId("today-cta")).toHaveCount(0);
 
     // Regression guard: the old "Up next this week" heading must NOT
     // come back on Today — that surface lives on /app/plan now.

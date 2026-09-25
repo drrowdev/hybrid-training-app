@@ -4,15 +4,8 @@ import { markOnboarded, seedStrengthTms } from "./fixtures/seed-blocks";
 import { seedActiveBlock } from "./fixtures/session-log";
 
 /**
- * Phase 1 — Today page hero card desktop coverage.
- *
- * Verifies the upgraded /app surface:
- *   - The page eyebrow owns program + full week progress; the hero does not
- *     duplicate them.
- *   - Hero movement roles are split into main + supplemental sections/counts.
- *   - "Start workout →" CTA links into the check-in flow.
- *   - The "Preview" secondary link (separate, sitting elsewhere on
- *     the page) goes to /app/plan.
+ * Today workout layout: card-owned program progress, grouped exercises,
+ * start navigation, mobile dock and accessible workout options.
  *
  * Auth + onboarding follow the same fixture pattern as the existing
  * session-log spec — see e2e/README.md for the wider rationale.
@@ -96,27 +89,19 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(hero).toBeVisible();
 
     const eyebrow = page.getByTestId("today-eyebrow");
-    await expect(eyebrow).toContainText(/WEEK 1 OF 4/i);
-    await expect(hero).not.toContainText(/WEEK 1 OF 4/i);
-    const programName = (await eyebrow.textContent())!.split("·")[0]!.trim();
-    await expect(hero).not.toContainText(programName);
-
-    const topline = page.getByTestId("hero-topline");
-    await expect(topline).toBeVisible();
-    await expect(topline).toHaveText(
-      "2 main lifts, 2 supplemental lifts",
-    );
+    await expect(eyebrow).not.toContainText(/WEEK 1 OF 4/i);
+    await expect(hero).toContainText(/WEEK 1 OF 4/i);
+    await expect(page.getByTestId("hero-topline")).toHaveCount(0);
     await expect(hero.getByText(/Top set/i)).toHaveCount(0);
     await expect(
-      hero.getByTestId("session-preview-section-strength"),
-    ).toContainText("MAIN LIFTS");
+      hero.getByTestId("session-preview-section-strength").getByRole("heading", { level: 3 }),
+    ).toBeVisible();
     await expect(
-      hero.getByTestId("session-preview-section-supplemental"),
-    ).toContainText("SUPPLEMENTAL LIFTS");
+      hero.getByTestId("session-preview-section-supplemental").getByRole("heading", { level: 3 }),
+    ).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByTestId("today-eyebrow-mobile")).toContainText(
-      /WEEK 1 OF 4/i,
-    );
+    await expect(page.getByTestId("today-mobile-cta")).toHaveAttribute("href", `/app/sessions/start/${seed.todayPlannedId}`);
+    await expect(page.getByTestId("today-cta")).not.toBeVisible();
     await page.setViewportSize({ width: 1280, height: 720 });
 
     // Primary CTA → start session route (server-side auto-create + redirect).
@@ -126,24 +111,12 @@ test.describe("@desktop today page (Phase 1)", () => {
     const href = await cta.getAttribute("href");
     expect(href).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    // The hero condenses strength to overview rows and exposes a secondary
-    // "Preview" CTA. It opens the SAME drawer as the "This week" rail (via the
-    // `#session=<plannedId>` hash) instead of a second, near-identical preview
-    // screen — so the app has one preview surface, not two.
-    const preview = page.getByTestId("today-preview-cta").first();
-    await expect(preview).toBeVisible();
-    await expect(preview).toHaveText(/^preview$/i);
-    await expect(preview).toHaveAttribute(
-      "href",
-      `#session=${seed.todayPlannedId}`,
-    );
-
-    // Pressing it opens the shared rail drawer in place.
-    await preview.click();
-    await expect(page.getByTestId("plan-drawer")).toBeVisible();
-    await expect(page.getByTestId("plan-drawer-close")).toBeVisible();
-    await page.getByTestId("plan-drawer-close").click();
-    await expect(page.getByTestId("plan-drawer")).toHaveCount(0);
+    await expect(page.getByTestId("today-preview-cta")).toHaveCount(0);
+    await hero.getByRole("button", { name: /^Options for / }).click();
+    await expect(hero.getByRole("menu")).toBeVisible();
+    await hero.getByRole("menu").getByRole("menuitem", { name: "Move to another day" }).focus();
+    await page.keyboard.press("Escape");
+    await expect(hero.getByRole("menu")).toHaveCount(0);
 
     // Clicking Start auto-creates the session and lands on the log surface.
     // (The pre-session check-in interstitial was removed; the Today-page
@@ -152,7 +125,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
   });
 
-  test("rest day shows redesigned card with Next session block + View plan", async ({
+  test("rest day links the next workout and the week links the schedule", async ({
     page,
     context,
     freshUser,
@@ -178,17 +151,15 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(rest).toContainText(/rest day/i);
     // Next-session preview points at the upcoming planned session.
     await expect(page.getByTestId("rest-tomorrow")).toBeVisible();
-    // Redesigned rest card: a "Next session" block + a "View plan" link.
-    // "Log freestyle" was removed (the Quick Workout card's "Start empty"
-    // covers the off-plan log path).
-    await expect(rest.getByText(/next session/i)).toBeVisible();
-    await expect(rest.getByRole("link", { name: /view plan/i })).toBeVisible();
+    // Rest navigation opens the workout; the week owns the schedule link.
+    await expect(rest.getByRole("link")).toHaveAttribute("href", /\/app\/sessions\/start\//);
+    await expect(page.getByTestId("today-week-strip").getByRole("link", { name: "Schedule" })).toHaveAttribute("href", "/app/plan");
     await expect(rest.getByRole("link", { name: /log freestyle/i })).toHaveCount(0);
     // Removed regressions guarded with toHaveCount(0).
     await expect(rest.locator(".cp-info")).toHaveCount(0);
   });
 
-  test("training-day hero exposes Start workout CTA + Preview workout link", async ({
+  test("training-day hero exposes Start workout and workout options", async ({
     page,
     context,
     freshUser,
@@ -211,13 +182,9 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(cta).toHaveText(/start workout/i);
     expect(await cta.getAttribute("href")).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    const preview = page.getByTestId("today-preview-cta").first();
-    await expect(preview).toBeVisible();
-    await expect(preview).toHaveText(/preview/i);
-    await expect(preview).toHaveAttribute(
-      "href",
-      `#session=${seed.todayPlannedId}`,
-    );
+    const hero = page.getByTestId(`today-card-${seed.todayPlannedId}`);
+    await hero.getByRole("button", { name: /^Options for / }).click();
+    await expect(hero.getByRole("menuitem", { name: "Skip workout" })).toBeVisible();
   });
 
   test("Today regressions — removed surfaces stay removed", async ({
@@ -238,8 +205,8 @@ test.describe("@desktop today page (Phase 1)", () => {
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
 
-    // 1) The bodyweight nudge is no longer rendered on Today.
-    await expect(page.getByTestId("bw-nudge")).toHaveCount(0);
+    // Only one eligible prompt can be shown.
+    expect(await page.getByTestId("today-prompt").count()).toBeLessThanOrEqual(1);
     // 2) "Up next this week" section is gone — handled by /app/plan.
     await expect(page.getByRole("heading", { name: /up next this week/i })).toHaveCount(0);
     // 3) The legacy "How recovered you are" heading (RegionFreshnessCard
@@ -252,7 +219,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(page.getByTestId("today-week-strip")).toBeVisible();
   });
 
-  test("Quick workout card sits directly under the hero, before Week strip and Recent activity", async ({
+  test("Quick workout follows workouts and precedes the week; recent activity stays in Stats", async ({
     page,
     context,
     freshUser,
@@ -283,20 +250,19 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(hero).toBeVisible();
     await expect(quick).toBeVisible();
     await expect(week).toBeVisible();
-    await expect(recent).toBeVisible();
+    await expect(recent).toHaveCount(0);
 
     const inOrder = await page.evaluate(
       (els) => {
         const before = (a: Element, b: Element) =>
           (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-        const [h, q, w, r] = els as Element[];
-        return before(h, q) && before(q, w) && before(w, r);
+        const [h, q, w] = els as Element[];
+        return before(h, q) && before(q, w);
       },
       [
         await hero.elementHandle(),
         await quick.elementHandle(),
         await week.elementHandle(),
-        await recent.elementHandle(),
       ],
     );
     expect(inOrder).toBe(true);

@@ -1,8 +1,6 @@
-import Link from "next/link";
-import { countDistinctRehabMovements } from "@hta/domain";
-import { SwimCalendar } from "@/components/swim/SwimCalendar";
-import { loadSwimActivity } from "@/lib/swim/activity-history";
-import { formatActivityDate, mergeTrainingActivity, trainingActivityHref, SWIM_TRAINING_LABEL, type TrainingActivity } from "@/lib/swim/activity-presentation";
+import { selectTodayPrompt } from "@hta/domain";
+import { TodayDashboard, type TodayWorkout } from "@/components/today/TodayDashboard";
+import { loadTodaySwims, loadTodaySessionSummaries, loadTodayWeek, plannedTodayWorkout } from "@/lib/today/workouts";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   archetypeDisplayName,
@@ -10,29 +8,29 @@ import {
   getActivePlannedDays,
   getRecentBlocks,
   getTodayPlannedSessions,
-  getUpcomingPlannedSessions,
-  type PlannedDay,
 } from "@/lib/planner/queries";
-import { todayYmd } from "@/lib/dates";
-import { effectiveTimeOfDay } from "@/lib/planner/time-of-day";
+import { addDaysToYmd, todayYmd, ymdToUtc } from "@/lib/dates";
 import { hasTwoADaySlotPair } from "@/lib/planner/slot";
-import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
+import { FRESHNESS_REGION_LABELS, getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
-import { dismissBwBanner } from "@/lib/profile/actions";
+import { dismissBwBanner, dismissBwNudge } from "@/lib/profile/actions";
+import { BodyweightNudge } from "@/components/today/BodyweightNudge";
+import { recordDailyCheckIn } from "@/lib/wellness/actions";
+import { attributeLimitation, buildLimitationResponse } from "@/lib/limitations/response";
+import { MUSCLE_FROM_DB_ENUM, MUSCLE_LABELS } from "@/lib/muscle/muscle-groups";
+import { deriveLimitationsContext } from "@/lib/planner/limitations-context";
+import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
-import { getPendingProgramRecommendations, type PendingProgramRecommendation } from "@/lib/platform/recommendations-queries";
+import { getPendingProgramRecommendations } from "@/lib/platform/recommendations-queries";
 import { dismissProgramRecommendation } from "@/lib/platform/actions";
-import { SessionPreviewBody } from "@/components/session/SessionPreviewBody";
 import { QuickWorkoutCard } from "@/components/today/QuickWorkoutCard";
 import {
   startQuickStrengthSession,
   repeatRecentSession,
   generateQuickStrengthSession,
   generateQuickHyroxSession,
-  updatePlannedSessionNotes,
-  markExternalCardioComplete,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
 import { getLimitationTodaySummary } from "@/lib/limitations/today-summary";
@@ -56,7 +54,6 @@ import { computeRecoveryWindow } from "@/lib/planner/recovery";
 import { TaperBanner, type TaperBannerState } from "@/components/today/TaperBanner";
 import { RecoveryBanner, type RecoveryBannerState } from "@/components/today/RecoveryBanner";
 import { RaceCheckInCard } from "@/components/today/RaceCheckInCard";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
 import {
   acceptTmSuggestion,
@@ -65,33 +62,7 @@ import {
 import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
 import { loadBlockProgramKinds } from "@/lib/programs/ownership";
-import { addDaysToYmd } from "@/lib/dates";
-import {
-  formatDate,
-  formatEyebrowDate,
-  type ProfileForFormat,
-} from "@/lib/format/datetime";
-import {
-  movePlannedSession,
-  skipPlannedSession,
-  startSessionFromPlan,
-  unskipPlannedSession,
-} from "@/lib/planner/actions";
-import {
-  estimateSessionDurationBreakdown,
-} from "@/lib/sessions/estimate-duration";
-import { SharedTrainingWeek } from "@/components/program/SharedTrainingWeek";
-import { plannedSessionCta } from "@/lib/today/planned-session-cta";
-import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
-import {
-  actionablePlannedSessions,
-  isTodayFullyLogged,
-  orderPlannedSessionsForToday,
-} from "@/lib/sessions/today-hero";
-import {
-  groupByMovementThenKind,
-  isSupplementalOnlySection,
-} from "@/lib/plan/prescription-grouping";
+import { orderPlannedSessionsForToday } from "@/lib/sessions/today-hero";
 
 export default async function TodayPage() {
   const supabase = await createClient();
@@ -100,40 +71,33 @@ export default async function TodayPage() {
   } = await getAuthUser();
   const userId = user!.id;
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select(
       "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, units, season_planning_enabled",
     )
     .eq("id", userId)
     .maybeSingle();
+  if (profileError) throw new Error("Couldn't load today's settings.", { cause: profileError });
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
   const activePrograms = getActiveBlocks();
 
-  const [{ data: todaySessions }, { data: recent, error: recentError }, plannedToday, upcoming, freshness, activeBlocks, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs, swimActivity] = await Promise.all([
+  const [{ data: todaySessions, error: todaySessionsError }, plannedToday, freshness, activeBlocks, tmRows, { data: activeLimitationsRaw, error: limitationsError }, quickRepeatRecent, limitationSummary, programRecs, lastWeight] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
       .is("deleted_at", null)
-      .gte("performed_at", `${todayIso}T00:00:00`)
-      .lt("performed_at", `${todayIso}T23:59:59`)
+      .gte("performed_at", ymdToUtc(todayIso, profile?.timezone ?? "UTC").toISOString())
+      .lt("performed_at", ymdToUtc(addDaysToYmd(todayIso, 1), profile?.timezone ?? "UTC").toISOString())
       .order("performed_at", { ascending: false }),
-    supabase
-      .from("sessions")
-      .select("id, title, performed_at, completed_at, session_rpe, duration_min")
-      .is("deleted_at", null)
-      .not("completed_at", "is", null)
-      .order("performed_at", { ascending: false })
-      .limit(8),
     getTodayPlannedSessions(),
-    getUpcomingPlannedSessions(5),
     getRegionFreshness(supabase, userId),
     activePrograms,
     listTrainingMaxes(),
     supabase
       .from("limitations")
-      .select("id, kind, severity, started_at")
+      .select("id, kind, severity, started_at, region, resolved_at, affected_muscles, affected_movement_ids, allowed_movement_ids")
       .eq("user_id", userId)
       .is("resolved_at", null)
       .order("started_at", { ascending: false })
@@ -141,10 +105,11 @@ export default async function TodayPage() {
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
     getPendingProgramRecommendations(supabase, userId),
-    loadSwimActivity(supabase, userId, 8),
+    supabase.from("wellness").select("date").eq("user_id", userId).not("bodyweight_kg", "is", null)
+      .order("date", { ascending: false }).limit(1).maybeSingle(),
   ]);
-  if (recentError || !recent) throw new Error("Your training history could not be loaded.");
-  const recentActivity = mergeTrainingActivity(recent, swimActivity, profile?.timezone ?? "UTC", 8);
+  if (todaySessionsError) throw new Error("Today\u0027s workouts could not be loaded.", { cause: todaySessionsError });
+  if (limitationsError || lastWeight.error) throw new Error("Couldn't load today's prompts.", { cause: limitationsError ?? lastWeight.error });
 
   const activeLimitations: ActiveLimitationSummary[] = (
     activeLimitationsRaw ?? []
@@ -156,9 +121,6 @@ export default async function TodayPage() {
   }));
 
   const activeBlock = activeBlocks.length === 1 ? activeBlocks[0] : null;
-  const archetypeName = activeBlock
-    ? archetypeDisplayName(activeBlock.archetype, activeBlock.notes)
-    : null;
   // Audit F16 fix — the five groups that follow used to await one
   // after another (dominating the 2s TTFB). They are
   // mutually independent given the inputs already resolved by the
@@ -467,15 +429,10 @@ export default async function TodayPage() {
     if (c) conflictsBySlot.set(p.id, c);
   }
 
-  const openSession = (todaySessions ?? []).find((s) => !s.completed_at) ?? null;
-  const completedToday = (todaySessions ?? []).filter((s) => s.completed_at);
-  const isMultiSessionDay = plannedToday.length > 1;
   const isTwoADay = hasTwoADaySlotPair(
     plannedToday.map((planned) => planned.slot),
   );
   const timezone = profile?.timezone ?? "UTC";
-  const amWindowStart = profile?.am_window_start ?? "07:00:00";
-  const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
   const hyroxStationDefaults = defaultHyroxStationsFromEquipment(
     resolveEquipment(profile),
   );
@@ -537,1017 +494,115 @@ export default async function TodayPage() {
         })()
       : null;
 
-  // Today is a single-column layout — the right rail (Training Maxes
-  // summary) was retired with the shell refresh; TM details live on
-  // /app/settings/training-maxes now.
-  const isRestDay = plannedToday.length === 0 && !openSession;
-  const todayDate = new Date();
 
-  // Overdue planned sessions across the active block (date < today,
-  // neither completed nor skipped). The today page surfaces a single
-  // "you have N overdue" link above the day's primary card so the user
-  // can review them on /app/plan — we never auto-open a past planned
-  // session in the today flow.
-  const plannedDaysAll = await getActivePlannedDays();
-  // "This week" rail sessions — built in the same PlanSessionInput shape
-  // the /app/plan page uses so the Today rail reuses the shared rail +
-  // drawer (single source of truth; see components/plan/ThisWeekRail).
-  const weekRailSessions: PlanSessionInput[] = plannedDaysAll.map((p) => {
-    const items = p.prescription?.items ?? [];
-    const isCardio =
-      items.length > 0 && items.every((i) => (i.kind ?? "").startsWith("cardio_"));
-    const hasStrengthItems = items.some((i) => !(i.kind ?? "").startsWith("cardio_"));
-    const isRehab = p.role === "rehab";
-    return {
-      id: p.id,
-      weekIndex: p.weekIndex,
-      dayIndex: p.dayIndex,
-      date: p.date,
-      title: p.title,
-      isCardio,
-      isStrength: hasStrengthItems && !isRehab,
-      isRehab,
-      done: p.completedAt != null,
-      inProgress: !!p.completedSessionId && p.completedAt == null,
-      skipped: !!p.skippedAt,
-      slot: p.slot,
-      items,
-      estDurationMin: estimateSessionDurationBreakdown(items).displayMinutes,
-      notes: p.notes,
-      completedSessionId: p.completedSessionId,
-    };
-  });
-  const formatProfile: ProfileForFormat = profile
-    ? {
-        timezone: profile.timezone,
-        time_format: profile.time_format ?? null,
-        date_format: profile.date_format ?? null,
+  const [plannedDaysAll, swims, limitationData] = await Promise.all([
+    getActivePlannedDays(),
+    loadTodaySwims(supabase, userId, todayIso),
+    activeLimitations.length && plannedToday.some((planned) => !planned.completedAt && !planned.skippedAt)
+      ? loadPickerCatalog(supabase).then((catalog) => ({ catalog, response: buildLimitationResponse(
+        plannedToday.filter((planned) => !planned.completedAt && !planned.skippedAt),
+        catalog, deriveLimitationsContext(activeLimitationsRaw ?? []), resolveEquipment(profile),
+      ) })) : null,
+  ]);
+  const limitationResponse = limitationData?.response;
+  const limitationContexts = (activeLimitationsRaw ?? []).map((row) => ({ id: row.id, ctx: deriveLimitationsContext([row]) }));
+  const limitationAffected = new Set(limitationResponse
+    ? [...limitationResponse.swaps, ...limitationResponse.drops, ...limitationResponse.warns].map((row) => row.sessionId) : []);
+  const plannedWorkouts = orderPlannedSessionsForToday(plannedToday, isTwoADay)
+    .filter((planned) => !planned.skippedAt && planned.role !== "rest")
+    .map((planned) => {
+      const workout = plannedTodayWorkout(planned, activeBlocks, plannedDaysAll);
+      const conflict = conflictsBySlot.get(planned.id);
+      if (limitationAffected.has(planned.id) && limitationResponse && limitationData) {
+        const offence = [...limitationResponse.warns, ...limitationResponse.swaps, ...limitationResponse.drops]
+          .find((row) => row.sessionId === planned.id)!;
+        const limitationId = attributeLimitation(limitationData.catalog.find((row) => row.id === offence.fromMovementId),
+          offence.fromMovementId, limitationContexts);
+        const limitation = activeLimitationsRaw?.find((row) => row.id === limitationId);
+        const area = (limitation?.region ? FRESHNESS_REGION_LABELS[limitation.region] : undefined)
+          ?? (limitation?.affected_muscles ?? []).map((muscle: string) => {
+            const group = MUSCLE_FROM_DB_ENUM[muscle];
+            return group ? MUSCLE_LABELS[group] : undefined;
+          }).find((label: string | undefined) => !!label);
+        workout.note = area
+          ? `${area} still recovering. ${offence.fromName} may need a lighter load or a swap.`
+          : "An active limitation affects this workout.";
       }
-    : null;
-  const eyebrowText = formatEyebrowDate(todayDate, formatProfile);
-  const eyebrowLine = (() => {
-    if (!activeBlock || !archetypeName) return eyebrowText;
-    const week = (computedWeekIndex ?? 0) + 1;
-    return `${archetypeName.toUpperCase()} · WEEK ${week} OF ${activeBlock.weeks} · ${eyebrowText}`;
-  })();
-  const eyebrowLineMobile = (() => {
-    if (!activeBlock || !archetypeName) return eyebrowText;
-    const week = (computedWeekIndex ?? 0) + 1;
-    return `${archetypeName.toUpperCase()} · WEEK ${week} OF ${activeBlock.weeks} · ${eyebrowText}`;
-  })();
-
-  return (
-    <div
-      style={{ display: "grid", gap: 18, minWidth: 0 }}
-      className={`today-shell${isRestDay ? " is-rest" : ""}`}
-    >
-      <header>
-          <div
-            data-testid="today-eyebrow"
-            style={{
-              fontSize: 12,
-              color: "var(--cp-text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontWeight: 600,
-            }}
-          >
-            {activeBlock && archetypeName ? (
-              <>
-                <span className="cp-desktop-only">
-                  <span style={{ color: "var(--cp-accent)" }}>
-                    {archetypeName.toUpperCase()}
-                  </span>
-                  <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
-                  WEEK {(computedWeekIndex ?? 0) + 1} OF {activeBlock.weeks}
-                  <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
-                  {eyebrowText}
-                </span>
-                <span className="cp-mobile-only" data-testid="today-eyebrow-mobile">
-                  <span style={{ color: "var(--cp-accent)" }}>
-                    {archetypeName.toUpperCase()}
-                  </span>
-                  <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
-                  WEEK {(computedWeekIndex ?? 0) + 1} OF {activeBlock.weeks}
-                  <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
-                  {eyebrowText}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="cp-desktop-only">{eyebrowLine}</span>
-                <span className="cp-mobile-only">{eyebrowLineMobile}</span>
-              </>
-            )}
-          </div>
-          <h1
-            style={{
-              fontSize: 30,
-              margin: "4px 0 0",
-              letterSpacing: "-0.02em",
-              lineHeight: 1.1,
-              fontWeight: 800,
-            }}
-          >
-            Today
-          </h1>
-          {activeBlocks.length > 1 && <nav aria-label="Programs" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
-            {activeBlocks.map((block) => <Link key={block.id} href={`/app/plan?block=${block.id}`}>
-              {archetypeDisplayName(block.archetype, block.notes)}
-            </Link>)}
-            <Link href="/app/programs">All programs</Link>
-          </nav>}
-        </header>
-
-        {/* Two-column on wide screens: primary actions in the main
-            column, glanceable cards (This week / Recent activity) in the
-            right rail. Collapses to a single column ≤768px where the rail
-            stacks below the main column. */}
-        <div className="today-grid">
-          <div className="today-main" style={{ display: "grid", gap: 18, minWidth: 0 }}>
-            <SwimCalendar todayOnly />
-            {raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />}
-
-            {taperBannerProps && <TaperBanner {...taperBannerProps} />}
-
-            {recoveryBannerProps && <RecoveryBanner {...recoveryBannerProps} />}
-
-            {!hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && (
-              <BodyweightOnlyBanner
-                dismissedAt={profile?.bw_banner_dismissed_at ?? null}
-                dismissBwBannerAction={dismissBwBanner}
-              />
-            )}
-
-            <TmSuggestionBanner
-              suggestions={pendingSuggestions}
-              acceptAction={acceptTmSuggestion}
-              dismissAction={dismissTmSuggestion}
-              units={profile?.units === "imperial" ? "imperial" : "metric"}
-            />
-
-            <ActiveLimitationsCard
-              limitations={activeLimitations}
-              adjustedById={limitationSummary.adjustedById}
-              pendingCount={limitationSummary.pendingCount}
-            />
-
-            {seasonNext ? (
-              <NextBlockSuggestionCard
-                nudge={{
-                  suggestion: {
-                    // The card never reads programId (the CTA href is passed
-                    // separately); the cast just satisfies the suggestion shape
-                    // for season programs outside the ADR-0010 lineup (e.g. HYROX).
-                    programId: seasonNext.block.programId as SuggestProgramId,
-                    programName: seasonNext.programName,
-                    reason:
-                      seasonNext.block.intentNote?.trim() ||
-                      `It\u2019s the next program in your season \u201C${seasonNext.seasonName}\u201D.`,
-                  },
-                  realization: null,
-                }}
-                eyebrow="Next in your season"
-                heading={`Next up: a ${seasonNext.programName} program`}
-                suggestionTail={""}
-                cta={{
-                  href: `/app/program?program=${seasonNext.block.programId}&seasonBlockId=${seasonNext.block.id}`,
-                  label: "Start this program",
-                }}
-                testId="block-ending-nudge-season"
-              />
-            ) : (
-              endingNudge && (endingNudge.suggestion || endingNudge.realization) && (
-                <NextBlockSuggestionCard
-                  nudge={endingNudge}
-                  eyebrow={"Final week \u00b7 what\u2019s next"}
-                  cta={{
-                    href: endingNudge.suggestion
-                      ? `/app/program?program=${endingNudge.suggestion.programId}`
-                      : "/app/program",
-                    label: "Plan your next program",
-                  }}
-                  testId="block-ending-nudge"
-                />
-              )
-            )}
-
-
-            <TodaySessionCard
-              openSession={openSession}
-              completedToday={completedToday}
-              plannedToday={plannedToday}
-              isMultiSessionDay={isMultiSessionDay}
-              isTwoADay={isTwoADay}
-              timezone={timezone}
-              amWindowStart={amWindowStart}
-              pmWindowStart={pmWindowStart}
-              conflictsBySlot={conflictsBySlot}
-              nextUpcoming={upcoming[0] ?? null}
-              formatProfile={formatProfile}
-              programRecs={programRecs}
-              programNames={Object.fromEntries(activeBlocks.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)]))}
-            />
-
-            <QuickWorkoutCard
-              variant={isRestDay ? "rest" : "planned"}
-              recent={quickRepeatRecent}
-              startStrength={startQuickStrengthSession}
-              repeatRecent={repeatRecentSession}
-              generateStrength={generateQuickStrengthSession}
-              generateHyrox={generateQuickHyroxSession}
-              hyroxStationDefaults={hyroxStationDefaults}
-            />
-          </div>
-
-          <aside
-            className="today-rail"
-            aria-label="At a glance"
-            style={{ display: "grid", gap: 14, minWidth: 0 }}
-          >
-            <SharedTrainingWeek today={todayIso} primaryWeek={{
-              sessions: weekRailSessions,
-              today: todayIso,
-              currentWeekIndex: computedWeekIndex ?? -1,
-              weeks: Math.max(1, ...activeBlocks.map((block) => block.weeks)),
-              logHrefBase: "/app/sessions/start",
-              moveAction: movePlannedSession,
-              skipAction: skipPlannedSession,
-              unskipAction: unskipPlannedSession,
-              updateNotesAction: updatePlannedSessionNotes,
-              startSessionAction: startSessionFromPlan,
-              markCardioDoneAction: markExternalCardioComplete,
-            }} />
-
-            <ActivitySection activities={recentActivity} todayIso={todayIso} profile={formatProfile} />
-          </aside>
-        </div>
-    </div>
-  );
-}
-
-/**
- * Recent activity grouped by Today / Yesterday / Earlier. Replaces the
- * original flat list — same row structure, just bucketed.
- */
-function ActivityPill({ label, mono }: { label: string; mono?: boolean }) {
-  return (
-    <span
-      className={mono ? "mono" : undefined}
-      style={{
-        fontSize: 11,
-        color: "var(--cp-text-muted)",
-        background: "var(--cp-surface-soft)",
-        border: "1px solid var(--cp-border)",
-        borderRadius: 7,
-        padding: "3px 8px",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function ActivitySection({
-  activities,
-  todayIso,
-  profile,
-}: {
-  activities: TrainingActivity[];
-  todayIso: string;
-  profile: ProfileForFormat;
-}) {
-  if (activities.length === 0) {
-    return (
-      <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all</Link>
-        </div>
-        <EmptyState
-          variant="inline"
-          title="No sessions yet"
-        />
-      </section>
-    );
-  }
-
-  const yesterdayIso = addDaysToYmd(todayIso, -1);
-  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof activities }> = [
-    { key: "today", label: "Today", items: [] },
-    { key: "yesterday", label: "Yesterday", items: [] },
-    { key: "earlier", label: "Earlier", items: [] },
-  ];
-  for (const s of activities) {
-    const ymd = s.date;
-    if (ymd === todayIso) groups[0]!.items.push(s);
-    else if (ymd === yesterdayIso) groups[1]!.items.push(s);
-    else groups[2]!.items.push(s);
-  }
-
-  return (
-    <section aria-label="Recent activity" style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-        <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all</Link>
-      </div>
-      {groups
-        .filter((g) => g.items.length > 0)
-        .map((g) => (
-          <div key={g.key} style={{ display: "grid", gap: 6 }}>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.1em",
-                color: "var(--cp-text-muted)",
-                textTransform: "uppercase",
-                fontWeight: 600,
-                marginTop: 8,
-              }}
-            >
-              {g.label}
-            </div>
-            {g.items.map((s) => {
-              const complete = s.status === "completed";
-              return (
-                <Link
-                  key={`${s.kind}:${s.id}`}
-                  href={trainingActivityHref(s, "today")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    background: "var(--cp-surface)",
-                    border: "1px solid var(--cp-border)",
-                    borderRadius: 11,
-                    padding: "11px 13px",
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      flex: "0 0 auto",
-                      width: 28,
-                      height: 28,
-                      borderRadius: 8,
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: 13,
-                      background: complete
-                        ? "var(--cp-accent-soft)"
-                        : "color-mix(in srgb, var(--cp-warning) 16%, transparent)",
-                      color: complete ? "var(--cp-accent)" : "var(--cp-warning)",
-                    }}
-                  >
-                    {complete ? "✓" : "◷"}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {s.title ?? "Untitled session"}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        marginTop: 4,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {s.kind === "swim" ? <>
-                        <ActivityPill label={SWIM_TRAINING_LABEL[s.status]} />
-                        <ActivityPill label={formatActivityDate(s, profile)} mono />
-                      </> : <>
-                        {!complete && <ActivityPill label="in progress" />}
-                        {s.session.session_rpe != null && <ActivityPill label={`Effort ${s.session.session_rpe}`} mono />}
-                        {s.session.duration_min != null && <ActivityPill label={`${s.session.duration_min} min`} mono />}
-                      </>}
-                    </div>
-                  </div>
-                  <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-    </section>
-  );
-}
-
-function TodaySessionCard({
-  openSession,
-  completedToday,
-  plannedToday,
-  isMultiSessionDay,
-  isTwoADay,
-  timezone,
-  amWindowStart,
-  pmWindowStart,
-  conflictsBySlot,
-  nextUpcoming,
-  formatProfile,
-  programRecs,
-  programNames,
-}: {
-  openSession: { id: string; title: string | null } | null;
-  completedToday: { id: string; title: string | null }[];
-  plannedToday: PlannedDay[];
-  isMultiSessionDay: boolean;
-  isTwoADay: boolean;
-  timezone: string;
-  amWindowStart: string;
-  pmWindowStart: string;
-  conflictsBySlot: Map<string, FreshnessConflict>;
-  nextUpcoming: PlannedDay | null;
-  formatProfile: ProfileForFormat;
-  programRecs: PendingProgramRecommendation[];
-  programNames: Readonly<Record<string, string>>;
-}) {
-  // Platform programs: program-owned nudges (retest maxes, next block, 7th-week
-  // verdict). Informational; dismiss-only. No-op for archetype blocks.
-  const programRecsBanner = (
-    <ProgramRecommendationsBanner recommendations={programRecs} programNames={programNames} dismissAction={dismissProgramRecommendation} />
-  );
-  const actionableToday = actionablePlannedSessions(plannedToday);
-  if (openSession) {
-    return (
-      <>
-        {programRecsBanner}
-        <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Resume today&apos;s workout
-          </div>
-          <h2 style={{ fontSize: 22, margin: 0 }}>{openSession.title ?? "In-progress session"}</h2>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Link href={`/app/sessions/${openSession.id}`} className="cp-btn primary big">
-              ⚡ Resume workout
-            </Link>
-          </div>
-        </section>
-      </>
-    );
-  }
-
-  if (isTodayFullyLogged({ completedTodayCount: completedToday.length, plannedToday })) {
-    // Every planned slot for today is actually completed (linked or logged).
-    // NB: we check per-session completion, not a count comparison — an extra
-    // standalone activity (e.g. an extra easy run logged on a day that
-    // also has a prescribed session) must NOT mask a still-pending planned
-    // session. It surfaces under "Recent activity"; the planned card stays.
-    return (
-      <>
-        {programRecsBanner}
-        <section
-          className="cp-card"
-          data-testid="today-logged"
-          style={{ padding: 20, display: "grid", gap: 12 }}
-        >
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Today, so far
-          </div>
-          <h2 style={{ fontSize: 22, margin: 0 }}>
-            {completedToday.length === 1 ? "Session logged ✓" : `${completedToday.length} sessions logged ✓`}
-          </h2>
-          <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-            {completedToday[0]?.title ?? "Untitled session"}
-          </p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Link href="/app/sessions/new" className="cp-btn">Add another session</Link>
-            <Link href="/app/plan" className="cp-btn">See tomorrow</Link>
-          </div>
-        </section>
-      </>
-    );
-  }
-
-  if (actionableToday.length === 0) {
-    if (plannedToday.length > 0) {
-      return (
-        <>
-          {programRecsBanner}
-          <section
-            className="cp-card"
-            data-testid="today-settled"
-            style={{ padding: 20, display: "grid", gap: 10 }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--cp-text-muted)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              Today&apos;s plan
-            </div>
-            <h2 style={{ fontSize: 22, margin: 0 }}>
-              No remaining workouts
-            </h2>
-          </section>
-        </>
-      );
-    }
-    // Compact 1-row rest banner. Replaces the older Why-rest-day card.
-    return (
-      <>
-        {programRecsBanner}
-        <section
-          data-testid="today-rest"
-          className="cp-card--bracket"
-          style={{
-            display: "grid",
-            gap: 14,
-            padding: "18px 20px",
-            background:
-              "linear-gradient(180deg, var(--cp-bg-elevated), var(--cp-surface))",
-            border: "1px solid var(--cp-border)",
-            borderRadius: 10,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            <span
-              aria-hidden
-              style={{
-                flex: "0 0 auto",
-                width: 38,
-                height: 38,
-                borderRadius: 9,
-                display: "grid",
-                placeItems: "center",
-                background: "var(--cp-accent-soft)",
-                color: "var(--cp-accent)",
-              }}
-            >
-              <svg
-                width={20}
-                height={20}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-              </svg>
-            </span>
-            <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-              <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>
-                Rest day
-              </div>
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 14,
-              padding: "12px 14px",
-              background: "var(--cp-surface)",
-              border: "1px solid var(--cp-border)",
-              borderRadius: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            {nextUpcoming ? (
-              <div data-testid="rest-tomorrow" style={{ display: "grid", gap: 3, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    color: "var(--cp-text-muted)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Next session
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{nextUpcoming.title}</div>
-                <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)" }}>
-                  {formatUpcomingDay(nextUpcoming.date, formatProfile)}
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    color: "var(--cp-text-muted)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Next session
-                </div>
-                <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-                  Nothing on the schedule.
-                </div>
-              </div>
-            )}
-            <Link
-              href="/app/plan"
-              style={{
-                flex: "0 0 auto",
-                display: "inline-flex",
-                alignItems: "center",
-                minHeight: 44,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--cp-text)",
-                textDecoration: "none",
-                padding: "0 16px",
-                border: "1px solid var(--cp-border-strong)",
-                borderRadius: 10,
-                whiteSpace: "nowrap",
-              }}
-            >
-              View plan
-            </Link>
-          </div>
-        </section>
-      </>
-    );
-  }
-
-  // 1 or 2 planned sessions today. Resolve effective times for the PM-next
-  // hint when the first session has already been completed.
-  const slotTimes = new Map<string, string>();
-  for (const p of actionableToday) {
-    const t = effectiveTimeOfDay({
-      slot: p.slot,
-      plannedAt: p.plannedAt,
-      amWindowStart,
-      pmWindowStart,
-      timezone,
+      else if (conflict) workout.note = `${conflict.regionLabel} still recovering. Heavy ${conflict.movementName} may need a lighter top set or a substitution.`;
+      if (!workout.done && !workout.note) {
+        if (recoveryBannerProps?.state.kind === "applied") workout.note = `Recovering from ${recoveryBannerProps.eventName}.`;
+        else if (taperBannerProps?.state.kind === "applied") workout.note = `Tapering for ${taperBannerProps.eventName}.`;
+      }
+      return workout;
     });
-    if (t) slotTimes.set(p.slot, t);
-  }
-  // Genuine two-a-days stay AM → PM. Mixed same-day rows (such as a primary
-  // session plus adjunct rehab) lead with the primary `single` session.
-  const orderedPlannedToday = orderPlannedSessionsForToday(
-    actionableToday,
-    isTwoADay,
-  );
-
-  // PM-next hint (B2). When the AM slot is logged and PM remains, show
-  // a ~Xh count-down above the PM card. Computed from the PM slot time
-  // minus now-in-user-timezone — falls back to "PM session next" when
-  // we can't resolve a clock time.
-  const completedAmSlot = isTwoADay
-    ? plannedToday.find((p) => p.slot === "am" && p.completedAt != null)
-    : null;
-  const openPmSlot = completedAmSlot
-    ? actionableToday.find((p) => p.slot === "pm" && p.completedAt == null)
-    : null;
-  const pmHoursFromNow = (() => {
-    if (!openPmSlot) return null;
-    const pmClock = slotTimes.get("pm");
-    if (!pmClock) return null;
-    const [hh, mm] = pmClock.split(":").map((n) => parseInt(n, 10));
-    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-    // Approximate: assume the user's clock matches "now" — this is a
-    // rough hours-from-now display, not a precise countdown.
-    const now = new Date();
-    const target = new Date(now);
-    target.setHours(hh!, mm!, 0, 0);
-    const diffH = (target.getTime() - now.getTime()) / 3_600_000;
-    return diffH;
-  })();
-
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {programRecsBanner}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMultiSessionDay
-            ? "repeat(auto-fit, minmax(300px, 1fr))"
-            : "1fr",
-          gap: 12,
-        }}
-      >
-        {orderedPlannedToday.map((p) => {
-          const isOpenPm = openPmSlot?.id === p.id;
-          return (
-            <div key={p.id} style={{ display: "grid", gap: 6 }}>
-              {isOpenPm && (
-                <div
-                  data-testid="pm-next-hint"
-                  style={{
-                    fontSize: 12,
-                    color: "var(--cp-accent)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    fontWeight: 700,
-                  }}
-                >
-                  PM session{" "}
-                  {pmHoursFromNow != null && pmHoursFromNow > 0
-                    ? `in ~${Math.max(1, Math.round(pmHoursFromNow))}h`
-                    : "next"}
-                </div>
-              )}
-              <PlannedSessionCard
-                planned={p}
-                isMultiSessionDay={isMultiSessionDay}
-                isTwoADay={isTwoADay}
-                timeOfDay={slotTimes.get(p.slot) ?? null}
-                conflict={conflictsBySlot.get(p.id) ?? null}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function PlannedSessionCard({
-  planned,
-  isMultiSessionDay,
-  isTwoADay,
-  timeOfDay,
-  conflict,
-}: {
-  planned: PlannedDay;
-  isMultiSessionDay: boolean;
-  isTwoADay: boolean;
-  timeOfDay: string | null;
-  conflict: FreshnessConflict | null;
-}) {
-  const slotLabel =
-    planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
-
-  // Glanceable hero metrics derive from the same movement grouping as the
-  // compact preview, so role counts and section contents cannot drift apart.
-  const duration = estimateSessionDurationBreakdown(planned.prescription.items);
-  const estMin = duration.displayMinutes;
-  const grouped = groupByMovementThenKind(planned.prescription.items);
-  const mainLiftCount = grouped.movements.filter(
-    (section) => !isSupplementalOnlySection(section),
-  ).length;
-  const supplementalLiftCount = grouped.movements.filter(
-    isSupplementalOnlySection,
-  ).length;
-  const accessoryCount =
-    grouped.accessories.length +
-    grouped.hingeCompensations.length +
-    grouped.tendon.length;
-  const rehabMovementCount = countDistinctRehabMovements(
-    grouped.rehab.flatMap((row) => row.items),
-  );
-  const movementSummary =
-    planned.role === "rehab" && rehabMovementCount > 0
-      ? `${rehabMovementCount} rehab movement${
-          rehabMovementCount === 1 ? "" : "s"
-        }`
-      : [
-          mainLiftCount > 0
-            ? `${mainLiftCount} main lift${mainLiftCount === 1 ? "" : "s"}`
-            : null,
-          supplementalLiftCount > 0
-            ? `${supplementalLiftCount} supplemental lift${
-                supplementalLiftCount === 1 ? "" : "s"
-              }`
-            : null,
-          accessoryCount > 0
-            ? `${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`
-            : null,
-        ]
-          .filter((part): part is string => part != null)
-          .join(", ");
-  const showMetaRow =
-    (isTwoADay && planned.slot !== "single") ||
-    planned.completedAt != null ||
-    estMin != null;
-  const primaryCta = plannedSessionCta({
-    plannedId: planned.id,
-    completedSessionId: planned.completedSessionId,
-    completedAt: planned.completedAt,
-    deletedCompletedSessionId: planned.deletedCompletedSessionId,
+  const linkedIds = new Set([...plannedWorkouts, ...swims.workouts].flatMap((workout) => workout.sessionId ? [workout.sessionId] : []));
+  const unplannedWorkouts: TodayWorkout[] = (todaySessions ?? []).filter((session) => !linkedIds.has(session.id)).map((session) => ({
+    id: session.id, sessionId: session.id, date: todayIso, title: session.title ?? "Workout",
+    program: "Quick workout", programId: null, kind: null, done: !!session.completed_at,
+    href: `/app/sessions/${session.id}`, minutes: null, action: "Continue workout",
+    state: session.completed_at ? "completed" : "in_progress",
+  }));
+  const workouts = [...plannedWorkouts, ...swims.workouts.filter((workout) => workout.date === todayIso || workout.state === "started"), ...unplannedWorkouts];
+  const summaries = await loadTodaySessionSummaries(supabase,
+    [...new Set(workouts.filter((workout) => workout.done && workout.sessionId).map((workout) => workout.sessionId!))],
+    profile?.units === "imperial");
+  for (const workout of workouts) if (workout.sessionId && !workout.summary) workout.summary = summaries.get(workout.sessionId);
+  const availableWorkouts = [
+    ...plannedDaysAll.filter((planned) => !planned.skippedAt && planned.role !== "rest")
+      .map((planned) => plannedTodayWorkout(planned, activeBlocks, plannedDaysAll)),
+    ...swims.workouts, ...unplannedWorkouts,
+  ];
+  const weekWorkouts = await loadTodayWeek(supabase, activeBlocks, availableWorkouts);
+  const next = availableWorkouts.filter((workout) => workout.date > todayIso && !workout.done &&
+    (workout.state === "not_started" || workout.state === "scheduled"))
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const selectedPrompt = selectTodayPrompt({
+    "race-recovery": !!recoveryBannerProps,
+    "race-check-in": !!raceCheckInProps,
+    taper: !!taperBannerProps,
+    "active-limitation": limitationAffected.size > 0,
+    "training-max": pendingSuggestions.length > 0,
+    season: !!seasonNext,
+    "next-program": !!endingNudge && !!(endingNudge.suggestion || endingNudge.realization),
+    "program-recommendation": programRecs.length > 0,
+    "bodyweight-only": !hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && !profile?.bw_banner_dismissed_at,
+    bodyweight: (!lastWeight.data || lastWeight.data.date <= addDaysToYmd(todayIso, -7)) &&
+      (!profile?.bw_nudge_hidden_until || Date.parse(profile.bw_nudge_hidden_until) <= new Date().getTime()),
   });
-
-  return (
-    <section
-      className="cp-card"
-      data-testid={`today-card-${planned.id}`}
-      data-hero="planned"
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        padding: 18,
-        display: "grid",
-        gap: 12,
-        borderColor: "var(--cp-border)",
-        background:
-          "linear-gradient(165deg, var(--cp-bg-elevated), var(--cp-surface))",
-        minHeight: isMultiSessionDay ? 200 : 280,
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: "0 0 auto 0",
-          height: 3,
-          background:
-            "linear-gradient(90deg, var(--cp-accent), transparent 70%)",
-          opacity: 0.8,
-        }}
-      />
-      {showMetaRow && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-        {isTwoADay && planned.slot !== "single" && (
-          <span
-            data-testid={`slot-label-${planned.slot}`}
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              padding: "4px 9px",
-              borderRadius: 999,
-              color: "var(--cp-text-muted)",
-              background: "var(--cp-surface-soft)",
-              border: "1px solid var(--cp-border)",
-            }}
-          >
-            {slotLabel}
-            {timeOfDay ? ` · ${timeOfDay}` : ""}
-          </span>
-        )}
-        {planned.completedAt && (
-          <span
-            data-testid="slot-complete-badge"
-            style={{
-              fontSize: 10,
-              padding: "2px 7px",
-              borderRadius: 999,
-              background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
-              color: "var(--cp-success)",
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-            }}
-          >
-            ✓ logged
-          </span>
-        )}
-        {estMin != null && (
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: 12,
-              color: "var(--cp-text-muted)",
-            }}
-          >
-            ~{estMin} min
-          </span>
-        )}
-        </div>
-      )}
-      <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.02em", fontWeight: 700 }}>{planned.title}</h2>
-      {(movementSummary || rehabMovementCount > 0) && (
-        <div
-          data-testid="hero-topline"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 12.5,
-              color: "var(--cp-text-soft)",
-              background: "var(--cp-surface)",
-              border: "1px solid var(--cp-border)",
-              borderRadius: 9,
-              padding: "6px 11px",
-            }}
-          >
-            {movementSummary}
-          </span>
-          {planned.role !== "rehab" && rehabMovementCount > 0 && (
-            <span
-              data-testid="embedded-rehab-badge"
-              style={{
-                fontSize: 12.5,
-                color: "var(--cp-accent)",
-                background: "var(--cp-accent-soft)",
-                border: "1px solid var(--cp-accent)",
-                borderRadius: 9,
-                padding: "6px 11px",
-                fontWeight: 650,
-              }}
-            >
-              Includes rehab · {rehabMovementCount} movement
-              {rehabMovementCount === 1 ? "" : "s"}
-            </span>
-          )}
-        </div>
-      )}
-      {conflict && (
-        <div
-          role="note"
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 8,
-            padding: "8px 12px",
-            borderRadius: 10,
-            background: "color-mix(in oklab, var(--cp-warning) 12%, transparent)",
-            border: "1px solid var(--cp-warning)",
-            fontSize: 12,
-            color: "var(--cp-text)",
-            lineHeight: 1.4,
-          }}
-          title={`${conflict.regionLabel} freshness ${(conflict.freshness * 100).toFixed(0)}% — still recovering from recent load`}
-        >
-          <span aria-hidden style={{ fontSize: 14 }}>⚠</span>
-          <span>
-            <strong>{conflict.regionLabel}</strong> still recovering. Heavy {conflict.movementName} may need a lighter top set or a substitution.
-          </span>
-        </div>
-      )}
-      <div data-testid="today-hero-preview" style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-        <SessionPreviewBody
-          variant="compact"
-          session={{
-            id: planned.id,
-            title: planned.title,
-            // Eyebrow + duration are rendered by the hero card itself
-            // (slot label / archetype / week badge above, structured
-            // duration rows inside the section cards). The compact
-            // variant of SessionPreviewBody skips its own header, so
-            // these strings are unused — pass placeholders.
-            eyebrow: "",
-            estDurationMin: null,
-            items: planned.prescription.items,
-          }}
-        />
-      </div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: "auto" }}>
-        <Link
-          href={primaryCta.href}
-          className="cp-btn primary big"
-          data-testid="today-cta"
-          data-session-state={primaryCta.state}
-          style={{ flex: "1 1 auto", minHeight: 56 }}
-        >
-          {primaryCta.label}
-        </Link>
-        {/*
-          Preview opens the SAME drawer the "This week" rail uses, rather than a
-          second, near-identical read-only preview screen. The rail listens for
-          `#session=<plannedId>` (see ThisWeekRail's hashchange effect) and finds
-          the session across ALL planned days, not just the rendered week, so a
-          plain hash anchor is enough — and it stays a real, keyboard-focusable
-          link. Next's <Link> is deliberately avoided here: a client-side
-          pushState navigation would not fire `hashchange`.
-        */}
-        <a
-          href={`#session=${planned.id}`}
-          className="cp-btn big"
-          data-testid="today-preview-cta"
-          style={{ flex: "0 1 auto", minHeight: 56, justifyContent: "center" }}
-        >
-          Preview
-        </a>
-      </div>
-    </section>
-  );
-}
-
-
-function formatUpcomingDay(iso: string, profile: ProfileForFormat): string {
-  const target = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(target.getTime())) return iso;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
-  if (diffDays === 1) return "Tomorrow";
-  if (diffDays >= 2 && diffDays <= 6) {
-    return target.toLocaleDateString(undefined, { weekday: "long" });
+  const programNames = Object.fromEntries(activeBlocks.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)]));
+  let prompt: React.ReactNode = null;
+  switch (selectedPrompt?.kind) {
+    case "race-recovery": prompt = recoveryBannerProps && <RecoveryBanner {...recoveryBannerProps} />; break;
+    case "race-check-in": prompt = raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />; break;
+    case "taper": prompt = taperBannerProps && <TaperBanner {...taperBannerProps} />; break;
+    case "active-limitation": prompt = <ActiveLimitationsCard limitations={activeLimitations}
+      adjustedById={limitationSummary.adjustedById} pendingCount={limitationSummary.pendingCount} />; break;
+    case "training-max": prompt = <TmSuggestionBanner suggestions={pendingSuggestions.slice(0, 1)}
+      acceptAction={acceptTmSuggestion} dismissAction={dismissTmSuggestion}
+      units={profile?.units === "imperial" ? "imperial" : "metric"} />; break;
+    case "season": prompt = seasonNext && <NextBlockSuggestionCard compact
+      nudge={{ suggestion: { programId: seasonNext.block.programId as SuggestProgramId, programName: seasonNext.programName,
+        reason: seasonNext.block.intentNote?.trim() || `It's the next program in your season "${seasonNext.seasonName}".` }, realization: null }}
+      eyebrow="Next in your season" heading={`Next up: a ${seasonNext.programName} program`} suggestionTail=""
+      cta={{ href: `/app/program?program=${seasonNext.block.programId}&seasonBlockId=${seasonNext.block.id}`, label: "Start this program" }}
+      testId="block-ending-nudge-season" />; break;
+    case "next-program": prompt = endingNudge && <NextBlockSuggestionCard compact nudge={endingNudge}
+      eyebrow="Final week · what's next"
+      cta={{ href: endingNudge.suggestion ? `/app/program?program=${endingNudge.suggestion.programId}` : "/app/program", label: "Plan your next program" }}
+      testId="block-ending-nudge" />; break;
+    case "program-recommendation": prompt = <ProgramRecommendationsBanner recommendations={programRecs.slice(0, 1)}
+      programNames={programNames} dismissAction={dismissProgramRecommendation} />; break;
+    case "bodyweight-only": prompt = <BodyweightOnlyBanner dismissedAt={profile?.bw_banner_dismissed_at ?? null}
+      dismissBwBannerAction={dismissBwBanner} />; break;
+    case "bodyweight": prompt = <BodyweightNudge todayYmd={todayIso} recordDailyCheckIn={recordDailyCheckIn}
+      dismissedUntilIso={profile?.bw_nudge_hidden_until ?? null} dismissBwNudgeAction={dismissBwNudge}
+      snoozeUntil={ymdToUtc(addDaysToYmd(todayIso, 1), timezone).toISOString()} />; break;
   }
-  return formatDate(target, profile, "short_date");
+  return <TodayDashboard today={todayIso} workouts={workouts} weekWorkouts={weekWorkouts}
+    hasProgram={activeBlocks.length > 0 || swims.hasProgram} multiplePrograms={activeBlocks.length + swims.activeCount > 1}
+    next={next} prompt={prompt} promptPlacement={selectedPrompt?.placement}
+    quickWorkout={<QuickWorkoutCard variant={workouts.length ? "planned" : "rest"} recent={quickRepeatRecent}
+      startStrength={startQuickStrengthSession} repeatRecent={repeatRecentSession}
+      generateStrength={generateQuickStrengthSession} generateHyrox={generateQuickHyroxSession}
+      hyroxStationDefaults={hyroxStationDefaults} />} />;
 }

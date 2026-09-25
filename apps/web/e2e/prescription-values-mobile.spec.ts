@@ -126,7 +126,7 @@ test.describe("@mobile Today prescription values", () => {
     expect(error).toBeNull();
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
     await page.goto("/app");
-    await expect(page.getByTestId("embedded-rehab-badge")).toHaveText("Includes rehab · 3 movements");
+    await expect(page.getByTestId("embedded-rehab-badge")).toHaveCount(0);
     const rehabCard = page.getByTestId("session-preview-section-rehab");
     await expect(rehabCard).toBeVisible();
     await expect(rehabCard).toContainText("Keep the pelvis level and breathe throughout the hold.");

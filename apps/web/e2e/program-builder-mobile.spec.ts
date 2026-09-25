@@ -757,19 +757,37 @@ test.describe("Modular program builder", () => {
     const sharedStatus = async (label: string) => {
       for (const path of ["/app", "/app/plan", `/app/swim?plan=${first.plan_id}`]) {
         await page.goto(path);
+        if (path === "/app") {
+          const card = page.getByTestId(`today-card-${first.id}`);
+          const week = page.getByRole("region", { name: "This week", exact: true });
+          if (label === "Completed") {
+            await expect(card).toHaveCount(0);
+            const recording = week.locator(`a[href="/app/swim/recordings/${receipt.id}?workout=${first.id}&from=today"]`);
+            if (weekday() === 0) {
+              await expect(recording).toHaveCount(0);
+            } else {
+              await expect(recording).toBeVisible();
+              await expect(recording).toContainText("Completed");
+              await expect(recording.locator("time")).toHaveAttribute("datetime", recordedDate);
+            }
+          } else {
+            const state = label === "Stopped early" ? "stopped_early" : label === "Review recording" ? "needs_review" : "scheduled";
+            await expect(card).toHaveAttribute("data-state", state);
+            await expect(card.locator(`a[href^="/app/swim/${first.id}?"]`)).toBeVisible();
+            const scheduled = week.locator(`a[href^="/app/swim/${first.id}?"]`);
+            await expect(scheduled).toBeVisible();
+            await expect(scheduled.locator("time")).toHaveAttribute("datetime", scheduledDate);
+            await expect(scheduled).not.toContainText("Completed");
+          }
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+          continue;
+        }
         const hub = path.startsWith("/app/swim");
         const scope = hub ? page.getByRole("list", { name: "Swims", exact: true })
-          : page.getByRole("region", { name: path === "/app/plan" ? "This week" : "Swimming schedule", exact: true });
+          : page.getByRole("region", { name: "This week", exact: true });
         const link = scope.locator(`a[href^="/app/swim/${first.id}"]`);
         await expect(link).toBeVisible();
         await expect(link).toContainText(path === "/app/plan" && label === "Scheduled" ? "Start workout" : label);
-        if (path === "/app" && label !== "Scheduled") {
-          const recent = page.getByRole("region", { name: "Recent activity", exact: true })
-            .locator(`a[href="/app/swim/recordings/${receipt.id}?workout=${first.id}&from=today"]`);
-          await expect(recent).toContainText(label);
-          await expect(recent).toContainText(recordedDate);
-          await expect(recent).not.toContainText(scheduledDate);
-        }
         if (hub) {
           const nextId = label === "Scheduled" ? first.id : original[1]!.id;
           await expect(page.getByRole("link", { name: /^Next swim\b/ }))
@@ -940,13 +958,16 @@ test.describe("Modular program builder", () => {
       await expect(sharedDay.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);
       await expect(sharedDay.locator(`a[href^="/app/swim/${todaySwim.id}?"]`)).toHaveCount(1);
       await expect(sharedDay.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(2);
-      for (const path of ["/app", "/app/plan"]) {
-        await page.goto(path);
-        const navigation = page.getByRole("main").getByRole("navigation", { name: "Programs", exact: true });
-        await expect(navigation.locator(`a[href="/app/plan?block=${strengthId}"]`)).toBeVisible();
-        await expect(navigation.locator(`a[href="/app/plan?block=${runningId}"]`)).toBeVisible();
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-      }
+      await page.goto("/app");
+      await expect(page.getByTestId(`today-card-${todayStrength.id}`)).toBeVisible();
+      await expect(page.getByTestId(`today-card-${todaySwim.id}`)).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await page.getByRole("region", { name: "This week", exact: true }).getByRole("link", { name: "Schedule", exact: true }).click();
+      await expect(page).toHaveURL(/\/app\/plan$/);
+      const navigation = page.getByRole("main").getByRole("navigation", { name: "Programs", exact: true });
+      await expect(navigation.locator(`a[href="/app/plan?block=${strengthId}"]`)).toBeVisible();
+      await expect(navigation.locator(`a[href="/app/plan?block=${runningId}"]`)).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       const noResults = await actor.from("sessions").select("id").eq("user_id", freshUser.userId);
       expect(noResults.error).toBeNull(); expect(noResults.data).toEqual([]);
     });
@@ -1116,7 +1137,10 @@ test.describe("Modular program builder", () => {
       await page.goto(`/app/plan?block=${running.block_id}`);
       await page.getByTestId("program-actions-more").click();
       await page.getByTestId("program-actions-end").click();
+      const ended = page.waitForResponse((response) => response.request().method() === "POST" &&
+        !!response.request().headers()["next-action"] && new URL(response.url()).pathname === "/app/plan");
       await page.getByTestId("end-block-confirm").click();
+      expect((await ended).ok()).toBe(true);
       await expect.poll(async () => {
         const result = await actor.from("training_blocks").select("status").eq("id", running.block_id).single();
         expect(result.error).toBeNull(); return result.data?.status;
@@ -1147,6 +1171,7 @@ test.describe("Modular program builder", () => {
         .toHaveLength(2);
       await page.goto("/app/programs");
       await page.getByRole("link", { name: "Schedule", exact: true }).click();
+      await expect(page).toHaveURL(/\/app\/plan$/);
       const week = page.getByRole("region", { name: "This week", exact: true });
       for (const row of original.filter((row) => row.block_id === running.block_id)) {
         await expect(week.locator(`a[href="/app/sessions/start/${row.id}"]`)).toHaveCount(0);

@@ -5886,3 +5886,28 @@ revision metadata. The added disposable fixture cases were removed after
 three failed fixture rounds; existing authenticated RPC stale-save acceptance
 remains unchanged as stamped-row integration evidence. No new diagnostics
 plumbing or changes to existing acceptance cases.
+
+## [2026-09-25] refine | Unified Today workout dashboard
+
+Owner-approved Today redesign replaces the split workout/activity presentation
+with consistent planned, swimming and logged-workout cards, grouped prescriptions,
+a mobile start dock and a compact shared-schedule week card. Recent activity stays
+in Stats. Existing start, restore, move, same-slot day-swap and skip actions remain
+authoritative; today's swims expose Skip only because moving today's swim is not
+supported. No schema, RPC, migration or training-dose changes.
+
+A pure domain selector retains all prompt types while showing at most one:
+race recovery/check-in, taper and today's active limitations precede optional
+training-max, season, next-program, recommendation and bodyweight prompts.
+Durable dismissals remain unchanged; the existing bodyweight snooze now expires
+at the next local midnight. Named limitation notes reuse freshness display labels.
+DC-K4, DC-V1 and DC-V2 presentation is preserved, without changing safety gates.
+
+Coordinator reviewed all seven mockup states at 375/1280 px, then approved revised
+plain prompt rows, bordered week card, compact multi-workout dates and race
+check-in copy. Synthetic component-browser evidence also covers options, move
+payloads, quick-workout sheet, scrolling and 44px targets. Unit coverage verifies
+prompt priority, prescription ranges/structured cardio, pending/done/restore
+navigation and canonical week entries. Existing browser selectors retain their
+workflow assertions and deadlines. Linux automatic PR CI remains the acceptance
+gate; no local database/native runs, merge or deployment.

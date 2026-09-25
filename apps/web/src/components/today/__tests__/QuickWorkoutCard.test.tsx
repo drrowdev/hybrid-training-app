@@ -28,12 +28,10 @@ describe("QuickWorkoutCard", () => {
     );
     expect(html).toContain('data-testid="quick-workout-card"');
     expect(html).toContain('data-variant="planned"');
-    expect(html).toContain("Start something off-plan");
-    expect(html).not.toContain("Start something light");
-    expect(html).toContain("Quick workout");
+    expect(html).toContain('data-testid="quick-workout-subtitle"');
   });
 
-  it("renders the rest-day subtitle when variant is 'rest'", () => {
+  it("keeps the same entry point on a rest day", () => {
     const html = renderToStaticMarkup(
       <QuickWorkoutCard
         variant="rest"
@@ -46,8 +44,10 @@ describe("QuickWorkoutCard", () => {
       />,
     );
     expect(html).toContain('data-variant="rest"');
-    expect(html).toContain("Start something light");
-    expect(html).not.toContain("off-plan");
+    const planned = renderToStaticMarkup(<QuickWorkoutCard variant="planned" recent={[]}
+      startStrength={noopStrength} repeatRecent={noopRepeat} generateStrength={noopGenerate}
+      generateHyrox={noopHyrox} hyroxStationDefaults={[]} />);
+    expect(html.replace('data-variant="rest"', 'data-variant="planned"')).toBe(planned);
   });
 
   it("renders the card as a button so the full surface is the tap target", () => {

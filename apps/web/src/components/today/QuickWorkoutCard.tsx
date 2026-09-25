@@ -1,22 +1,5 @@
 "use client";
 
-/**
- * Quick-workout entry point — Mockup variant C (inline dashed-border
- * card). Sits at the bottom of the Today page on both planned days
- * (below "Recent activity") and rest days (below the rest banner).
- *
- * Tap the whole card to open `<QuickWorkoutSheet>`. The card itself is
- * purely presentational; the sheet owns the picker + action wiring.
- *
- * The subtitle copy adapts to `variant`:
- *   - "planned":  "Start something off-plan"
- *   - "rest":     "Start something light"
- *
- * On rest days the planned hero is a one-row "Rest day" banner, so the
- * card sits below it without competing visually — the user is still
- * gently steered toward rest-first, but the option is one tap away.
- */
-
 import { useState } from "react";
 import {
   QuickWorkoutSheet,
@@ -48,10 +31,6 @@ export function QuickWorkoutCard({
   hyroxStationDefaults: HyroxStation[];
 }) {
   const [open, setOpen] = useState(false);
-  const subtitle =
-    variant === "rest"
-      ? "Start something light"
-      : "Start something off-plan";
 
   return (
     <>
@@ -65,10 +44,11 @@ export function QuickWorkoutCard({
           alignItems: "center",
           gap: 12,
           width: "100%",
-          padding: 12,
-          background: "transparent",
-          border: "1px dashed var(--cp-border-strong)",
-          borderRadius: 10,
+          padding: 16,
+          minHeight: 76,
+          background: "var(--cp-surface)",
+          border: "1px solid var(--cp-border)",
+          borderRadius: 14,
           cursor: "pointer",
           color: "var(--cp-text)",
           font: "inherit",
@@ -99,7 +79,7 @@ export function QuickWorkoutCard({
             data-testid="quick-workout-subtitle"
             style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
           >
-            {subtitle}
+            Start something off-plan
           </span>
         </span>
         <span

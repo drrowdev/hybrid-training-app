@@ -27,7 +27,7 @@ export type RegionFreshnessRow = {
   lastLoadDate: string | null;
 };
 
-const REGION_LABELS: Record<string, string> = {
+export const FRESHNESS_REGION_LABELS: Readonly<Record<string, string>> = {
   foot_ankle_calf: "Calves & feet",
   knee: "Knees & quads",
   hamstring_posterior: "Hamstrings & glutes",
@@ -82,7 +82,7 @@ export async function getRegionFreshness(
     const { band, label, tone } = classifyFreshness(freshness);
     rows.push({
       region: r.region,
-      regionLabel: REGION_LABELS[r.region] ?? r.region,
+      regionLabel: FRESHNESS_REGION_LABELS[r.region] ?? r.region,
       freshness,
       band,
       label,

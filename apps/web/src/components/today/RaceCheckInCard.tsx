@@ -65,8 +65,8 @@ export function RaceCheckInCard(props: Props) {
       }}
     >
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 11, color: accent, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-          {props.eventName} · YESTERDAY
+        <div style={{ fontSize: 13, color: accent, fontWeight: 600 }}>
+          {props.eventName} · Yesterday
         </div>
       </div>
       <div style={{ fontSize: 15, fontWeight: 600 }}>How did it go?</div>
@@ -83,7 +83,7 @@ export function RaceCheckInCard(props: Props) {
         </form>
         <form action={submit("skipped")}>
           <button type="submit" disabled={isPending} className="cp-btn">
-            Skipped / didn&rsquo;t race
+            Didn&rsquo;t race
           </button>
         </form>
       </div>
