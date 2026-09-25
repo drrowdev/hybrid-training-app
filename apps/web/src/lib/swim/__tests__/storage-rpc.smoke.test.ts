@@ -170,14 +170,18 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
       items: [{ movementId, kind: "accessory", sets: 4, reps: 8 }],
       ...(revision === "null" ? { meta: { editRevision: null } } : {}),
     };
-    const prepared = await client.from("planned_sessions").update({ prescription: initial })
-      .eq("user_id", userId).eq("block_id", blockId).select("id").single();
+    // Insert the legacy shape: an UPDATE would stamp editRevision via migration 0159.
+    const prepared = await client.from("planned_sessions").insert({
+      user_id: userId, block_id: blockId, week_index: 0, day_index: (weekday + 1) % 7,
+      title: "Legacy derived adjustment", role: "strength", prescription: initial,
+    }).select("id").single();
     if (prepared.error) throw new Error("Legacy prescription fixture failed.", { cause: prepared.error });
     const [firstRead, secondRead] = await Promise.all([client, otherTab].map((db) =>
       getActiveBlockRemainingSessions(db, userId, "UTC", new Date(), blockId)));
-    expect(firstRead?.remaining).toHaveLength(1);
-    expect(secondRead?.remaining).toHaveLength(1);
-    const sources = [firstRead!.remaining[0]!, secondRead!.remaining[0]!];
+    expect(firstRead?.remaining).toHaveLength(2);
+    expect(secondRead?.remaining).toHaveLength(2);
+    const sources = [firstRead!, secondRead!].map((read) =>
+      read.remaining.find((row) => row.id === prepared.data.id)!);
     expect(sources.map((row) => row.prescription)).toEqual([initial, initial]);
     const updates = sources.map((row, index) => ({
       id: row.id, expectedPrescription: row.prescription,
@@ -194,7 +198,10 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     expect(results[1 - winner]!.error).toBeTruthy();
     const stored = await client.from("planned_sessions").select("prescription").eq("id", prepared.data.id).single();
     expect(stored.error).toBeNull();
-    expect(stored.data?.prescription).toEqual(updates[winner]!.prescription);
+    expect(stored.data?.prescription).toEqual({
+      ...updates[winner]!.prescription,
+      meta: { ...updates[winner]!.prescription.meta, editRevision: expect.stringMatching(/^[a-f0-9-]{36}$/) },
+    });
     const retry = await applyPrescriptionUpdates(otherTab, userId, blockId, [updates[1 - winner]!]);
     expect(retry.updated).toBe(0);
     expect(retry.error).toBeTruthy();
