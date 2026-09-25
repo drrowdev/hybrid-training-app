@@ -141,6 +141,7 @@ export async function applyPrescriptionUpdates(
   updates: ReadonlyArray<{
     id: string;
     prescription: Prescription;
+    expectedPrescription: Prescription;
     expectedCompletedSessionId?: string | null;
   }>,
 ): Promise<{ updated: number; error?: string }> {
@@ -157,11 +158,9 @@ export async function applyPrescriptionUpdates(
       expected != null
         ? updateBase.eq("completed_session_id", expected)
         : updateBase.is("completed_session_id", null);
-    const revision = u.prescription.meta?.editRevision;
-    const revisionGuarded = revision
-      ? guarded.eq("prescription->meta->>editRevision", revision)
-      : guarded.is("prescription->meta->>editRevision", null);
-    const { error, count } = await revisionGuarded
+    // DC-K4: derived writes must not overwrite changes, including legacy rows without a revision.
+    const { error, count } = await guarded
+      .eq("prescription", JSON.stringify(u.expectedPrescription))
       .is("skipped_at", null);
     if (error) return { updated, error: error.message };
     if (!count) return { updated, error: "A workout changed. Review the adjustment again." };

@@ -5862,3 +5862,27 @@ DC-C2, DC-C14, DC-C9/DC-K1 and DC-K4 presentation only; no calculation, schema,
 RPC, migration, Today or prescription changes. Local component-browser evidence
 covers 375/1280 px, held refreshes, failure paths, canonical reconciliation and
 Undo. Linux automatic PR CI and owner approval remain acceptance gates.
+
+## [2026-09-25] refine | Fail-closed prescription save hardening
+
+Named missing-function errors (PGRST202/42883) for prescription saves and atomic
+Swimming replacement now return one retry sentence without a fallback write.
+Draft values, expected revisions and replacement request identities survive
+the failure. Other error handling is unchanged.
+
+Autoregulation and both limitation update builders carry the original full
+prescription into the guarded update. JSONB equality replaces the revision-only
+comparison, preserving owner, block, linked-session and skipped predicates.
+Concurrent derived changes therefore conflict even on legacy rows with absent
+or null revisions (DC-K4). Unit coverage checks request guards and error/retry
+behavior. Synthetic replacement screens capture
+the retry state at mobile and desktop widths. No schema, RPC or migration
+changes; no local database/native runs, merge or deployment.
+
+Coordinator-approved acceptance scope: legacy absent/null concurrency is
+covered by two real Supabase clients with a shared mock transport/store,
+including exact full-source filters, zero-write rejection and unchanged
+revision metadata. The added disposable fixture cases were removed after
+three failed fixture rounds; existing authenticated RPC stale-save acceptance
+remains unchanged as stamped-row integration evidence. No new diagnostics
+plumbing or changes to existing acceptance cases.

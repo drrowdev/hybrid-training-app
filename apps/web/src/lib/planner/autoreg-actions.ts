@@ -55,6 +55,7 @@ export async function acceptVolumeAutoregResult(blockId?: string): Promise<Accep
     .map((s) => ({
       id: s.id,
       prescription: { ...s.prescription, autoregVolumeScale: scale },
+      expectedPrescription: s.prescription,
       expectedCompletedSessionId: s.expectedCompletedSessionId,
     }));
 

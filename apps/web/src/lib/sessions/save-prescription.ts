@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { z } from "zod";
 import { STALE_PRESCRIPTION_MESSAGE } from "./prescription-revision";
+import { isMissingRpc, RPC_SAVE_RETRY_MESSAGE } from "@/lib/supabase/rpc-errors";
 
 export type PrescriptionSaveResult = {
   ok?: true;
@@ -20,7 +21,9 @@ export async function savePrescription(
     p_target: target, p_id: id, p_expected_revision: revision.data,
     p_prescription: prescription, p_require_unstarted: requireUnstarted,
   });
-  if (error) return { error: error.message };
+  if (error) return {
+    error: isMissingRpc(error, "save_prescription_if_current") ? RPC_SAVE_RETRY_MESSAGE : error.message,
+  };
   if (!data || typeof data.conflict !== "boolean" || !data.prescription || !Array.isArray(data.prescription.items)) {
     return { error: "The workout save could not be confirmed. Reload it before trying again." };
   }

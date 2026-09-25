@@ -68,6 +68,7 @@ try {
         import { optimisticLogFromFormData, mergeOptimisticSets } from "./src/lib/sessions/optimistic-log";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
+        import { RPC_SAVE_RETRY_MESSAGE } from "./src/lib/supabase/rpc-errors";
         import styles from "./src/components/swim/Swim.module.css";
         import "./src/app/globals.css";
         const root = createRoot(document.getElementById("root"));
@@ -796,7 +797,7 @@ try {
         } });
         window.saveSetup = async form => {
           window.setupCalls.push(Object.fromEntries(form.entries()));
-          return window.setupMode === "error" ? { error: "Could not save." }
+          return window.setupMode === "error" ? { error: RPC_SAVE_RETRY_MESSAGE }
             : { ok: true, planId: "generated-plan", warning: "Refresh the plan." };
         };
         window.showSetup = (replacement = false) => {
@@ -1275,6 +1276,8 @@ try {
     await createSetup.click();
     await replaceSetup.getByRole("button", { name: "Replace program", exact: true }).click();
     await expect(replaceSetup.getByRole("alert")).toBeVisible();
+    await screenshot(`generated-swim-replacement-retry-${width}`);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.evaluate(() => { window.setupMode = "success"; });
     await replaceSetup.getByRole("button", { name: "Replace program", exact: true }).click();
     await expect(replaceSetup).toHaveCount(0);
