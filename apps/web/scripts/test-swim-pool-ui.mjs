@@ -527,7 +527,6 @@ try {
             return { ok: true, set: { id } };
           };
           window.logFullStrength = save;
-          window.loadOwnedPrescription = async () => ({ ok: true, prescription });
           return <main className={styles.page}><SessionLoggingStateProvider
             initialHasStrengthSets={sets.length > 0} initialLoggedStrengthClientIds={sets.map(set => set.client_log_id)}
             initialUnloggedStrengthCount={4 - sets.length}
@@ -569,6 +568,7 @@ try {
             return { ok: true, set: { id } };
           };
           window.logFullStrength = save;
+          window.loadOwnedPrescription = async () => ({ ok: true, prescription });
           window.swapOwnedMovement = async form => {
             window.ownedSwapCalls.push(Object.fromEntries(form.entries()));
             const context = getMovementSwapLoadContext(prescription, ownedMovementId, replacementMovement.id, true);
