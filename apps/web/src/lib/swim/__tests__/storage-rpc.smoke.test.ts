@@ -6,6 +6,7 @@ import type { SwimWorkout } from "@hta/domain";
 import { createSmokeClient, createSmokeSession, getMovementIdBySlug, RUN_ID } from "../../../../e2e-rpc/setup";
 import type { SwimCompletion, SwimPlanWithWorkouts, SwimWorkoutRow } from "../storage";
 import { getSwimRpcTestEnv } from "./storage-rpc-config";
+import { applyPrescriptionUpdates, getActiveBlockRemainingSessions } from "@/lib/planner/remaining-sessions";
 
 // Run with apps/web/vitest.config.ts; see the pool-swimming wiki's JSON ledger command.
 // Never consume the app's production credentials or apply migrations here.
@@ -152,6 +153,55 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     const reapplied = await save(alice, winner.prescription.meta.editRevision, "reapplied");
     expect(reapplied.error).toBeNull(); expect(reapplied.data.conflict).toBe(false);
     expect(reapplied.data.prescription.meta.note).toBe("reapplied");
+  });
+
+  it.each(["absent", "null"])("DC-K4 lets only one concurrent derived update write a legacy prescription (%s revision)", async (revision) => {
+    const { client, id: userId } = await user(`derived-${revision}`);
+    const otherTab = createClient(smokeEnv!.url, anonKey!, { auth: { autoRefreshToken: false, persistSession: false } });
+    const session = (await client.auth.getSession()).data.session!;
+    expect((await otherTab.auth.setSession(session)).error).toBeNull();
+    const block = await client.from("training_blocks").insert({
+      user_id: userId, archetype: "strength_anchor", started_on: day(0), weeks: 1,
+    }).select("id").single();
+    expect(block.error).toBeNull();
+    const blockId = block.data!.id;
+    const initial = {
+      items: [{ movementId: easyMovementId, kind: "accessory", sets: 4, reps: 8 }],
+      ...(revision === "null" ? { meta: { editRevision: null } } : {}),
+    };
+    const inserted = await client.from("planned_sessions").insert({
+      user_id: userId, block_id: blockId, week_index: 0, day_index: 0,
+      title: "Concurrent derived adjustment", role: "strength", prescription: initial,
+    }).select("id").single();
+    expect(inserted.error).toBeNull();
+    const [firstRead, secondRead] = await Promise.all([client, otherTab].map((db) =>
+      getActiveBlockRemainingSessions(db, userId, "UTC", new Date(), blockId)));
+    expect(firstRead?.remaining).toHaveLength(1);
+    expect(secondRead?.remaining).toHaveLength(1);
+    const sources = [firstRead!.remaining[0]!, secondRead!.remaining[0]!];
+    expect(sources.map((row) => row.prescription)).toEqual([initial, initial]);
+    const updates = sources.map((row, index) => ({
+      id: row.id, expectedPrescription: row.prescription,
+      expectedCompletedSessionId: row.expectedCompletedSessionId,
+      prescription: index === 0
+        ? { ...row.prescription, autoregVolumeScale: 0.8 }
+        : { ...row.prescription, items: [{ ...row.prescription.items[0]!, reps: 12 }] },
+    }));
+    const results = await Promise.all([client, otherTab].map((db, index) =>
+      applyPrescriptionUpdates(db, userId, blockId, [updates[index]!])));
+    expect(results.map((result) => result.updated).sort()).toEqual([0, 1]);
+    const winner = results.findIndex((result) => result.updated === 1);
+    expect(results[winner]!.error).toBeUndefined();
+    expect(results[1 - winner]!.error).toBeTruthy();
+    const stored = await client.from("planned_sessions").select("prescription").eq("id", inserted.data!.id).single();
+    expect(stored.error).toBeNull();
+    expect(stored.data?.prescription).toEqual(updates[winner]!.prescription);
+    const retry = await applyPrescriptionUpdates(otherTab, userId, blockId, [updates[1 - winner]!]);
+    expect(retry.updated).toBe(0);
+    expect(retry.error).toBeTruthy();
+    const unchanged = await client.from("planned_sessions").select("prescription").eq("id", inserted.data!.id).single();
+    expect(unchanged.error).toBeNull();
+    expect(unchanged.data).toEqual(stored.data);
   });
 
   afterAll(async () => {

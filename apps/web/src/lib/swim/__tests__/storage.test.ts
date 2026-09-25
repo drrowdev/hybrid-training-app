@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { RPC_SAVE_RETRY_MESSAGE } from "@/lib/supabase/rpc-errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   completeSwimWorkout, createSwimPlan, editSwimResult, setSwimPlanStatus,
@@ -20,6 +21,52 @@ const completion = {
 } as unknown as CompleteSwimWorkoutInput;
 
 describe("ADR0079 swimming persistence wrappers", () => {
+  const replacement = {
+    startedOn: "2026-09-25", endsOn: "2026-10-25", definition: {}, state: {}, workouts: [],
+    replaces: { id: "existing-plan", revision: 3 },
+    scheduleReview: { revision: "schedule-revision", requestId: "same-request", acceptOverlap: false },
+    scheduleInput: { goal: "endurance" },
+  } as unknown as CreateSwimPlanInput;
+
+  it.each(["PGRST202", "42883"])("keeps replacement inputs and request identity when the named RPC is absent (%s)", async (code) => {
+    vi.stubEnv("POOL_SWIMMING_ENABLED", "true");
+    const error = { code, message: "Could not find the function public.replace_swim_plan_atomically" };
+    const { db, rpc } = fakeClient(null, error);
+    const input = structuredClone(replacement);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      rpc.mockResolvedValueOnce({ data: true, error: null });
+      await expect(createSwimPlan(db, input)).rejects.toMatchObject({
+        message: RPC_SAVE_RETRY_MESSAGE, cause: error,
+      });
+      expect(input).toEqual(replacement);
+      expect(rpc).toHaveBeenCalledTimes((attempt + 1) * 2);
+    }
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual([
+      "swim_storage_ready", "replace_swim_plan_atomically",
+      "swim_storage_ready", "replace_swim_plan_atomically",
+    ]);
+    expect(rpc.mock.calls[1]).toEqual(rpc.mock.calls[3]);
+    expect(rpc.mock.calls[1]![1]).toMatchObject({
+      p_plan_id: replacement.replaces!.id, p_plan_revision: replacement.replaces!.revision,
+      p_request_id: replacement.scheduleReview!.requestId,
+      p_args: { p_definition: replacement.definition, p_workouts: replacement.workouts },
+    });
+  });
+
+  it.each([
+    { code: "PGRST202", message: "Could not find the function unrelated_function" },
+    { code: "42883", message: "function unrelated_function does not exist" },
+    { code: "42501", message: "replace_swim_plan_atomically denied" },
+  ])("preserves other replacement errors ($code: $message)", async (error) => {
+    vi.stubEnv("POOL_SWIMMING_ENABLED", "true");
+    const { db, rpc } = fakeClient(null, error);
+    rpc.mockResolvedValueOnce({ data: true, error: null });
+    await expect(createSwimPlan(db, replacement)).rejects.toMatchObject({
+      message: `Swimming: ${error.message}`, cause: error,
+    });
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
   it("requires installed storage and setup rollout before creating any rows", async () => {
     vi.stubEnv("POOL_SWIMMING_ENABLED", "false");
     const { db, rpc } = fakeClient(true);

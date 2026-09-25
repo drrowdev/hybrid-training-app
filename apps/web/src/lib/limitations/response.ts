@@ -123,6 +123,7 @@ export type LimitationResponsePlan = {
   updates: Array<{
     id: string;
     prescription: Prescription;
+    expectedPrescription: Prescription;
     expectedCompletedSessionId?: string | null;
   }>;
 };
@@ -404,6 +405,7 @@ export function buildLimitationResponse(
       updates.push({
         id: session.id,
         prescription: { ...session.prescription, items: nextItems },
+        expectedPrescription: session.prescription,
         expectedCompletedSessionId: session.expectedCompletedSessionId,
       });
     }
@@ -427,6 +429,7 @@ export type SelectedLimitationUpdates = {
   updates: Array<{
     id: string;
     prescription: Prescription;
+    expectedPrescription: Prescription;
     expectedCompletedSessionId?: string | null;
   }>;
   swapped: number;
@@ -560,6 +563,7 @@ export function buildSelectedUpdates(
     updates.push({
       id: sessionId,
       prescription: { ...session.prescription, items: nextItems },
+      expectedPrescription: session.prescription,
       expectedCompletedSessionId: session.expectedCompletedSessionId,
     });
   }

@@ -125,6 +125,22 @@ describe("buildLimitationResponse — parity", () => {
 });
 
 describe("buildLimitationResponse — region-blocked accessory swap", () => {
+  it("DC-K4 retains the unchanged full source for both full and selected limitation updates", () => {
+    const source = session({
+      id: "s1", items: [{ movementId: "chinup", kind: "accessory", sets: 4, reps: 8 }],
+    });
+    source.prescription.meta = { editRevision: crypto.randomUUID() };
+    const original = structuredClone(source.prescription);
+    const plan = buildLimitationResponse([source], CATALOG, ctx({ blockedRegions: new Set(["elbow_forearm"]) }));
+    const selected = buildSelectedUpdates([source], plan, new Set([limitationItemKey(source.id, 0)]));
+    for (const updates of [plan.updates, selected.updates]) {
+      expect(updates).toHaveLength(1);
+      expect(updates[0]!.expectedPrescription).toEqual(original);
+      expect(updates[0]!.prescription).not.toEqual(original);
+    }
+    expect(source.prescription).toEqual(original);
+  });
+
   it("swaps an elbow-loading accessory for a safe same-muscle alternative", () => {
     const plan = buildLimitationResponse(
       [

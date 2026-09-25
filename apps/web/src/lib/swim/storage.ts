@@ -7,6 +7,7 @@ import type {
 } from "@hta/db";
 import { requireSwimSetup } from "./capability";
 import { commitTrainingSchedule, scheduleInputHash, type ScheduleReview } from "@/lib/schedule/storage";
+import { isMissingRpc, RPC_SAVE_RETRY_MESSAGE } from "@/lib/supabase/rpc-errors";
 
 export type SwimPlanStatus = "active" | "paused" | "finished" | "archived";
 export type SwimWorkoutStatus = "scheduled" | "started" | "completed" | "skipped";
@@ -52,6 +53,9 @@ export type EditSwimResultInput = Omit<CompleteSwimWorkoutInput, "clientLogId" |
 
 async function rpc<T>(client: SupabaseClient, name: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await client.rpc(name, args);
+  if (name === "replace_swim_plan_atomically" && isMissingRpc(error, name)) {
+    throw new Error(RPC_SAVE_RETRY_MESSAGE, { cause: error });
+  }
   if (error) throw new Error(`Swimming: ${error.message}`, { cause: error });
   if (data === null || data === undefined) throw new Error(`Swimming: ${name} returned no data.`);
   return data as T;
