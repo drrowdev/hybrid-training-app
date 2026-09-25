@@ -127,7 +127,7 @@ export async function rehearseSwimOutcomeCompatibility(
   assert.equal((await sql`SELECT current_database() AS name`)[0]!.name, sql.options.database);
   assert.equal((await sql`SELECT current_user AS actor`)[0]!.actor, "postgres");
   assert.equal((await sql`SELECT count(*)::int AS n FROM auth.users`)[0]!.n, 0);
-  assert.equal(migrations.length, 159);
+  assert.equal(migrations.length, 161);
   const fresh = sql.options.database === "swim_migration_runner_fresh";
   const before = await ledger(sql);
   assert.equal(before.length, fresh ? 159 : 157);

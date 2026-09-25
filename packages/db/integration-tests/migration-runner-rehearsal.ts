@@ -147,7 +147,7 @@ export async function rehearseMigrationRunner(
   for (const name of databases) assert.ok(!original.databases.some((row) => row.datname === name));
   for (const name of fixtureRoles) assert.ok(!original.roles.some((row) => row.rolname === name));
   const migrations = readMigrationFiles(config);
-  assert.equal(migrations.length, 159);
+  assert.equal(migrations.length, 161);
   const stages: string[] = [];
   for (const name of databases) {
     let client: postgres.Sql | undefined;

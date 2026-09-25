@@ -71,21 +71,6 @@ export type SwapActiveResult = PrescriptionSaveResult & {
     bodyweightCapable: boolean;
   };
 
-  export async function loadSwapPrescription(sessionId: string): Promise<PrescriptionSaveResult> {
-    const id = z.string().uuid().parse(sessionId);
-    const { data: { user } } = await getAuthUser();
-    if (!user) return { error: "Not signed in." };
-    const client = await createClient();
-    const planned = await client.from("planned_sessions").select("prescription")
-      .eq("completed_session_id", id).eq("user_id", user.id).maybeSingle();
-    if (planned.error) return { error: planned.error.message };
-    if (planned.data) return { ok: true, prescription: planned.data.prescription };
-    const session = await client.from("sessions").select("prescription")
-      .eq("id", id).eq("user_id", user.id).is("deleted_at", null).maybeSingle();
-    if (session.error) return { error: session.error.message };
-    if (!session.data) return { error: "Workout not found." };
-    return { ok: true, prescription: session.data.prescription ?? { items: [] } };
-  }
   /**
    * Non-blocking warning for a replacement with no load anchor. The swap is
    * still persisted, but stale absolute loads are removed and the user must
@@ -93,6 +78,22 @@ export type SwapActiveResult = PrescriptionSaveResult & {
    */
   warning?: string;
 };
+
+export async function loadSwapPrescription(sessionId: string): Promise<PrescriptionSaveResult> {
+  const id = z.string().uuid().parse(sessionId);
+  const { data: { user } } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+  const client = await createClient();
+  const planned = await client.from("planned_sessions").select("prescription")
+    .eq("completed_session_id", id).eq("user_id", user.id).maybeSingle();
+  if (planned.error) return { error: planned.error.message };
+  if (planned.data) return { ok: true, prescription: planned.data.prescription };
+  const session = await client.from("sessions").select("prescription")
+    .eq("id", id).eq("user_id", user.id).is("deleted_at", null).maybeSingle();
+  if (session.error) return { error: session.error.message };
+  if (!session.data) return { error: "Workout not found." };
+  return { ok: true, prescription: session.data.prescription ?? { items: [] } };
+}
 
 async function loadSwapPrescriptionContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
