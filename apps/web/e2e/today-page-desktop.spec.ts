@@ -153,7 +153,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(page.getByTestId("rest-tomorrow")).toBeVisible();
     // Rest navigation opens the workout; the week owns the schedule link.
     await expect(rest.getByRole("link")).toHaveAttribute("href", /\/app\/sessions\/start\//);
-    await expect(page.getByTestId("today-week-strip").getByRole("link", { name: "Schedule" })).toHaveAttribute("href", "/app/plan");
+    await expect(page.getByTestId("today-week-strip").getByRole("link", { name: "Schedule" })).toHaveAttribute("href", "/app/plan?view=month");
     await expect(rest.getByRole("link", { name: /log freestyle/i })).toHaveCount(0);
     // Removed regressions guarded with toHaveCount(0).
     await expect(rest.locator(".cp-info")).toHaveCount(0);
@@ -185,6 +185,22 @@ test.describe("@desktop today page (Phase 1)", () => {
     const hero = page.getByTestId(`today-card-${seed.todayPlannedId}`);
     await hero.getByRole("button", { name: /^Options for / }).click();
     await expect(hero.getByRole("menuitem", { name: "Skip workout" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    const week = page.getByTestId("today-week-strip");
+    const preview = week.locator(`a[href="#session=${seed.todayPlannedId}"]`);
+    await expect(preview).toHaveAccessibleName(/^Open .+, /);
+    await preview.click();
+    await expect(page.getByTestId("plan-drawer")).toBeVisible();
+    await expect(page.getByTestId("plan-drawer-mark-done")).toBeVisible();
+    await expect(page.getByTestId("plan-drawer-swap")).toBeVisible();
+    await expect(page.getByTestId("plan-drawer-skip")).toBeVisible();
+    await expect(page.getByTestId("plan-drawer-notes")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("plan-drawer")).toHaveCount(0);
+    await week.getByRole("link", { name: "Schedule" }).click();
+    await expect(page).toHaveURL(/\/app\/plan\?view=month/);
+    await expect(page.getByTestId("plan-month-grid")).toBeVisible();
   });
 
   test("Today regressions — removed surfaces stay removed", async ({
@@ -207,6 +223,8 @@ test.describe("@desktop today page (Phase 1)", () => {
 
     // Only one eligible prompt can be shown.
     expect(await page.getByTestId("today-prompt").count()).toBeLessThanOrEqual(1);
+    await expect(page.getByTestId("bw-nudge")).toHaveCount(0);
+    await expect(page.getByRole("spinbutton", { name: /bodyweight/i })).toHaveCount(0);
     // 2) "Up next this week" section is gone — handled by /app/plan.
     await expect(page.getByRole("heading", { name: /up next this week/i })).toHaveCount(0);
     // 3) The legacy "How recovered you are" heading (RegionFreshnessCard

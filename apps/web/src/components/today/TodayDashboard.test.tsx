@@ -6,6 +6,7 @@ import { WorkoutExercises, workoutDose } from "./WorkoutExercises";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/planner/actions", () => ({ movePlannedSession: vi.fn(), previewPlannedMove: vi.fn(), skipPlannedSession: vi.fn() }));
 vi.mock("@/lib/swim/actions", () => ({ applySwimDateEdit: vi.fn(), previewSwimDateEdit: vi.fn(), skipSwimWorkout: vi.fn() }));
+vi.mock("@/components/plan/ThisWeekRail", () => ({ ThisWeekRail: () => null }));
 
 const lift: TodayWorkout = {
   id: "lift", date: "2026-09-25", title: "Lower B", program: "Upper / lower", programId: "strength",
@@ -67,9 +68,51 @@ describe("Today presentation", () => {
       expect(html.indexOf('data-testid="decision"') < html.indexOf('data-testid="today-card-lift"')).toBe(placement === "before-workouts");
     }
   });
+  it("opens each planned workout in its own preview, including two workouts on one day", () => {
+    const html = renderToStaticMarkup(<TodayWeek today="2026-09-25"
+      workouts={[lift, { ...lift, id: "evening", title: "Upper A" }, { ...lift, id: "single", date: "2026-09-26" }]}
+      previewIds={["lift", "evening", "single"]} multiplePrograms={false} />);
+    expect(html.match(/href="#session=/g)).toHaveLength(3);
+    for (const id of ["lift", "evening", "single"]) expect(html).toContain(`href="#session=${id}"`);
+    expect(html).toContain('aria-label="Open Upper A, Friday 25 Sept"');
+    expect(html).not.toContain('href="/app/sessions/start/');
+    expect(html.match(/<a /g)).toHaveLength(4);
+    expect(html).toContain('href="/app/plan?view=month"');
+  });
+  it("preserves overview and logged destinations for workouts without a planned drawer", () => {
+    const html = renderToStaticMarkup(<TodayWeek today="2026-09-25"
+      workouts={[swim, { ...lift, id: "quick", href: "/app/sessions/quick", done: true }]} multiplePrograms />);
+    expect(html).toContain(`href="${swim.href}"`);
+    expect(html).toContain('href="/app/sessions/quick"');
+    expect(html).not.toContain('href="#session=');
+  });
   it("preserves range doses and spoken reps without presenting a fixed count", () => {
     expect(workoutDose([{ movementId: "lift", kind: "back_off", sets: 5, reps: 8, setRange: { min: 3, max: 5 }, repRange: { min: 8, max: 10 } }]))
       .toEqual({ text: "3–5 × 8–10", spoken: "3 to 5 sets of 8 to 10 reps" });
+  });
+  it("counts aggregated and per-set prescriptions identically in the card and shared drawer", () => {
+    for (const items of [
+      [{ movementId: "squat", movementName: "Squat", kind: "main" as const, sets: 4, reps: 5 }],
+      Array.from({ length: 4 }, () => ({ movementId: "squat", movementName: "Squat", kind: "main" as const, sets: 1, reps: 5 })),
+    ]) {
+      for (const detailed of [false, true]) {
+        const html = renderToStaticMarkup(<WorkoutExercises items={items} detailed={detailed} />);
+        expect(html).toContain('aria-label="4 sets of 5 reps"');
+        expect(html.match(/data-testid="prescription-value"/g)).toHaveLength(1);
+      }
+    }
+  });
+  it("retains warm-ups and each differing set load in drawer rows", () => {
+    const items = [
+      { movementId: "squat", movementName: "Squat", kind: "warmup" as const, sets: 1, reps: 5, targetWeightKg: 40 },
+      { movementId: "squat", movementName: "Squat", kind: "main" as const, sets: 2, reps: 5, percentTm: 70 },
+      { movementId: "squat", movementName: "Squat", kind: "main" as const, sets: 1, reps: 5, percentTm: 80 },
+    ];
+    const html = renderToStaticMarkup(<WorkoutExercises items={items} detailed />);
+    expect(html).toContain('aria-label="1 set of 5 reps, 40 kg"');
+    expect(html).toContain('aria-label="2 sets of 5 reps, 70% TM"');
+    expect(html).toContain('aria-label="1 set of 5 reps, 80% TM"');
+    expect(renderToStaticMarkup(<WorkoutExercises items={items} />)).toContain('aria-label="3 sets of 5 reps"');
   });
   it("keeps every rehab variant and its cue, alongside labelled supersets", () => {
     const circuit = { id: "pair", name: "Superset", size: 2, rounds: 3, position: 0 };

@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { ActiveBlock, PlannedDay } from "@/lib/planner/queries";
 import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
 import { loadScheduleSessionLinks } from "@/lib/schedule/session-links";
-import { loadTodayWeek, plannedTodayWorkout } from "./workouts";
+import { loadTodayWeek, plannedTodayWorkout, plannedWeekSession } from "./workouts";
 
 vi.mock("@/lib/planner/queries", () => ({ archetypeDisplayName: () => "Strength plan" }));
 vi.mock("@/lib/sessions/queries", () => ({ summariseSessionSets: vi.fn() }));
@@ -27,6 +27,22 @@ beforeEach(() => {
   vi.mocked(loadAvailableTrainingSchedule).mockResolvedValue(null);
 });
 describe("Today workout adapters", () => {
+  it("retains the shared drawer's notes, slot, prescription and session state", () => {
+    const input = { ...planned, notes: "Keep the last set controlled.", completedSessionId: "started",
+      prescription: { items: [{ movementId: "squat", kind: "main" as const, sets: 3, reps: 5 }] } };
+    expect(plannedWeekSession(input, [block])).toMatchObject({
+      id: planned.id, date: planned.date, title: "Squat", slot: "am", items: input.prescription.items,
+      notes: input.notes, completedSessionId: "started", inProgress: true, done: false,
+      isCardio: false, isStrength: true, isRehab: false, skipped: false,
+    });
+    expect(plannedWeekSession({ ...input, completedAt: planned.date }, [block]))
+      .toMatchObject({ done: true, inProgress: false });
+    expect(plannedWeekSession({ ...input, role: "rehab", skippedAt: planned.date }, [block]))
+      .toMatchObject({ isRehab: true, isStrength: false, skipped: true });
+    expect(plannedWeekSession({ ...planned, prescription: { items: [
+      { movementId: "run", kind: "cardio_z2", durationMin: 30 },
+    ] } }, [block])).toMatchObject({ isCardio: true, isStrength: false });
+  });
   it("preserves start, resume, completed and trash destinations", () => {
     expect(plannedTodayWorkout(planned, [block], []).href).toBe("/app/sessions/start/workout");
     const started = plannedTodayWorkout({ ...planned, completedSessionId: "session" }, [block], []);

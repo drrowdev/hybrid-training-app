@@ -5,6 +5,7 @@ import type { SwimWorkoutView } from "@/lib/swim/view-types";
 import { addDaysToYmd, mondayOfYmd } from "@/lib/dates";
 import { WorkoutOptions, type WorkoutOptionsInput } from "./WorkoutOptions";
 import { SwimExercises, WorkoutExercises } from "./WorkoutExercises";
+import { ThisWeekRail, type ThisWeekRailProps } from "@/components/plan/ThisWeekRail";
 import styles from "./Today.module.css";
 
 export type TodayWorkout = {
@@ -86,34 +87,44 @@ function WorkoutCard({ workout, expanded, multiple, pinned }: {
   </section>;
 }
 
-export function TodayWeek({ today, workouts, multiplePrograms }: { today: string; workouts: TodayWeekWorkout[]; multiplePrograms: boolean }) {
+export function TodayWeek({ today, workouts, multiplePrograms, previewIds = [] }: {
+  today: string; workouts: TodayWeekWorkout[]; multiplePrograms: boolean; previewIds?: readonly string[];
+}) {
   const monday = mondayOfYmd(today);
+  const previews = new Set(previewIds);
   return <section className={styles.week} data-testid="today-week-strip" aria-label="This week">
-    <div className={styles.weekHeader}><h2>This week</h2><Link href="/app/plan">Schedule</Link></div>
+    <div className={styles.weekHeader}><h2>This week</h2><Link href="/app/plan?view=month">Schedule</Link></div>
     <ol className={styles.days}>{Array.from({ length: 7 }, (_, index) => {
       const date = addDaysToYmd(monday, index);
       const entries = workouts.filter((workout) => workout.date === date);
+      const day = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(date));
       return <li className={styles.day} key={date} aria-current={date === today ? "date" : undefined}>
-        <Link className={styles.dayLink} href={entries.length === 1 ? entries[0]!.href : "/app/plan"}>
+        <div className={styles.dayRow}>
         <div><strong>{date === today ? "Today" : new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(date))}</strong>
           <time dateTime={date}>{new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(date))}</time></div>
-        <div className={styles.dayWorkouts}>{entries.length ? entries.map((workout) =>
-          <span className={styles.dayWorkout} key={workout.id} style={color(workout)}>
+        <div className={styles.dayWorkouts}>{entries.length ? entries.map((workout) => {
+          const preview = previews.has(workout.id);
+          // Native anchors notify the shared drawer's hashchange listener.
+          const WorkoutLink = preview ? "a" : Link;
+          return <WorkoutLink className={styles.dayWorkout} key={workout.id} style={color(workout)}
+            href={preview ? `#session=${workout.id}` : workout.href} aria-label={`Open ${workout.title}, ${day}`}>
             {multiplePrograms && <><span aria-hidden="true" className={styles.dot} /><span className={styles.sr}>{workout.kind ?? "Training"}: </span></>}
             <span>{workout.title}</span>
             {workout.done && <span className={styles.done}><span aria-hidden="true">✓</span><span className={styles.sr}>Completed</span></span>}
-          </span>) : <span className={styles.rest}>Rest</span>}</div>
-        </Link>
+          </WorkoutLink>;
+        }) : <span className={styles.rest}>Rest</span>}</div>
+        </div>
       </li>;
     })}</ol>
   </section>;
 }
 
-export function TodayDashboard({ today, workouts, weekWorkouts, hasProgram, multiplePrograms, prompt, promptPlacement, quickWorkout, next }: {
+export function TodayDashboard({ today, workouts, weekWorkouts, weekPreview, hasProgram, multiplePrograms, prompt, promptPlacement, quickWorkout, next }: {
   today: string; workouts: TodayWorkout[]; weekWorkouts: TodayWeekWorkout[];
   hasProgram: boolean; multiplePrograms: boolean; prompt: ReactNode;
   promptPlacement?: "before-workouts" | "after-workouts";
   quickWorkout: ReactNode; next?: TodayWorkout;
+  weekPreview?: ThisWeekRailProps;
 }) {
   const ordered = [...workouts].sort((a, b) => Number(a.done) - Number(b.done));
   const first = ordered.find((workout) => !workout.done);
@@ -141,7 +152,9 @@ export function TodayDashboard({ today, workouts, weekWorkouts, hasProgram, mult
       </div>
       {promptPlacement === "after-workouts" && promptNode}
       {quickWorkout}
-    </div>{hasProgram && <TodayWeek today={today} workouts={weekWorkouts} multiplePrograms={multiplePrograms} />}</div>
+    </div>{hasProgram && <TodayWeek today={today} workouts={weekWorkouts} multiplePrograms={multiplePrograms}
+      previewIds={weekPreview?.sessions.map((session) => session.id)} />}</div>
+    {hasProgram && weekPreview && <ThisWeekRail {...weekPreview} showRail={false} />}
     {pinned && <div className={styles.dock}><Link href={pinned.href} className="cp-btn primary"
       data-testid="today-mobile-cta" data-session-state={pinned.state}>{pinned.action}</Link></div>}
   </div>;

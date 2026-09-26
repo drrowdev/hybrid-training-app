@@ -768,7 +768,7 @@ test.describe("Modular program builder", () => {
             } else {
               await expect(recording).toBeVisible();
               await expect(recording).toContainText("Completed");
-              await expect(recording.locator("time")).toHaveAttribute("datetime", recordedDate);
+              await expect(recording.locator("xpath=ancestor::li").locator("time")).toHaveAttribute("datetime", recordedDate);
             }
           } else {
             const state = label === "Stopped early" ? "stopped_early" : label === "Review recording" ? "needs_review" : "scheduled";
@@ -776,7 +776,7 @@ test.describe("Modular program builder", () => {
             await expect(card.locator(`a[href^="/app/swim/${first.id}?"]`)).toBeVisible();
             const scheduled = week.locator(`a[href^="/app/swim/${first.id}?"]`);
             await expect(scheduled).toBeVisible();
-            await expect(scheduled.locator("time")).toHaveAttribute("datetime", scheduledDate);
+            await expect(scheduled.locator("xpath=ancestor::li").locator("time")).toHaveAttribute("datetime", scheduledDate);
             await expect(scheduled).not.toContainText("Completed");
           }
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -962,8 +962,26 @@ test.describe("Modular program builder", () => {
       await expect(page.getByTestId(`today-card-${todayStrength.id}`)).toBeVisible();
       await expect(page.getByTestId(`today-card-${todaySwim.id}`)).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await expect(page.getByTestId("bw-nudge")).toHaveCount(0);
+      const todayWeek = page.getByTestId("today-week-strip");
+      const strengthPreview = todayWeek.locator(`a[href="#session=${todayStrength.id}"]`);
+      await expect(strengthPreview).toHaveAccessibleName(/^Open .+, /);
+      expect((await strengthPreview.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await strengthPreview.click();
+      await expect(page.getByTestId("plan-drawer")).toBeVisible();
+      await expect(page.getByTestId("plan-drawer-notes")).toBeVisible();
+      await page.getByTestId("plan-drawer-close").click();
+      await expect(page.getByTestId("plan-drawer")).toHaveCount(0);
+      await expect(todayWeek.locator(`a[href^="/app/swim/${todaySwim.id}?"]`)).toBeVisible();
       await page.getByRole("region", { name: "This week", exact: true }).getByRole("link", { name: "Schedule", exact: true }).click();
-      await expect(page).toHaveURL(/\/app\/plan$/);
+      await expect(page).toHaveURL(/\/app\/plan\?view=month$/);
+      const month = page.getByTestId("plan-month-grid");
+      await expect(month).toBeVisible();
+      await expect(month.locator(`a[href="#session=${todayStrength.id}"]`)).toBeVisible();
+      await expect(month.locator(`a[href^="/app/swim/${todaySwim.id}?"]`)).toBeVisible();
+      await month.locator(`a[href="#session=${todayStrength.id}"]`).click();
+      await expect(page.getByTestId("plan-drawer")).toBeVisible();
+      await page.getByTestId("plan-drawer-close").click();
       const navigation = page.getByRole("main").getByRole("navigation", { name: "Programs", exact: true });
       await expect(navigation.locator(`a[href="/app/plan?block=${strengthId}"]`)).toBeVisible();
       await expect(navigation.locator(`a[href="/app/plan?block=${runningId}"]`)).toBeVisible();

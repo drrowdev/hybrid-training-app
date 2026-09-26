@@ -612,7 +612,7 @@ describe("SessionDrawer — drag handle + sheet markup", () => {
     expect(done).toContain('data-testid="plan-drawer-edit"');
   });
 
-  it("moves optional text beside the set number and keeps the value clean", async () => {
+  it("keeps optional sets distinct from required work without numbering every set", async () => {
     const { SessionDrawer } = await import("./PlanRedesign");
     const items = Array.from({ length: 5 }, (_, index) => ({
       movementId: "ohp",
@@ -639,26 +639,11 @@ describe("SessionDrawer — drag handle + sheet markup", () => {
         startSessionAction={noop}
       />,
     );
-    expect(html).toContain('class="set-row optional-set-row"');
-    expect(html).toContain(
-      '<span class="n">4<span class="optional-marker"> · optional</span></span>',
-    );
-    expect(html).toContain(
-      '<span class="v"><span>65% 1RM × 8–10</span></span>',
-    );
-    expect(html).not.toContain("65% 1RM × 8–10 · optional");
-    expect(html).toContain("overflow-wrap: anywhere");
-    // The name column must stay able to shrink AND the value column must not be
-    // an intrinsic `auto` track, or a long value squeezes the movement name to
-    // zero width and `overflow-wrap: anywhere` breaks it one letter per line.
-    expect(html).toContain("grid-template-columns: 36px minmax(0, 1fr) minmax(0, auto)");
-    expect(html).not.toMatch(/\.set-row \.v \{[^}]*white-space: nowrap/);
-    expect(html).toMatch(
-      /@media\s*\(\s*max-width:\s*520px\s*\)[\s\S]*?optional-set-row[\s\S]*?grid-template-columns:\s*88px/,
-    );
-    expect(html).not.toMatch(
-      /\.optional-marker\s*\{[^}]*opacity:/,
-    );
+    expect(html.match(/data-optional="true"/g)).toHaveLength(1);
+    expect(html).toContain('aria-label="3 sets of 8 to 10 reps, 65% 1RM"');
+    expect(html).toContain('aria-label="2 sets of 8 to 10 reps, 65% 1RM"');
+    expect(html).not.toContain('data-testid="plan-drawer-range-pill"');
+    expect(html).not.toMatch(/data-testid="prescription-value"[^>]*aria-label="[^"]*optional/i);
   });
 });
 

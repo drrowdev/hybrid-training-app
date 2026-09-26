@@ -77,7 +77,7 @@ function drawer(items: PrescriptionItem[]) {
 describe("SessionDrawer — a reserved conditioning day", () => {
   it("adds no detail line for a day with nothing to detail", () => {
     const html = drawer([OPEN_DAY]);
-    expect(html).toContain('data-testid="plan-drawer-cardio-0"');
+    expect(html).toContain('data-testid="workout-detail-preview"');
     expect(html).not.toContain("Detail");
     expect(html).not.toMatch(/>cardio</);
   });
@@ -91,9 +91,9 @@ describe("SessionDrawer — a reserved conditioning day", () => {
 
   it("still shows a real protocol and duration", () => {
     const html = drawer([PRESCRIBED]);
-    expect(html).toContain("Protocol");
-    expect(html).toContain("4 × 4 min @ 90–95% HRmax, 3 min easy recovery");
-    expect(html).toContain('data-testid="plan-drawer-cardio-duration"');
+    expect(html).toContain("4 × 4 min");
+    expect(html).toContain("90–95% HRmax");
+    expect(html).toContain("3 min easy recovery");
     expect(html).toContain("35 min");
   });
 });

@@ -1,0 +1,12 @@
+.toggle { display: inline-flex; justify-self: start; background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 2px; }
+.toggle a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 12px; border-radius: 6px; color: var(--cp-text-muted); text-decoration: none; font-size: 14px; }
+.toggle a[aria-current="page"] { background: var(--cp-surface-soft); color: var(--cp-text); font-weight: 600; }
+.month { --cp-font-mono: var(--cp-font-sans, sans-serif); min-width: 0; }
+.month :global(.plan-month-grid) { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; overflow: hidden; }
+.workout { --workout-color: var(--cp-accent); display: flex; align-items: center; gap: 3px; min-height: 44px; padding: 5px 3px; border-left: 2px solid var(--workout-color); border-radius: 4px; background: color-mix(in srgb, var(--workout-color) 12%, transparent); color: var(--cp-text); text-decoration: none; font-size: 12px; }
+.workout[data-kind="running"] { --workout-color: var(--cp-warning); }
+.workout[data-kind="swimming"] { --workout-color: var(--cp-cardio); }
+.workout[data-kind="hybrid"] { --workout-color: var(--cp-program-hybrid); }
+.workout > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.workout:hover { background: color-mix(in srgb, var(--workout-color) 22%, transparent); }
+.workout:focus-visible, .toggle a:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: -2px; }

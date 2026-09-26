@@ -5,7 +5,7 @@ describe("Today prompt priority (DC-K4, DC-V1)", () => {
   const kinds: TodayPromptKind[] = [
     "race-recovery", "race-check-in", "taper", "active-limitation",
     "training-max", "season", "next-program", "program-recommendation",
-    "bodyweight-only", "bodyweight",
+    "bodyweight-only",
   ];
   it("returns no prompt when nothing is eligible", () => {
     expect(selectTodayPrompt({})).toBeNull();

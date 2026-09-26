@@ -1,6 +1,6 @@
 import { selectTodayPrompt } from "@hta/domain";
 import { TodayDashboard, type TodayWorkout } from "@/components/today/TodayDashboard";
-import { loadTodaySwims, loadTodaySessionSummaries, loadTodayWeek, plannedTodayWorkout } from "@/lib/today/workouts";
+import { loadTodaySwims, loadTodaySessionSummaries, loadTodayWeek, plannedTodayWorkout, plannedWeekSession } from "@/lib/today/workouts";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   archetypeDisplayName,
@@ -15,9 +15,7 @@ import { FRESHNESS_REGION_LABELS, getRegionFreshness, type FreshnessConflict } f
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
-import { dismissBwBanner, dismissBwNudge } from "@/lib/profile/actions";
-import { BodyweightNudge } from "@/components/today/BodyweightNudge";
-import { recordDailyCheckIn } from "@/lib/wellness/actions";
+import { dismissBwBanner } from "@/lib/profile/actions";
 import { attributeLimitation, buildLimitationResponse } from "@/lib/limitations/response";
 import { MUSCLE_FROM_DB_ENUM, MUSCLE_LABELS } from "@/lib/muscle/muscle-groups";
 import { deriveLimitationsContext } from "@/lib/planner/limitations-context";
@@ -31,7 +29,10 @@ import {
   repeatRecentSession,
   generateQuickStrengthSession,
   generateQuickHyroxSession,
+  updatePlannedSessionNotes,
+  markExternalCardioComplete,
 } from "@/lib/sessions/actions";
+import { movePlannedSession, skipPlannedSession, unskipPlannedSession, startSessionFromPlan } from "@/lib/planner/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
 import { getLimitationTodaySummary } from "@/lib/limitations/today-summary";
 import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
@@ -74,7 +75,7 @@ export default async function TodayPage() {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, units, season_planning_enabled",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_banner_dismissed_at, units, season_planning_enabled",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -83,7 +84,7 @@ export default async function TodayPage() {
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
   const activePrograms = getActiveBlocks();
 
-  const [{ data: todaySessions, error: todaySessionsError }, plannedToday, freshness, activeBlocks, tmRows, { data: activeLimitationsRaw, error: limitationsError }, quickRepeatRecent, limitationSummary, programRecs, lastWeight] = await Promise.all([
+  const [{ data: todaySessions, error: todaySessionsError }, plannedToday, freshness, activeBlocks, tmRows, { data: activeLimitationsRaw, error: limitationsError }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -105,11 +106,9 @@ export default async function TodayPage() {
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
     getPendingProgramRecommendations(supabase, userId),
-    supabase.from("wellness").select("date").eq("user_id", userId).not("bodyweight_kg", "is", null)
-      .order("date", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (todaySessionsError) throw new Error("Today\u0027s workouts could not be loaded.", { cause: todaySessionsError });
-  if (limitationsError || lastWeight.error) throw new Error("Couldn't load today's prompts.", { cause: limitationsError ?? lastWeight.error });
+  if (limitationsError) throw new Error("Couldn't load today's prompts.", { cause: limitationsError });
 
   const activeLimitations: ActiveLimitationSummary[] = (
     activeLimitationsRaw ?? []
@@ -566,8 +565,6 @@ export default async function TodayPage() {
     "next-program": !!endingNudge && !!(endingNudge.suggestion || endingNudge.realization),
     "program-recommendation": programRecs.length > 0,
     "bodyweight-only": !hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && !profile?.bw_banner_dismissed_at,
-    bodyweight: (!lastWeight.data || lastWeight.data.date <= addDaysToYmd(todayIso, -7)) &&
-      (!profile?.bw_nudge_hidden_until || Date.parse(profile.bw_nudge_hidden_until) <= new Date().getTime()),
   });
   const programNames = Object.fromEntries(activeBlocks.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)]));
   let prompt: React.ReactNode = null;
@@ -594,11 +591,17 @@ export default async function TodayPage() {
       programNames={programNames} dismissAction={dismissProgramRecommendation} />; break;
     case "bodyweight-only": prompt = <BodyweightOnlyBanner dismissedAt={profile?.bw_banner_dismissed_at ?? null}
       dismissBwBannerAction={dismissBwBanner} />; break;
-    case "bodyweight": prompt = <BodyweightNudge todayYmd={todayIso} recordDailyCheckIn={recordDailyCheckIn}
-      dismissedUntilIso={profile?.bw_nudge_hidden_until ?? null} dismissBwNudgeAction={dismissBwNudge}
-      snoozeUntil={ymdToUtc(addDaysToYmd(todayIso, 1), timezone).toISOString()} />; break;
   }
   return <TodayDashboard today={todayIso} workouts={workouts} weekWorkouts={weekWorkouts}
+    weekPreview={{
+      sessions: plannedDaysAll.filter((planned) => planned.role !== "rest").map((planned) => plannedWeekSession(planned, activeBlocks)),
+      today: todayIso, currentWeekIndex: computedWeekIndex ?? -1,
+      weeks: Math.max(1, ...activeBlocks.map((block) => block.weeks)),
+      logHrefBase: "/app/sessions/start",
+      moveAction: movePlannedSession, skipAction: skipPlannedSession, unskipAction: unskipPlannedSession,
+      updateNotesAction: updatePlannedSessionNotes, startSessionAction: startSessionFromPlan,
+      markCardioDoneAction: markExternalCardioComplete,
+    }}
     hasProgram={activeBlocks.length > 0 || swims.hasProgram} multiplePrograms={activeBlocks.length + swims.activeCount > 1}
     next={next} prompt={prompt} promptPlacement={selectedPrompt?.placement}
     quickWorkout={<QuickWorkoutCard variant={workouts.length ? "planned" : "rest"} recent={quickRepeatRecent}
