@@ -3,13 +3,14 @@
 import { useRef, useState, useTransition } from "react";
 import { previewTrainingRestore, type PlannedMovePreview } from "@/lib/planner/actions";
 import type { ScheduleReview } from "@/lib/schedule/storage";
+import type { ActionFailure } from "@/lib/action-result";
 
 export function ScheduleRestoreButton({ kind, id, label, testId, onRestore }: {
   kind: "block" | "workout";
   id: string;
   label: string;
   testId: string;
-  onRestore: (review: ScheduleReview) => Promise<void>;
+  onRestore: (review: ScheduleReview) => Promise<void | ActionFailure>;
 }) {
   const [preview, setPreview] = useState<PlannedMovePreview | null>(null);
   const [acceptOverlap, setAcceptOverlap] = useState(false);
@@ -23,14 +24,17 @@ export function ScheduleRestoreButton({ kind, id, label, testId, onRestore }: {
     startTransition(async () => {
       try {
         const review = preview ?? await previewTrainingRestore({ kind, id });
+        if (review.error !== undefined) { setError(review.error); return; }
         if (!preview) {
           setPreview(review);
           setAcceptOverlap(false);
           if (review.overlaps.length) return;
         }
-        await onRestore({ revision: review.revision, requestId: review.requestId, acceptOverlap });
+        const result = await onRestore({ revision: review.revision, requestId: review.requestId, acceptOverlap });
+        if (result?.error) setError(result.error);
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Couldn't restore this item. Try again.");
+        console.error("Couldn't restore this item.", caught);
+        setError("Couldn't restore this item. Try again.");
       } finally { busy.current = false; }
     });
   }

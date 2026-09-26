@@ -175,6 +175,27 @@ describe("DC-R5 authoritative independent program reads", () => {
     expect((await getTodayPlannedSessions()).map((workout) => workout.id)).toEqual([id(11), id(21), id(31)]);
   });
 
+  it("uses the linked session's account-local performed date without moving or completing an off-plan repeat's planned day", async () => {
+    vi.setSystemTime(new Date("2026-09-26T12:00:00Z"));
+    tables.profiles = [{ id: "owner", timezone: "Pacific/Kiritimati" }];
+    tables.planned_sessions = [
+      planned(11, 1, 4, { completed_session_id: id(101) }),
+      planned(21, 2, 4),
+      planned(31, 3, 5),
+    ];
+    tables.sessions = [
+      { id: id(101), user_id: "owner", performed_at: "2026-09-25T12:30:00Z", completed_at: "2026-09-25T13:00:00Z", deleted_at: null },
+      { id: id(102), user_id: "owner", title: "Workout 21", performed_at: "2026-09-25T12:30:00Z", completed_at: "2026-09-25T13:00:00Z", deleted_at: null },
+    ];
+    // At this instant the account is on Sunday: a Saturday performance is not today's workout.
+    expect(await getTodayPlannedSessions()).toEqual([]);
+    vi.setSystemTime(new Date("2026-09-25T23:00:00Z"));
+    const today = await getTodayPlannedSessions();
+    expect(today.map((row) => row.id)).toEqual([id(11), id(31)]);
+    expect(today[0]).toMatchObject({ date: "2026-09-25", performedDate: "2026-09-26", completedSessionId: id(101) });
+    expect(tables.planned_sessions[1]!.completed_session_id).toBeNull();
+  });
+
   it("sorts the combined future dates before limiting and never recommends rest or retained completed work", async () => {
     tables.planned_sessions = [planned(11, 1, 6), planned(21, 2, 3), planned(31, 3, 2),
       planned(12, 1, 2, { role: "rest" }), planned(22, 2, 2, { skipped_at: "2026-09-22T00:00:00Z" }),

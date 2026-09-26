@@ -16,6 +16,7 @@
  */
 import { useState, useTransition } from "react";
 import type { skipPlannedSession } from "@/lib/planner/actions";
+import { actionResult } from "@/lib/action-result";
 
 type Action = typeof skipPlannedSession;
 
@@ -30,7 +31,8 @@ export function SkipSessionForm({
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   if (!open) {
     return (
@@ -104,12 +106,15 @@ export function SkipSessionForm({
           type="button"
           className="cp-btn primary"
           data-testid={`skip-confirm-${plannedId}`}
+          disabled={pending}
           onClick={() => {
             const fd = new FormData();
             fd.set("id", plannedId);
             if (reason.trim().length > 0) fd.set("reason", reason.trim());
             startTransition(async () => {
-              await action(fd);
+              setError(null);
+              const result = await actionResult(() => action(fd), "Couldn't skip this workout. Try again.");
+              if (result.error) { setError(result.error); return; }
               setOpen(false);
               setReason("");
             });
@@ -118,6 +123,7 @@ export function SkipSessionForm({
           Skip session
         </button>
       </div>
+      {error && <p role="alert" style={{ color: "var(--cp-danger)" }}>{error}</p>}
     </div>
   );
 }

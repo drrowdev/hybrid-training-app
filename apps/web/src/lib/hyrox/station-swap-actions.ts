@@ -12,6 +12,7 @@
  * station's curated alternatives.
  */
 import { revalidatePath } from "next/cache";
+import { actionResult } from "@/lib/action-result";
 import { z } from "zod";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import {
@@ -44,6 +45,10 @@ function readOverrides(item: PrescriptionItem | undefined): StationOverrides {
 }
 
 export async function setHyroxStationOverride(formData: FormData): Promise<StationSwapResult> {
+  return actionResult(() => setStationOverride(formData), "Couldn't change this station. Try again.");
+}
+
+async function setStationOverride(formData: FormData): Promise<StationSwapResult> {
   const parsed = schema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     stationKey: formData.get("stationKey"),
@@ -64,7 +69,7 @@ export async function setHyroxStationOverride(formData: FormData): Promise<Stati
     .eq("id", plannedSessionId)
     .eq("user_id", user.id)
     .maybeSingle();
-  if (pErr) return { error: pErr.message };
+  if (pErr) throw pErr;
   if (!planned) return { error: "Planned session not found." };
 
   const prescription = (planned.prescription as Prescription | null) ?? { items: [] };

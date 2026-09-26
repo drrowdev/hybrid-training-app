@@ -1,5 +1,7 @@
 "use server";
 
+import { actionResult, UserActionError, type ActionResult, type ActionFailure } from "@/lib/action-result";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -161,18 +163,21 @@ const skipSchema = z.object({
   reason: z.string().max(280).optional(),
 });
 
-export async function skipPlannedSession(formData: FormData): Promise<void> {
-  const parsed = skipSchema.safeParse({
-    id: formData.get("id"),
-    reason: (formData.get("reason") as string | null) ?? undefined,
-  });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid workout.");
-  const supabase = await createClient();
-  const { error } = await commitUnreviewedScheduleChange(supabase, "primary-skip", parsed.data);
-  if (error) throw new Error(error.message);
+export async function skipPlannedSession(formData: FormData): Promise<ActionResult> {
+  return actionResult(async () => {
+    const parsed = skipSchema.safeParse({
+      id: formData.get("id"),
+      reason: (formData.get("reason") as string | null) ?? undefined,
+    });
+    if (!parsed.success) return { error: "Choose a workout to skip." };
+    const supabase = await createClient();
+    const { error } = await commitUnreviewedScheduleChange(supabase, "primary-skip", parsed.data);
+    if (error) return scheduleMutationFailure(error, "Couldn't skip this workout. Try again.");
 
-  revalidatePath("/app");
-  revalidatePath("/app/plan");
+    revalidatePath("/app");
+    revalidatePath("/app/plan");
+    return { ok: true as const };
+  }, "Couldn't skip this workout. Try again.");
 }
 
 const unskipSchema = z.object({ id: z.string().uuid() });
@@ -183,27 +188,44 @@ const moveSchema = z.object({
   dayIndex: z.number().int().min(0).max(6),
 });
 
-export type PlannedMovePreview = SchedulePreview;
+export type PlannedMovePreview = SchedulePreview & { error?: never };
+export type PlannedMovePreviewResult = PlannedMovePreview | ActionFailure;
+
+function scheduleMutationFailure(error: { message: string }, fallback: string): ActionFailure {
+  const messages: Record<string, string> = {
+    "Started workouts cannot be moved.": "A workout on one of these days has already started. Pick another day.",
+    "Only unstarted workouts can be skipped.": "This workout has already started. Open it to finish it.",
+    "Only unstarted workouts in an active program can be restored.": "Only unstarted workouts in an active program can be restored.",
+    "Choose a date in this program.": "Choose a date in this program.",
+    "Workout not found.": "Workout not found.",
+  };
+  console.error(fallback, error);
+  return { error: messages[error.message] ?? fallback };
+}
 
 const restoreInputSchema = z.object({ kind: z.enum(["block", "workout"]), id: z.string().uuid() }).strict();
 
-export async function previewTrainingRestore(input: z.infer<typeof restoreInputSchema>): Promise<PlannedMovePreview> {
+export async function previewTrainingRestore(input: z.infer<typeof restoreInputSchema>): Promise<PlannedMovePreviewResult> {
+  return actionResult(() => trainingRestorePreview(input), "Couldn't review this restore. Try again.");
+}
+
+async function trainingRestorePreview(input: z.infer<typeof restoreInputSchema>): Promise<PlannedMovePreview> {
   const parsed = restoreInputSchema.parse(input);
   const supabase = await createClient();
   const { data: { user } } = await getAuthUser();
-  if (!user) throw new Error("Not signed in.");
+  if (!user) throw new UserActionError("Not signed in.");
   const snapshot = await loadTrainingSchedule(supabase);
   const selected = parsed.kind === "workout" ? await supabase.from("planned_sessions")
     .select("block_id,completed_session_id").eq("id", parsed.id).maybeSingle() : null;
   if (selected?.error) throw new Error("Could not read the workout. Try again.");
-  if (parsed.kind === "workout" && !selected?.data) throw new Error("Workout not found.");
-  if (selected?.data?.completed_session_id) throw new Error("Started workouts cannot be restored.");
+  if (parsed.kind === "workout" && !selected?.data) throw new UserActionError("Workout not found.");
+  if (selected?.data?.completed_session_id) throw new UserActionError("Started workouts cannot be restored.");
   const blockId = parsed.kind === "block" ? parsed.id : selected!.data!.block_id;
   const block = await supabase.from("training_blocks").select("id,started_on,status,deleted_at").eq("id", blockId).maybeSingle();
   if (block.error) throw new Error("Could not read the program. Try again.");
-  if (!block.data) throw new Error("Program not found.");
+  if (!block.data) throw new UserActionError("Program not found.");
   if (parsed.kind === "workout" && (block.data.status !== "active" || block.data.deleted_at)) {
-    throw new Error("Only workouts in an active program can be restored.");
+    throw new UserActionError("Only workouts in an active program can be restored.");
   }
   const planned = await supabase.from("planned_sessions")
     .select("id,week_index,day_index,role,completed_session_id,skipped_at").eq("block_id", blockId);
@@ -232,23 +254,35 @@ export async function previewTrainingRestore(input: z.infer<typeof restoreInputS
   return { revision: snapshot.revision, requestId: scheduleRequestId({ parsed, revision: snapshot.revision }), dates, overlaps: advice.overlaps };
 }
 
-export async function previewPlannedMove(input: z.infer<typeof moveSchema>): Promise<PlannedMovePreview> {
-  const parsed = moveSchema.parse(input);
+export async function previewPlannedMove(input: z.infer<typeof moveSchema>): Promise<PlannedMovePreviewResult> {
+  return actionResult(() => plannedMovePreview(input), "Couldn't check these dates. Try again.");
+}
+
+async function plannedMovePreview(input: z.infer<typeof moveSchema>): Promise<PlannedMovePreview> {
+  const checked = moveSchema.safeParse(input);
+  if (!checked.success) throw new UserActionError("Choose a date in this program.");
+  const parsed = checked.data;
   const supabase = await createClient();
   const snapshot = await loadTrainingSchedule(supabase);
   const planned = await supabase.from("planned_sessions").select("id,block_id,week_index,day_index,slot,completed_session_id")
     .eq("id", parsed.id).maybeSingle();
   if (planned.error) throw new Error("Could not read the workout. Try again.");
-  if (!planned.data) throw new Error("Workout not found.");
-  if (planned.data.completed_session_id) throw new Error("Started workouts cannot be moved.");
+  if (!planned.data) throw new UserActionError("Workout not found.");
+  if (planned.data.completed_session_id) throw new UserActionError("This workout has already started and can't be moved.");
   const [block, target] = await Promise.all([
     supabase.from("training_blocks").select("started_on,weeks").eq("id", planned.data.block_id).eq("status", "active").is("deleted_at", null).maybeSingle(),
     supabase.from("planned_sessions").select("id,completed_session_id").eq("block_id", planned.data.block_id)
       .eq("week_index", parsed.weekIndex).eq("day_index", parsed.dayIndex).eq("slot", planned.data.slot).maybeSingle(),
   ]);
   if (block.error || target.error) throw new Error("Could not check these dates. Try again.");
-  if (!block.data || parsed.weekIndex >= block.data.weeks) throw new Error("Choose a date in this program.");
-  if (target.data?.completed_session_id) throw new Error("Started workouts cannot be moved.");
+  if (!block.data || parsed.weekIndex >= block.data.weeks) throw new UserActionError("Choose a date in this program.");
+  if (target.data?.completed_session_id) {
+    const session = await supabase.from("sessions").select("completed_at").eq("id", target.data.completed_session_id).maybeSingle();
+    if (session.error) throw new Error("Could not read the target workout.", { cause: session.error });
+    throw new UserActionError(session.data?.completed_at
+      ? "That day already has a finished workout. Pick another day."
+      : "That day already has a workout in progress. Pick another day.");
+  }
   const dates = [dayDate(block.data.started_on, parsed.weekIndex, parsed.dayIndex)];
   if (target.data && target.data.id !== planned.data.id) dates.push(dayDate(block.data.started_on, planned.data.week_index, planned.data.day_index));
   const advice = trainingScheduleAdvice(snapshot.entries.filter((entry) => entry.id !== planned.data!.id && entry.id !== target.data?.id), dates);
@@ -256,36 +290,45 @@ export async function previewPlannedMove(input: z.infer<typeof moveSchema>): Pro
 }
 
 /** The transaction moves or swaps both rows; a failed overlap review changes neither. */
-export async function movePlannedSession(formData: FormData): Promise<void> {
-  const parsed = moveSchema.parse({
-    id: formData.get("id"), weekIndex: Number(formData.get("weekIndex")), dayIndex: Number(formData.get("dayIndex")),
-  });
-  const supabase = await createClient();
-  let review;
-  if (formData.has("scheduleReview")) review = scheduleReviewSchema.parse(JSON.parse(String(formData.get("scheduleReview"))));
-  else {
-    const preview = await previewPlannedMove(parsed);
-    if (preview.overlaps.length) throw new Error("This date overlaps scheduled training. Open the workout and choose Move to review both dates.");
-    review = { revision: preview.revision, requestId: preview.requestId, acceptOverlap: false };
-  }
-  const { error } = await commitTrainingSchedule(supabase, "primary-move", parsed, review, parsed);
-  if (error) throw new Error(error.message);
+export async function movePlannedSession(formData: FormData): Promise<ActionResult> {
+  return actionResult(async () => {
+    const checked = moveSchema.safeParse({
+      id: formData.get("id"), weekIndex: Number(formData.get("weekIndex")), dayIndex: Number(formData.get("dayIndex")),
+    });
+    if (!checked.success) return { error: "Choose a date in this program." };
+    const parsed = checked.data;
+    const supabase = await createClient();
+    let review;
+    if (formData.has("scheduleReview")) review = scheduleReviewSchema.parse(JSON.parse(String(formData.get("scheduleReview"))));
+    else {
+      const preview = await previewPlannedMove(parsed);
+      if (preview.error !== undefined) return { error: preview.error };
+      if (preview.overlaps.length) return { error: "This date overlaps scheduled training. Open the workout and choose Move to review both dates." };
+      review = { revision: preview.revision, requestId: preview.requestId, acceptOverlap: false };
+    }
+    const { error } = await commitTrainingSchedule(supabase, "primary-move", parsed, review, parsed);
+    if (error) return scheduleMutationFailure(error, "Couldn't move this workout. Review the dates and try again.");
 
-  revalidatePath("/app");
-  revalidatePath("/app/plan");
+    revalidatePath("/app");
+    revalidatePath("/app/plan");
+    return { ok: true as const };
+  }, "Couldn't move this workout. Review the dates and try again.");
 }
 
-export async function unskipPlannedSession(formData: FormData): Promise<void> {
-  const parsed = unskipSchema.safeParse({ id: formData.get("id") });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid workout.");
-  const supabase = await createClient();
-  const review = formData.has("scheduleReview") ? scheduleReviewSchema.parse(JSON.parse(String(formData.get("scheduleReview")))) : null;
-  const { error } = review
-    ? await commitTrainingSchedule(supabase, "primary-unskip", parsed.data, review, parsed.data)
-    : await commitUnreviewedScheduleChange(supabase, "primary-unskip", parsed.data);
-  if (error) throw new Error(error.message);
-  revalidatePath("/app");
-  revalidatePath("/app/plan");
+export async function unskipPlannedSession(formData: FormData): Promise<ActionResult> {
+  return actionResult(async () => {
+    const parsed = unskipSchema.safeParse({ id: formData.get("id") });
+    if (!parsed.success) return { error: "Choose a workout to restore." };
+    const supabase = await createClient();
+    const review = formData.has("scheduleReview") ? scheduleReviewSchema.parse(JSON.parse(String(formData.get("scheduleReview")))) : null;
+    const { error } = review
+      ? await commitTrainingSchedule(supabase, "primary-unskip", parsed.data, review, parsed.data)
+      : await commitUnreviewedScheduleChange(supabase, "primary-unskip", parsed.data);
+    if (error) return scheduleMutationFailure(error, "Couldn't restore this workout. Try again.");
+    revalidatePath("/app");
+    revalidatePath("/app/plan");
+    return { ok: true as const };
+  }, "Couldn't restore this workout. Try again.");
 }
 
 const setPlannedTimeSchema = z.object({

@@ -20,6 +20,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
 import { addDaysToYmd } from "@/lib/dates";
+import type { ActionResult } from "@/lib/action-result";
+import type { previewPlannedMove } from "@/lib/planner/actions";
 import {
   SessionDrawer,
   sessionToOverdueCandidate,
@@ -352,9 +354,10 @@ export type ThisWeekRailProps = {
   logHrefBase: string;
   heading?: string;
   showRail?: boolean;
-  moveAction: (formData: FormData) => Promise<void> | void;
-  skipAction: (formData: FormData) => Promise<void> | void;
-  unskipAction: (formData: FormData) => Promise<void> | void;
+  previewMoveAction?: typeof previewPlannedMove;
+  moveAction: (formData: FormData) => Promise<ActionResult | void> | void;
+  skipAction: (formData: FormData) => Promise<ActionResult | void> | void;
+  unskipAction: (formData: FormData) => Promise<ActionResult | void> | void;
   updateNotesAction: (
     id: string,
     notes: string,
@@ -391,6 +394,7 @@ export function ThisWeekRail({
   updateNotesAction,
   startSessionAction,
   markCardioDoneAction,
+  previewMoveAction,
 }: ThisWeekRailProps) {
   const router = useRouter();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -452,6 +456,7 @@ export function ThisWeekRail({
           updateNotesAction={updateNotesAction}
           startSessionAction={startSessionAction}
           markCardioDoneAction={markCardioDoneAction}
+          previewMoveAction={previewMoveAction}
         />
       )}
     </>

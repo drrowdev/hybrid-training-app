@@ -74,9 +74,33 @@ describe("Today workout adapters", () => {
     ] });
     vi.mocked(loadScheduleSessionLinks).mockResolvedValue({ workout: "logged" });
     const week = await loadTodayWeek(client, [block], [plannedTodayWorkout(planned, [block], [])]);
-    expect(week).toHaveLength(2);
+    expect(week).toHaveLength(3);
     expect(week[0]).toMatchObject({ date: "2026-09-24", done: true, href: "/app/sessions/logged" });
-    expect(week[1]).toMatchObject({ date: "2026-09-22", done: true, href: "/app/sessions/off-plan" });
+    expect(week[1]).toMatchObject({ date: "2026-09-25", done: false, completedOn: "2026-09-24", href: "/app/sessions/logged" });
+    expect(week[2]).toMatchObject({ date: "2026-09-22", done: true, href: "/app/sessions/off-plan" });
+  });
+  it("labels Friday's linked workout as program work on Saturday and retains Friday without counting it twice", async () => {
+    const linked = { ...planned, weekIndex: 4, completedSessionId: "logged",
+      performedDate: "2026-09-26", completedAt: "2026-09-26T12:00:00Z" };
+    const workout = plannedTodayWorkout(linked, [{ ...block, weeks: 6 }], []);
+    expect(workout).toMatchObject({ date: "2026-09-26", scheduledDate: "2026-09-25",
+      program: "Strength plan", programId: block.id, week: 5, weeks: 6, done: true, href: "/app/sessions/logged" });
+    const week = await loadTodayWeek(client, [block], [workout]);
+    expect(week.filter((row) => row.done)).toHaveLength(1);
+    expect(week.find((row) => row.date === "2026-09-25")).toMatchObject({
+      done: false, completedOn: "2026-09-26", href: "/app/sessions/logged",
+    });
+  });
+  it("does not remove Friday when an off-plan workout repeats the same title on Saturday", async () => {
+    vi.mocked(loadAvailableTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [
+      { id: planned.id, source: "primary", programId: block.id, date: planned.date, title: planned.title, state: "scheduled" },
+      { id: "quick", source: "session", programId: null, date: "2026-09-26", title: planned.title, state: "completed" },
+    ] });
+    const week = await loadTodayWeek(client, [block], [plannedTodayWorkout(planned, [block], [])]);
+    expect(week).toHaveLength(2);
+    expect(week[0]).toMatchObject({ date: "2026-09-25", done: false, programId: block.id });
+    expect(week[1]).toMatchObject({ date: "2026-09-26", done: true, program: "Quick workout", programId: null });
+    expect(week.some((row) => row.completedOn)).toBe(false);
   });
   it("retains standalone swim outcome status rather than native schedule status", async () => {
     vi.mocked(loadAvailableTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [

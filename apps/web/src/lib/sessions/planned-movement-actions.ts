@@ -15,6 +15,7 @@
  * service role). Each returns the new prescription so the client can repaint.
  */
 import { revalidatePath } from "next/cache";
+import { actionResult } from "@/lib/action-result";
 import { z } from "zod";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -65,7 +66,7 @@ async function loadPlannedForEdit(
     .eq("id", plannedSessionId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (error) return { error: error.message };
+  if (error) throw error;
   if (!data) return { error: "Planned session not found." };
   const prescription = (data.prescription as Prescription | null) ?? { items: [] };
   const conflict = loadedPrescriptionConflict(prescription, expectedRevision);
@@ -103,6 +104,10 @@ const removeMovementSchema = z.object({
 });
 
 export async function removePlannedMovement(formData: FormData): Promise<PlannedEditResult> {
+  return actionResult(() => removeMovement(formData), "Couldn't remove this movement. Try again.");
+}
+
+async function removeMovement(formData: FormData): Promise<PlannedEditResult> {
   const parsed = removeMovementSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     movementId: formData.get("movementId"),
@@ -160,6 +165,10 @@ const swapMovementSchema = z.object({
 });
 
 export async function swapPlannedMovement(formData: FormData): Promise<PlannedEditResult> {
+  return actionResult(() => swapMovement(formData), "Couldn't swap this movement. Try again.");
+}
+
+async function swapMovement(formData: FormData): Promise<PlannedEditResult> {
   const parsed = swapMovementSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     movementId: formData.get("movementId"),
@@ -199,9 +208,9 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
       .maybeSingle(),
   ]);
   if ("error" in loaded) return loaded;
-  if (mErr) return { error: mErr.message };
-  if (tmErr) return { error: tmErr.message };
-  if (profileErr) return { error: profileErr.message };
+  if (mErr) throw mErr;
+  if (tmErr) throw tmErr;
+  if (profileErr) throw profileErr;
   if (!newMov) return { error: "Replacement movement not found." };
 
   const oneRm = Number(
@@ -212,7 +221,8 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
     loadContext = getMovementSwapLoadContext(loaded.prescription, parsed.data.movementId,
       parsed.data.newMovementId, Number.isFinite(oneRm) && oneRm > 0, { rehab: parsed.data.rehab });
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Could not read this workout's load settings." };
+    console.error("Could not read this workout's load settings.", error);
+    return { error: "Could not read this workout's load settings." };
   }
   const { replacementHasTrainingMax } = loadContext;
   const isRehabSwap = parsed.data.rehab === true;
@@ -279,6 +289,10 @@ const addMovementSchema = z.object({
 });
 
 export async function addPlannedMovement(formData: FormData): Promise<PlannedEditResult> {
+  return actionResult(() => addMovement(formData), "Couldn't add this movement. Try again.");
+}
+
+async function addMovement(formData: FormData): Promise<PlannedEditResult> {
   const parsed = addMovementSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     movementId: formData.get("movementId"),
@@ -300,7 +314,7 @@ export async function addPlannedMovement(formData: FormData): Promise<PlannedEdi
       .maybeSingle(),
   ]);
   if ("error" in loaded) return loaded;
-  if (mErr) return { error: mErr.message };
+  if (mErr) throw mErr;
   if (!mov) return { error: "Movement not found." };
 
   const next = addMovementToPrescription(loaded.prescription, {

@@ -41,37 +41,44 @@ export function WorkoutOptions({ title, input }: { title: string; input: Workout
         if (mode === "skip") {
           if (input.kind === "primary") {
             const form = new FormData(); form.set("id", input.id); form.set("reason", reason);
-            await skipPlannedSession(form);
+            const result = await skipPlannedSession(form);
+            if (result.error) { setError(result.error); return; }
           } else {
             const result = await skipSwimWorkout(input.id, input.revision, reason);
-            if (result.error) throw new Error(result.error);
+            if (result.error) { setError(result.error); return; }
           }
         } else if (input.kind === "primary") {
           const offset = Math.round((Date.parse(date) - Date.parse(mondayOfYmd(input.startedOn))) / 86_400_000);
           const target = { id: input.id, weekIndex: Math.floor(offset / 7), dayIndex: offset % 7 };
-          if (!preview) { setPreview(await previewPlannedMove(target)); return; }
-          if (!("requestId" in preview)) throw new Error("Review the date again.");
+          if (!preview) {
+            const result = await previewPlannedMove(target);
+            if (result.error !== undefined) { setError(result.error); return; }
+            setPreview(result); return;
+          }
+          if (!("requestId" in preview)) { setError("Review the date again."); return; }
           const form = new FormData();
           Object.entries(target).forEach(([key, value]) => form.set(key, String(value)));
           form.set("scheduleReview", JSON.stringify({ revision: preview.revision, requestId: preview.requestId, acceptOverlap }));
-          await movePlannedSession(form);
+          const result = await movePlannedSession(form);
+          if (result.error) { setError(result.error); return; }
         } else {
           if (!preview) {
             const result = await previewSwimDateEdit({
               planId: input.planId, revision: input.planRevision, workoutId: input.id,
               workoutRevision: input.revision, date, reason,
             });
-            if (result.error) throw new Error(result.error);
-            if (!result.preview) throw new Error("Couldn't preview this date. Try again.");
+            if (result.error) { setError(result.error); return; }
+            if (!result.preview) { setError("Couldn't preview this date. Try again."); return; }
             setPreview(result.preview); return;
           }
-          if (!("workoutId" in preview)) throw new Error("Review the date again.");
+          if (!("workoutId" in preview)) { setError("Review the date again."); return; }
           const result = await applySwimDateEdit(preview, acceptOverlap);
-          if (result.error) throw new Error(result.error);
+          if (result.error) { setError(result.error); return; }
         }
         close(); router.refresh();
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Couldn't save this change. Try again.");
+        console.error("Couldn't save this change.", caught);
+        setError("Couldn't save this change. Try again.");
       }
     });
   }
