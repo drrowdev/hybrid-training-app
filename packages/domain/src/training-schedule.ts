@@ -7,6 +7,13 @@ export interface TrainingCommitment {
   state: "scheduled" | "started" | "completed" | "rest" | "paused";
 }
 
+export function trainingWorkoutDates(scheduledDate: string, performedDate: string | null, completed: boolean) {
+  return {
+    date: performedDate ?? scheduledDate,
+    traceDate: completed && performedDate && performedDate !== scheduledDate ? scheduledDate : null,
+  };
+}
+
 export function isPlannedRest(row: { role?: string | null; prescription?: unknown }): boolean {
   return row.role === "rest" || (
     row.prescription !== null && typeof row.prescription === "object" &&

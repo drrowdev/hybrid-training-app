@@ -22,7 +22,7 @@ describe("plan audit-log forms — consistent prompt", () => {
       <SkipSessionForm
         plannedId="p1"
         title="Squat day"
-        action={async () => {}}
+        action={async () => ({ ok: true })}
       />,
     );
     // The closed-state markup is just the "Skip" button; we additionally

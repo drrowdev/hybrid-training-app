@@ -20,6 +20,15 @@ const preview: ThisWeekRailProps = {
 };
 
 describe("Shared schedule month", () => {
+  it("keeps the completed-date trace linked to the log, without another completion check", () => {
+    const logged = { ...workout, date: "2026-09-26", done: true, href: "/app/sessions/logged" };
+    const html = renderToStaticMarkup(<TrainingMonth today={logged.date} preview={preview} workouts={[
+      logged, { ...logged, id: "trace", date: "2026-09-25", done: false, completedOn: logged.date },
+    ]} />);
+    expect(html.match(/href="\/app\/sessions\/logged"/g)).toHaveLength(2);
+    expect(html).not.toContain("#session=strength");
+    expect(html.match(/aria-hidden="true">✓/g)).toHaveLength(1);
+  });
   it("keeps every program on its actual date and opens the same planned preview", () => {
     const html = renderToStaticMarkup(<TrainingMonth today={workout.date} preview={preview} workouts={[
       workout,

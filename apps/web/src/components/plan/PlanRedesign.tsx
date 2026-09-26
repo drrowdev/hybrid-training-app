@@ -3,6 +3,7 @@
 import { ScheduleRestoreButton } from "@/components/program/ScheduleRestoreButton";
 import { ProgramDetailHeader } from "@/components/program/ProgramDetailHeader";
 import { previewPlannedMove, type PlannedMovePreview } from "@/lib/planner/actions";
+import { actionResult, type ActionResult } from "@/lib/action-result";
 
 /**
  * /app/plan redesign — program review and schedule adjustment:
@@ -74,6 +75,7 @@ import {
   removePlannedMovement,
   swapPlannedMovement,
   addPlannedMovement,
+  type PlannedEditResult,
 } from "@/lib/sessions/planned-movement-actions";
 import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
 import { stationAlternativesFor } from "@hta/hyrox";
@@ -137,9 +139,9 @@ export type PlanRedesignProps = {
   sessions: PlanSessionInput[];
   view: PlanViewMode;
   // Form actions wired by the server page.
-  moveAction: (formData: FormData) => Promise<void> | void;
-  skipAction: (formData: FormData) => Promise<void> | void;
-  unskipAction: (formData: FormData) => Promise<void> | void;
+  moveAction: (formData: FormData) => Promise<ActionResult | void> | void;
+  skipAction: (formData: FormData) => Promise<ActionResult | void> | void;
+  unskipAction: (formData: FormData) => Promise<ActionResult | void> | void;
   /**
    * Persist drawer notes to `planned_sessions.notes`. Wired by the
    * server page to `updatePlannedSessionNotes`. The drawer mirrors to
@@ -479,6 +481,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
   // DnD state — mirrors block-wizard Step5Schedule.
   const dragFromRef = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const handleDragStart = (sid: string) => (e: DragEvent<HTMLElement>) => {
     dragFromRef.current = sid;
     e.dataTransfer.effectAllowed = "move";
@@ -499,7 +502,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
       fd.set("id", sessionId);
       fd.set("weekIndex", String(weekIndex));
       fd.set("dayIndex", String(dayIndex));
-      await moveAction(fd);
+      setMoveError(null);
+      const result = await runSwapMove(moveAction, fd);
+      if (!result.ok) { setMoveError(result.error); return; }
       // The move action revalidates server data, but an imperatively-invoked
       // server action doesn't refresh the client router on its own — pull the
       // fresh plan so the grid updates without a full page reload.
@@ -545,6 +550,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
 
   return (
     <div data-testid="plan-redesign" style={{ display: "grid", gap: 24 }}>
+      {moveError && <p role="alert" style={{ color: "var(--cp-danger)" }}>{moveError}</p>}
       <ProgramDetailHeader title={archetypeName} completed={totalDone} total={totalSessions}
         actions={headerActions}
         eyebrow={<>
@@ -2153,19 +2159,16 @@ export function MonthAlternate({
  * in PlanRedesign.test.tsx so we can't drive the form submit there.
  */
 export async function runSwapMove(
-  moveAction: (formData: FormData) => Promise<void> | void,
+  moveAction: (formData: FormData) => Promise<ActionResult | void> | void,
   formData: FormData,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await moveAction(formData);
+    const result = await moveAction(formData);
+    if (result?.error) return { ok: false, error: result.error };
     return { ok: true };
   } catch (err) {
     console.error("[plan] swap-day move failed", err);
-    const message =
-      err instanceof Error && err.message
-        ? err.message
-        : "Couldn't move that session. Please try again.";
-    return { ok: false, error: message };
+    return { ok: false, error: "Couldn't move that session. Please try again." };
   }
 }
 
@@ -2218,6 +2221,7 @@ export function SessionDrawer({
   updateNotesAction,
   startSessionAction,
   markCardioDoneAction,
+  previewMoveAction = previewPlannedMove,
   allowLogging = true,
 }: {
   session: PlanSessionInput;
@@ -2233,9 +2237,9 @@ export function SessionDrawer({
    * "This week" rail stale. Falls back to the drawer's router if omitted.
    */
   onMutated?: () => void;
-  moveAction: (formData: FormData) => Promise<void> | void;
-  skipAction: (formData: FormData) => Promise<void> | void;
-  unskipAction: (formData: FormData) => Promise<void> | void;
+  moveAction: (formData: FormData) => Promise<ActionResult | void> | void;
+  skipAction: (formData: FormData) => Promise<ActionResult | void> | void;
+  unskipAction: (formData: FormData) => Promise<ActionResult | void> | void;
   updateNotesAction: (
     id: string,
     notes: string,
@@ -2258,6 +2262,7 @@ export function SessionDrawer({
   }>;
   /** Plan is review/edit-only; Today keeps workout logging actions enabled. */
   allowLogging?: boolean;
+  previewMoveAction?: typeof previewPlannedMove;
 }) {
   const [editing, setEditing] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
@@ -2274,6 +2279,8 @@ export function SessionDrawer({
   // the swap error so a failed finish doesn't clear a swap message.
   const [cardioDoneError, setCardioDoneError] = useState<string | null>(null);
   const [cardioDonePending, setCardioDonePending] = useState(false);
+  const [skipError, setSkipError] = useState<string | null>(null);
+  const [skipPending, startSkipTransition] = useTransition();
   /**
    * Where "edit what actually happened" lives for a FINISHED session: the full
    * session view keyed by the logged session this plan slot produced. Null for
@@ -2451,7 +2458,7 @@ export function SessionDrawer({
       }
       setNotesStatus("saving");
       startNotesTransition(async () => {
-        const result = await updateNotesAction(session.id, value);
+        const result = await actionResult(() => updateNotesAction(session.id, value), "Couldn't save these notes. Try again.");
         if (result?.error) {
           setNotesStatus("error");
           return;
@@ -2505,12 +2512,17 @@ export function SessionDrawer({
     let reviewed = swapReview;
     if (!reviewed) {
       try {
-        reviewed = await previewPlannedMove({ id: session.id, weekIndex: newWeek, dayIndex: newDay });
+        const preview = await previewMoveAction({ id: session.id, weekIndex: newWeek, dayIndex: newDay });
+        if (preview.error !== undefined) {
+          setSwapError(preview.error); setSwapPending(false); return;
+        }
+        reviewed = preview;
         if (reviewed.overlaps.length) {
           setSwapReview(reviewed); setAcceptSwapOverlap(false); setSwapPending(false); return;
         }
       } catch (error) {
-        setSwapError(error instanceof Error ? error.message : "Couldn't check these dates. Try again.");
+        console.error("Couldn't check these dates.", error);
+        setSwapError("Couldn't check these dates. Try again.");
         setSwapPending(false); return;
       }
     }
@@ -2539,6 +2551,8 @@ export function SessionDrawer({
     }
     // Keep the drawer open so the user can retry. Surface the message
     // inline next to the submit button.
+    setSwapReview(null);
+    setAcceptSwapOverlap(false);
     setSwapError(result.error);
   };
 
@@ -2696,17 +2710,29 @@ export function SessionDrawer({
                     onRestore={async (review) => {
                       const form = new FormData();
                       form.set("id", session.id); form.set("scheduleReview", JSON.stringify(review));
-                      await unskipAction(form);
+                      const result = await unskipAction(form);
+                      if (result?.error) return result;
                       (onMutated ?? router.refresh)();
                     }} />
                 ) : (
-                  <form action={skipAction}>
+                  <form onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    setSkipError(null);
+                    startSkipTransition(async () => {
+                      const result = await actionResult(async () => skipAction(form), "Couldn't skip this workout. Try again.");
+                      if (result?.error) { setSkipError(result.error); return; }
+                      onClose();
+                      (onMutated ?? router.refresh)();
+                    });
+                  }}>
                     <input type="hidden" name="id" value={session.id} />
                     <button
                       type="submit"
                       className="cp-btn"
                       data-testid="plan-drawer-skip"
                       style={{ width: "100%" }}
+                      disabled={skipPending}
                     >
                       Skip
                     </button>
@@ -2716,6 +2742,7 @@ export function SessionDrawer({
             )}
           </div>
 
+          {skipError && <p className="swap-form-error" role="alert">{skipError}</p>}
           {cardioDoneError && (
             <p
               className="swap-form-error"
@@ -3046,7 +3073,8 @@ export function SessionDrawer({
             font-weight: 700;
           }
           .plan-drawer .swap-form {
-            display: flex;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
             gap: 8px;
             align-items: center;
             margin: 8px 0 16px;
@@ -3056,6 +3084,8 @@ export function SessionDrawer({
             border-radius: 8px;
           }
           .plan-drawer .swap-form input[type="date"] {
+            min-width: 0;
+            width: 100%;
             padding: 6px 8px;
             border: 1px solid var(--cp-border);
             border-radius: 6px;
@@ -3063,6 +3093,14 @@ export function SessionDrawer({
             color: var(--cp-text);
             font: inherit;
             font-size: 13px;
+          }
+          .plan-drawer .swap-form > label { white-space: nowrap; }
+          .plan-drawer .swap-form-error {
+            grid-column: 1 / -1;
+            margin: 0;
+            font-size: 13px;
+            color: var(--cp-danger);
+            overflow-wrap: anywhere;
           }
           .plan-drawer .set-row {
             display: grid;
@@ -3468,7 +3506,7 @@ function StationEditRow({
       fd.set("stationKey", stationKey);
       fd.set("expectedRevision", expectedRevision);
       fd.set("substituteKey", substituteKey);
-      const r = await setHyroxStationOverride(fd);
+      const r: PlannedEditResult = await actionResult(() => setHyroxStationOverride(fd), "Couldn't change this station. Try again.");
       if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else {
         setOpen(false);
@@ -3590,7 +3628,7 @@ function MovementEditRow({
       fd.set("movementId", movementId);
       fd.set("expectedRevision", expectedRevision);
       fd.set("rehab", String(rehab));
-      const r = await removePlannedMovement(fd);
+      const r: PlannedEditResult = await actionResult(() => removePlannedMovement(fd), "Couldn't remove this movement. Try again.");
       if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else onChanged();
     });
@@ -3606,7 +3644,7 @@ function MovementEditRow({
       fd.set("rehab", String(rehab));
       fd.set("newMovementId", m.id);
       fd.set("expectedRevision", expectedRevision);
-      const r = await swapPlannedMovement(fd);
+      const r: PlannedEditResult = await actionResult(() => swapPlannedMovement(fd), "Couldn't swap this movement. Try again.");
       if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else {
         setSwapping(false);
@@ -3706,7 +3744,7 @@ function AddMovementControl({
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("movementId", m.id);
       fd.set("expectedRevision", expectedRevision);
-      const r = await addPlannedMovement(fd);
+      const r: PlannedEditResult = await actionResult(() => addPlannedMovement(fd), "Couldn't add this movement. Try again.");
       if (r.error) { setError(r.error); if (r.currentPrescription) onChanged(); }
       else {
         setOpen(false);

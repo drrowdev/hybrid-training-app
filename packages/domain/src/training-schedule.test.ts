@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { isPlannedRest, nextProgramCommitment, type TrainingCommitment } from "./training-schedule";
+import { isPlannedRest, nextProgramCommitment, trainingWorkoutDates, type TrainingCommitment } from "./training-schedule";
+
+describe("DC-K4 / DC-E3: actual workout dates preserve the planned-day history", () => {
+  it("keeps completed work on its actual day with a non-work trace on the scheduled day", () => {
+    expect(trainingWorkoutDates("2026-09-25", "2026-09-26", true))
+      .toEqual({ date: "2026-09-26", traceDate: "2026-09-25" });
+  });
+  it("never infers completion or catches up an unlinked planned workout", () => {
+    expect(trainingWorkoutDates("2026-09-25", null, false))
+      .toEqual({ date: "2026-09-25", traceDate: null });
+    expect(trainingWorkoutDates("2026-09-25", "2026-09-26", false))
+      .toEqual({ date: "2026-09-26", traceDate: null });
+    expect(trainingWorkoutDates("2026-09-25", "2026-09-25", true))
+      .toEqual({ date: "2026-09-25", traceDate: null });
+  });
+});
 
 describe("DC-K3: planned rest identity", () => {
   it("recognizes both stored rest representations without inferring from names", () => {

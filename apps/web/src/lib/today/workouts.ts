@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { formatSwimDistance, swimCourseWorkoutTitle } from "@hta/domain";
+import { formatSwimDistance, swimCourseWorkoutTitle, trainingWorkoutDates } from "@hta/domain";
 import { getSwimNavigation } from "@/lib/swim/navigation";
 import { listSwimPlans, listSwimWorkouts } from "@/lib/swim/storage";
 import { loadSwimHistory, workoutTrainingState } from "@/lib/swim/queries";
@@ -26,7 +26,7 @@ export function plannedWeekSession(planned: PlannedDay, blocks: ActiveBlock[]): 
   const items = planned.prescription.items;
   const isRehab = planned.role === "rehab";
   return {
-    id: planned.id, weekIndex: planned.weekIndex, dayIndex: planned.dayIndex, date: planned.date,
+    id: planned.id, weekIndex: planned.weekIndex, dayIndex: planned.dayIndex, date: workout.date,
     title: workout.title, slot: planned.slot, items, estDurationMin: workout.minutes,
     isCardio: items.length > 0 && items.every((item) => (item.kind ?? "").startsWith("cardio_")),
     isStrength: !isRehab && items.some((item) => !(item.kind ?? "").startsWith("cardio_")),
@@ -37,9 +37,9 @@ export function plannedWeekSession(planned: PlannedDay, blocks: ActiveBlock[]): 
 
 export async function loadTodayWeek(client: SupabaseClient, blocks: ActiveBlock[], fallback: TodayWorkout[]): Promise<TodayWeekWorkout[]> {
   const snapshot = await loadAvailableTrainingSchedule(client);
-  if (!snapshot) return fallback;
+  if (!snapshot) return withPlannedDateTraces(fallback, fallback);
   const links = await loadScheduleSessionLinks(client, snapshot.entries);
-  return snapshot.entries.filter((entry) => entry.state !== "rest" && entry.state !== "paused").flatMap((entry): TodayWeekWorkout[] => {
+  const workouts = snapshot.entries.filter((entry) => entry.state !== "rest" && entry.state !== "paused").flatMap((entry): TodayWeekWorkout[] => {
     const existing = fallback.find((workout) => workout.id === entry.id);
     if (entry.source === "swim") return existing ? [{ ...existing }] : [];
     const block = blocks.find((candidate) => candidate.id === entry.programId);
@@ -52,6 +52,19 @@ export async function loadTodayWeek(client: SupabaseClient, blocks: ActiveBlock[
         ? `/app/sessions/${links[entry.id]}` : existing?.href ?? `/app/sessions/start/${entry.id}`,
     }];
   });
+  return withPlannedDateTraces(workouts, fallback);
+}
+
+function withPlannedDateTraces(workouts: TodayWeekWorkout[], planned: TodayWorkout[]): TodayWeekWorkout[] {
+  return workouts.flatMap((workout) => {
+    const source = planned.find((candidate) => candidate.id === workout.id);
+    if (!source?.scheduledDate) return [workout];
+    const { traceDate } = trainingWorkoutDates(source.scheduledDate, workout.date, workout.done);
+    if (!traceDate) return [workout];
+    return [workout, {
+      ...workout, id: `${workout.id}:scheduled`, date: traceDate, done: false, completedOn: workout.date,
+    }];
+  });
 }
 
 export function plannedTodayWorkout(planned: PlannedDay, blocks: ActiveBlock[], allDays: PlannedDay[]): TodayWorkout {
@@ -61,7 +74,8 @@ export function plannedTodayWorkout(planned: PlannedDay, blocks: ActiveBlock[], 
     completedSessionId: planned.completedSessionId, deletedCompletedSessionId: planned.deletedCompletedSessionId,
   });
   return {
-    id: planned.id, sessionId: planned.completedSessionId, date: planned.date,
+    id: planned.id, sessionId: planned.completedSessionId, scheduledDate: planned.date,
+    date: trainingWorkoutDates(planned.date, planned.performedDate ?? null, !!planned.completedAt).date,
     title: programWorkoutTitle(planned.title, block ? hasTemplateWorkoutTitles(block) : false),
     program: block ? archetypeDisplayName(block.archetype, block.notes) : "Training program",
     programId: planned.blockId, kind: block?.programKind ?? null,

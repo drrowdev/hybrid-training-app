@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { actionResult } from "@/lib/action-result";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
@@ -726,6 +727,12 @@ export async function markExternalCardioComplete(
   sessionId?: string;
   sessionCompleted?: boolean;
 }> {
+  return actionResult(() => markCardioComplete(formData), "Couldn't finish this workout. Try again.");
+}
+
+async function markCardioComplete(formData: FormData): Promise<{
+  ok?: true; error?: string; sessionId?: string; sessionCompleted?: boolean;
+}> {
   const parsed = markExternalCardioSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     itemIndex: formData.get("itemIndex"),
@@ -752,9 +759,8 @@ export async function markExternalCardioComplete(
     .select("id, user_id, title, completed_session_id, prescription")
     .eq("id", parsed.data.plannedSessionId)
     .maybeSingle();
-  if (pErr || !planned) {
-    return { error: pErr?.message ?? "Planned session not found" };
-  }
+  if (pErr) throw pErr;
+  if (!planned) return { error: "Planned session not found." };
   if (planned.user_id !== user.id) return { error: "Not your session." };
   const prescription =
     (planned.prescription as Prescription | null | undefined) ?? null;
@@ -778,7 +784,7 @@ export async function markExternalCardioComplete(
       .eq("id", sessionId)
       .eq("user_id", user.id)
       .maybeSingle();
-    if (linkedErr) return { error: linkedErr.message };
+    if (linkedErr) throw linkedErr;
     if (
       linkedSession?.deleted_at != null &&
       linkedSession.completed_at != null
@@ -794,7 +800,7 @@ export async function markExternalCardioComplete(
         .eq("id", parsed.data.plannedSessionId)
         .eq("user_id", user.id)
         .eq("completed_session_id", sessionId);
-      if (staleLinkError) return { error: staleLinkError.message };
+      if (staleLinkError) throw staleLinkError;
       sessionId = null;
     }
   }
@@ -808,9 +814,8 @@ export async function markExternalCardioComplete(
       })
       .select("id")
       .single();
-    if (sErr || !created) {
-      return { error: sErr?.message ?? "Could not create session" };
-    }
+    if (sErr) throw sErr;
+    if (!created) return { error: "Could not create session." };
     const { data: linked, error: linkErr } = await supabase
       .from("planned_sessions")
       .update({ completed_session_id: created.id })
@@ -821,7 +826,7 @@ export async function markExternalCardioComplete(
       .maybeSingle();
     if (linkErr) {
       await supabase.from("sessions").delete().eq("id", created.id);
-      return { error: linkErr.message };
+      throw linkErr;
     }
     if (linked?.completed_session_id) {
       sessionId = linked.completed_session_id as string;
@@ -833,12 +838,8 @@ export async function markExternalCardioComplete(
         .eq("id", parsed.data.plannedSessionId)
         .eq("user_id", user.id)
         .maybeSingle();
-      if (winnerErr || !winner?.completed_session_id) {
-        return {
-          error:
-            winnerErr?.message ?? "Could not resolve the started session.",
-        };
-      }
+      if (winnerErr) throw winnerErr;
+      if (!winner?.completed_session_id) return { error: "Could not resolve the started session." };
       sessionId = winner.completed_session_id as string;
     }
   }
@@ -853,7 +854,7 @@ export async function markExternalCardioComplete(
     .from("cardio_logs")
     .select("id", { count: "exact", head: true })
     .eq("session_id", resolvedSessionId);
-  if (countErr) return { error: countErr.message };
+  if (countErr) throw countErr;
 
   if ((count ?? 0) === 0) {
     const { error: insErr } = await supabase.from("cardio_logs").insert({
@@ -874,7 +875,7 @@ export async function markExternalCardioComplete(
       notes,
     });
     if (insErr && (insErr as { code?: string }).code !== "23505") {
-      return { error: insErr.message };
+      throw insErr;
     }
   }
 
@@ -883,7 +884,7 @@ export async function markExternalCardioComplete(
       .from("cardio_logs")
       .select("duration_sec")
       .eq("session_id", resolvedSessionId);
-    if (durationErr) return { error: durationErr.message };
+    if (durationErr) throw durationErr;
     const durationMin = Math.max(
       1,
       Math.round(
@@ -894,13 +895,16 @@ export async function markExternalCardioComplete(
       ),
     );
     const completion = await completeSessionResult(resolvedSessionId, null);
-    if (completion.error) return completion;
+    if (completion.error) {
+      if (completion.errorCode === "transient" && !completion.workoutSaved) throw new Error(completion.error);
+      return completion;
+    }
     const { error: durationUpdateErr } = await supabase
       .from("sessions")
       .update({ duration_min: durationMin })
       .eq("id", resolvedSessionId)
       .eq("user_id", user.id);
-    if (durationUpdateErr) return { error: durationUpdateErr.message };
+    if (durationUpdateErr) throw durationUpdateErr;
   }
 
   revalidatePath(`/app/sessions/${resolvedSessionId}`);
@@ -2289,6 +2293,10 @@ export async function updatePlannedSessionNotes(
   id: string,
   notes: string,
 ): Promise<{ ok?: true; error?: string }> {
+  return actionResult(() => updatePlannedNotes(id, notes), "Couldn't save these notes. Try again.");
+}
+
+async function updatePlannedNotes(id: string, notes: string): Promise<{ ok?: true; error?: string }> {
   const parsed = updatePlannedNotesSchema.safeParse({ id, notes });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -2306,7 +2314,7 @@ export async function updatePlannedSessionNotes(
     .update({ notes: trimmed === "" ? null : trimmed })
     .eq("id", parsed.data.id)
     .eq("user_id", user.id);
-  if (error) return { error: error.message };
+  if (error) throw error;
 
   return { ok: true };
 }

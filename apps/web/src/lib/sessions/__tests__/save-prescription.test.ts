@@ -33,11 +33,14 @@ describe("DC-K4 prescription optimistic edits", () => {
     { code: "PGRST202", message: "Could not find the function unrelated_function" },
     { code: "42883", message: "function unrelated_function does not exist" },
     { code: "42501", message: "save_prescription_if_current denied" },
-  ])("preserves other errors ($code: $message)", async (error) => {
+  ])("reports other errors without exposing database details ($code: $message)", async (error) => {
     const fetch = vi.fn().mockResolvedValue(Response.json(error, { status: 400 }));
     const client = createClient("https://synthetic.invalid", "synthetic-key", { global: { fetch } });
-    expect(await savePrescription(client, "sessions", crypto.randomUUID(), "0", { items: [] }))
-      .toEqual({ error: error.message });
+    const result = await savePrescription(client, "sessions", crypto.randomUUID(), "0", { items: [] });
+    expect(result.ok).toBeUndefined();
+    expect(result.error).toBeTruthy();
+    expect(result.error).not.toBe(error.message);
+    expect(result.error).not.toBe(RPC_SAVE_RETRY_MESSAGE);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 

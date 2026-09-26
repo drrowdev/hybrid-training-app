@@ -5,7 +5,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { cache } from "react";
 import { z } from "zod";
 import type { Prescription, SessionSlot } from "@hta/db";
-import { isPlannedRest, type BlockProgramKind } from "@hta/domain";
+import { isPlannedRest, trainingWorkoutDates, type BlockProgramKind } from "@hta/domain";
 import { assertActiveProgramKinds, independentProgramsAvailable } from "@/lib/programs/ownership";
 import {
   addDaysToYmd,
@@ -91,6 +91,8 @@ export type PlannedDay = {
   completedSessionId: string | null;
   /** When the linked session was actually finished. null = started-but-not-done. */
   completedAt: string | null;
+  /** Account-local date of the linked, non-deleted session. */
+  performedDate?: string | null;
   /** Completed linked workout currently in Trash; restored explicitly, never auto-started. */
   deletedCompletedSessionId?: string | null;
   skippedAt: string | null;
@@ -212,14 +214,17 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     ),
   );
   const linkedSessionById = new Map<string, LinkedSessionSnapshot>();
+  const performedDates = new Map<string, string>();
   if (linkedIds.length > 0) {
+    const timezone = await getUserTimezone(user.id);
     const { data: linkedSessions, error: linkedError } = await supabase
       .from("sessions")
-      .select("id, completed_at, deleted_at")
+      .select("id, performed_at, completed_at, deleted_at")
       .eq("user_id", user.id)
       .in("id", linkedIds);
     if (linkedError || !linkedSessions) throw new Error("Couldn't read your workout history. Try again.");
     for (const s of linkedSessions ?? []) {
+      if (s.performed_at && !s.deleted_at) performedDates.set(s.id, ymdInTimezone(new Date(s.performed_at), timezone));
       linkedSessionById.set(s.id as string, {
         id: s.id as string,
         completedAt: (s.completed_at as string | null) ?? null,
@@ -255,6 +260,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
       prescription,
       completedSessionId: linked.completedSessionId,
       completedAt: linked.completedAt,
+      performedDate: linked.completedSessionId ? performedDates.get(linked.completedSessionId) ?? null : null,
       deletedCompletedSessionId: linked.deletedCompletedSessionId,
       skippedAt: d.skipped_at,
       notes: (d.notes as string | null) ?? null,
@@ -364,7 +370,7 @@ export async function getTodayPlannedSessions(): Promise<PlannedDay[]> {
     getUserTimezone(),
   ]);
   const today = todayYmd(tz);
-  return all.filter((d) => d.date === today);
+  return all.filter((d) => trainingWorkoutDates(d.date, d.performedDate ?? null, !!d.completedAt).date === today);
 }
 
 /** Today's first planned session (back-compat shim for single-slot consumers). */

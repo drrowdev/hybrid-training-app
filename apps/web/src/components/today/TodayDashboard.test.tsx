@@ -20,6 +20,18 @@ function render(workouts: TodayWorkout[], hasProgram = true) {
     hasProgram={hasProgram} multiplePrograms={workouts.length > 1} prompt={null} quickWorkout={<button data-testid="quick">Quick workout</button>} />);
 }
 describe("Today presentation", () => {
+  it("links the planned-day trace to the actual session, with completion counted only on the performed day", () => {
+    const logged = { ...lift, date: "2026-09-26", done: true, href: "/app/sessions/logged" };
+    const html = renderToStaticMarkup(<TodayWeek today="2026-09-26" multiplePrograms={false}
+      previewIds={[lift.id]} workouts={[logged, { ...logged, id: "trace", date: "2026-09-25", done: false, completedOn: logged.date }]} />);
+    const friday = html.split('dateTime="2026-09-25"')[1]!.split("</li>")[0]!;
+    expect(friday).toContain(lift.title);
+    expect(friday).not.toContain(">Rest<");
+    expect(friday).toContain('href="/app/sessions/logged"');
+    expect(friday).not.toContain("Completed");
+    expect(html.match(/>Completed</g)).toHaveLength(1);
+    expect(html).not.toContain("#session=");
+  });
   it("expands only the first pending workout and places logged workouts last", () => {
     const html = render([{ ...lift, done: true, href: "/app/sessions/logged", summary: "52 min" }, swim]);
     expect(html.indexOf('data-testid="today-card-swim"')).toBeLessThan(html.indexOf('data-testid="today-card-lift"'));

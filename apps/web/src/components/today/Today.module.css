@@ -104,3 +104,4 @@
   .dock { display: block; position: fixed; left: 0; right: 0; bottom: calc(var(--cp-bottomnav-h) + env(safe-area-inset-bottom)); padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left)); background: var(--cp-bg-elevated); border-top: 1px solid var(--cp-border); z-index: 35; }
   .dock a { width: 100%; min-height: 48px; }
 }
+.trace { display: block; color: var(--cp-text-muted); font-size: 12px; font-weight: 400; }

@@ -12,6 +12,7 @@ export type TodayWorkout = {
   id: string;
   sessionId?: string | null;
   date: string;
+  scheduledDate?: string;
   title: string;
   program: string;
   programId: string | null;
@@ -29,7 +30,9 @@ export type TodayWorkout = {
   swimSteps?: SwimWorkoutView["steps"];
   options?: WorkoutOptionsInput;
 };
-export type TodayWeekWorkout = Pick<TodayWorkout, "id" | "date" | "title" | "program" | "programId" | "kind" | "done" | "href">;
+export type TodayWeekWorkout = Pick<TodayWorkout, "id" | "date" | "title" | "program" | "programId" | "kind" | "done" | "href"> & {
+  completedOn?: string;
+};
 
 const colors = {
   strength: "var(--cp-accent)", running: "var(--cp-warning)",
@@ -103,13 +106,16 @@ export function TodayWeek({ today, workouts, multiplePrograms, previewIds = [] }
         <div><strong>{date === today ? "Today" : new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(date))}</strong>
           <time dateTime={date}>{new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(date))}</time></div>
         <div className={styles.dayWorkouts}>{entries.length ? entries.map((workout) => {
-          const preview = previews.has(workout.id);
+          const preview = !workout.completedOn && !workout.done && previews.has(workout.id);
           // Native anchors notify the shared drawer's hashchange listener.
           const WorkoutLink = preview ? "a" : Link;
           return <WorkoutLink className={styles.dayWorkout} key={workout.id} style={color(workout)}
             href={preview ? `#session=${workout.id}` : workout.href} aria-label={`Open ${workout.title}, ${day}`}>
             {multiplePrograms && <><span aria-hidden="true" className={styles.dot} /><span className={styles.sr}>{workout.kind ?? "Training"}: </span></>}
-            <span>{workout.title}</span>
+            <span>{workout.title}{workout.completedOn && <small className={styles.trace}>
+              Done {new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
+                .format(new Date(workout.completedOn)).replace(",", "")}
+            </small>}</span>
             {workout.done && <span className={styles.done}><span aria-hidden="true">✓</span><span className={styles.sr}>Completed</span></span>}
           </WorkoutLink>;
         }) : <span className={styles.rest}>Rest</span>}</div>

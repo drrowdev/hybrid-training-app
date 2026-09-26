@@ -25,12 +25,15 @@ export function TrainingMonth({ today, workouts, preview }: {
     }))} onOpen={(id) => { window.location.hash = `#session=${id}`; }}
       renderWorkout={(session) => {
         const workout = byId.get(session.id)!;
-        const href = previews.has(workout.id) ? `#session=${workout.id}` : workout.href;
+        const href = !workout.done && !workout.completedOn && previews.has(workout.id) ? `#session=${workout.id}` : workout.href;
         const day = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(workout.date));
         return <a key={workout.id} href={href} className={styles.workout} data-kind={workout.kind ?? "strength"}
           aria-label={`Open ${workout.title}, ${day}${workout.done ? ", completed" : ""}`}
           title={`${workout.title} · ${workout.program}`}>
-          <span>{workout.title}</span>{workout.done && <span aria-hidden="true">✓</span>}
+          <span>{workout.title}{workout.completedOn && <small style={{ display: "block", fontWeight: 400, color: "var(--cp-text-muted)" }}>
+            Done {new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
+              .format(new Date(workout.completedOn)).replace(",", "")}
+          </small>}</span>{workout.done && <span aria-hidden="true">✓</span>}
         </a>;
       }} />
     <ThisWeekRail {...preview} showRail={false} />

@@ -5939,3 +5939,30 @@ logger fixture gate is untouched. Unit/browser checks cover prescription
 parity, keyboard opening/closing, target sizes and start links; authenticated
 CI assertions cover Today-to-month navigation and shared entries. No schema,
 RPC, migration, local real-database/native run, merge or deployment.
+
+## [2026-09-26] refine | Cross-day workout history and drawer failures
+
+Source-only diagnosis found no planned-session linking in Quick start, repeat
+or generation: repeats copy a title and movement list into a separate session.
+Today instead mislabelled a linked workout performed on another date because
+its linked-session exclusion only considered that day's scheduled workouts.
+The shared calendar correctly used the performed date, but left the original
+date empty, which the week list labelled Rest.
+
+Coordinator approved retaining off-plan semantics and correcting presentation,
+without changing completion or linking writers. Today now resolves linked
+sessions in the account timezone, preserves program/week attribution on the
+performed date, and leaves a non-counting completed-date link on the original
+planned day. The same trace follows into the shared month. No automatic
+catch-up or completion inference is introduced (DC-E3, DC-K4, DC-R5).
+
+Past moves remain allowed within the program. Started source/target guards,
+overlap consent and existing atomic schedule commits remain in force (DC-K4).
+Move/restore previews and drawer mutations return authored, typed failures;
+unexpected failures are logged rather than exposing Next.js render digests
+or database messages. Rejected moves retain the chosen date and refresh
+their review on retry. Skip, mark done, notes and movement/station edits also
+contain unexpected failures. The move form wraps its error below the controls
+at 375px. Synthetic date, action, query and browser regressions cover the two
+reported states. Linux automatic PR CI remains the acceptance gate. No real
+user rows, local database, schema/RPC/migration edits or production operations.

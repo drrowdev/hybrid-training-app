@@ -45,10 +45,24 @@ describe("runSwapMove", () => {
     const result = await runSwapMove(moveAction, new FormData());
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toBe("Failed to move planned session: 23505");
+      expect(result.error).not.toContain("23505");
+      expect(result.error).toMatch(/try again/i);
     }
     // Logged for debugging.
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("preserves a typed rejection instead of treating a resolved action as success", async () => {
+    const result = await runSwapMove(async () => ({ error: "Pick another day." }), new FormData());
+    expect(result).toEqual({ ok: false, error: "Pick another day." });
+  });
+
+  it("does not display a production-masked Next.js render error", async () => {
+    const result = await runSwapMove(async () => {
+      throw new Error("An error occurred in the Server Components render. digest: 12345");
+    }, new FormData());
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).not.toMatch(/Server Components|digest/);
   });
 
   it("uses a friendly fallback message for non-Error throws", async () => {
