@@ -558,6 +558,21 @@ describe("SessionDrawer — Plan review-only mode", () => {
 });
 
 describe("SessionDrawer — drag handle + sheet markup", () => {
+  it("collapses expanded accessories into the same dose as aggregated sets", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const accessory: PrescriptionItem = {
+      movementId: "row", movementName: "Row", kind: "accessory", sets: 2, reps: 14,
+    };
+    for (const items of [[accessory], [{ ...accessory, sets: 1 }, { ...accessory, sets: 1 }]]) {
+      const html = renderToStaticMarkup(<SessionDrawer
+        session={session({ items })} today="2026-05-26" weeks={4}
+        onClose={() => {}} moveAction={noop} skipAction={noop} unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })} startSessionAction={noop}
+      />);
+      expect(html).toContain('aria-label="2 sets of 14 reps"');
+      expect(html.match(/data-testid="prescription-value"/g)).toHaveLength(1);
+    }
+  });
   it("renders a drag handle with the close-affordance aria-label and dialog role", async () => {
     const { SessionDrawer } = await import("./PlanRedesign");
     const html = renderToStaticMarkup(
