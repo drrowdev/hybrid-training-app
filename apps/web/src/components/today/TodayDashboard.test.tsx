@@ -102,6 +102,13 @@ describe("Today presentation", () => {
       }
     }
   });
+  it("shows a warm-up-only movement once in both card and drawer", () => {
+    const items = [{ movementId: "squat", movementName: "Squat", kind: "warmup" as const, sets: 1, reps: 5 }];
+    for (const detailed of [false, true]) {
+      const html = renderToStaticMarkup(<WorkoutExercises items={items} detailed={detailed} />);
+      expect(html.match(/data-testid="prescription-value"/g)).toHaveLength(1);
+    }
+  });
   it("retains warm-ups and each differing set load in drawer rows", () => {
     const items = [
       { movementId: "squat", movementName: "Squat", kind: "warmup" as const, sets: 1, reps: 5, targetWeightKg: 40 },

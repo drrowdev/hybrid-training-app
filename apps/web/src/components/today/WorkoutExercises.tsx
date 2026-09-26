@@ -74,7 +74,8 @@ function Group({ title, rows, minutes, detailed = false }: {
 
 export function WorkoutExercises({ items, detailed = false }: { items: PrescriptionItem[]; detailed?: boolean }) {
   const groups = groupByMovementThenKind(items);
-  const rows = (supplemental: boolean) => groups.movements.filter((group) => isSupplementalOnlySection(group) === supplemental)
+  const rows = (supplemental: boolean) => groups.movements.filter((group) =>
+    isSupplementalOnlySection(group) === supplemental && (!detailed || group.sets.length > 0))
     .map((group) => ({ ...group, items: group.sets.length ? group.sets.map((set) => set.item) : group.warmups }));
   return <div className={styles.groups} data-testid={detailed ? "workout-detail-preview" : "today-hero-preview"}>
     <Group title="Warm-up rehab" rows={groups.rehab} minutes={estimateSessionMinutes(groups.rehab.flatMap((row) => row.items))} detailed={detailed} />
