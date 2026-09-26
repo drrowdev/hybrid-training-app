@@ -56,7 +56,7 @@ ceiling chain from three factors to two (`baseCeiling × confidenceBias`,
 see CP-4). The `wellness` table columns
 (`fatigue` / `soreness` / `motivation` / `notes`) are **retained** for
 history and data export; `wellness.bodyweight_kg` remains a live,
-separate feature (bodyweight nudge + trend). Re-introduce a daily
+separate feature (Settings logging + trend; no Today nudge). Re-introduce a daily
 readiness signal only behind a less intrusive input surface (e.g.,
 passive HRV trend from a wearable).
 

@@ -48,6 +48,22 @@ test.describe("@desktop today page · two-a-day (Phase 2 B)", () => {
     await expect(amCard.getByTestId("today-hero-preview")).toBeVisible();
     await expect(pmCard.getByTestId("today-hero-preview")).toHaveCount(0);
     await expect(pmCard.getByRole("link")).toHaveAttribute("href", `/app/sessions/start/${seed.pmPlannedId}`);
+    for (const width of [375, 1280]) {
+      await page.setViewportSize({ width, height: 812 });
+      for (const id of [seed.amPlannedId, seed.pmPlannedId]) {
+        const link = page.getByTestId("today-week-strip").locator(`a[href="#session=${id}"]`);
+        await expect(link).toHaveAccessibleName(/^Open .+, /);
+        const target = await link.boundingBox();
+        expect(target!.height).toBeGreaterThanOrEqual(44);
+        await link.click();
+        await expect(page.getByTestId("plan-drawer")).toBeVisible();
+        await expect(page).toHaveURL(new RegExp(`#session=${id}$`));
+        const title = await page.getByTestId(`today-card-${id}`).getByRole("heading", { level: 2 }).textContent();
+        await expect(page.getByTestId("plan-drawer").getByRole("heading", { name: title!, exact: true, level: 2 })).toBeVisible();
+        await page.getByTestId("plan-drawer-close").click();
+        await expect(page.getByTestId("plan-drawer")).toHaveCount(0);
+      }
+    }
   });
 
   test("B2 — after AM is logged, PM card moves to front with hint", async ({

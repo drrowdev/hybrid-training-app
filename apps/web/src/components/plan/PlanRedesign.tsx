@@ -57,22 +57,15 @@ import {
   type PlanProgramSegment,
 } from "@/lib/plan/program-overview";
 import {
-  groupByMovementThenKind,
-  collapseIdenticalSetItems,
   isSupplementalOnlySection,
   type PlanSetRow,
   type MovementPrescriptionSection,
-  type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
 import {
-  circuitNameOfRow,
-  segmentSupersetRows,
   segmentSupersetSections,
 } from "@/lib/plan/superset-grouping";
 import { LinkActivityControl } from "@/components/plan/LinkActivityControl";
 import { CompletedSummaryCard } from "@/components/plan/CompletedSummaryCard";
-import { CardioPlanView } from "@/components/session/CardioPlanView";
-import { cardioProtocolNote } from "@/lib/session/cardio-descriptions";
 import {
   MovementPicker,
   type MovementSearchResult,
@@ -85,7 +78,9 @@ import {
 import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
 import { stationAlternativesFor } from "@hta/hyrox";
 import type { PrescriptionItem } from "@hta/db";
-import { countDistinctRehabMovements, isRehabItem } from "@hta/domain";
+import { isRehabItem } from "@hta/domain";
+import { WorkoutExercises } from "@/components/today/WorkoutExercises";
+import todayStyles from "@/components/today/Today.module.css";
 
 export type PlanViewMode = "timeline" | "month" | "season";
 
@@ -180,20 +175,12 @@ const MONTHS = [
   "Dec",
 ];
 
-function shortDate(ymd: string): string {
-  // YYYY-MM-DD → "MON 25". Anchored in UTC so the label can't drift
-  // based on the viewer's clock.
-  const d = new Date(`${ymd}T12:00:00Z`);
-  const dow = ((d.getUTCDay() + 6) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  return `${DOW_FULL[dow]} ${d.getUTCDate()}`;
-}
-
 function longDate(ymd: string): string {
   const d = new Date(`${ymd}T12:00:00Z`);
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
-function pillTitle(s: PlanSessionInput): string {
+function pillTitle(s: Pick<PlanSessionInput, "title">): string {
   // The timeline pill is narrow — keep titles under ~14 chars.
   if (s.title.length <= 14) return s.title;
   return s.title.slice(0, 13) + "…";
@@ -207,7 +194,7 @@ function pillTitle(s: PlanSessionInput): string {
  * which is set on START); `skipped` mirrors `skipped_at IS NOT NULL` — see
  * `planner/queries.ts` and the plan page mapping.
  */
-export function sessionToOverdueCandidate(s: PlanSessionInput) {
+export function sessionToOverdueCandidate(s: Pick<PlanSessionInput, "date" | "done" | "skipped">) {
   return {
     date: s.date,
     completedSessionId: s.done ? "linked" : null,
@@ -1908,14 +1895,18 @@ export function formatMonthLabel(viewingMonth: Date, locale?: string): string {
   }).format(viewingMonth);
 }
 
-function MonthAlternate({
+export type MonthSession = Pick<PlanSessionInput, "id" | "date" | "title" | "done" | "skipped" | "isCardio" | "isRehab">;
+
+export function MonthAlternate({
   sessions,
   today,
   onOpen,
+  renderWorkout,
 }: {
-  sessions: PlanSessionInput[];
+  sessions: MonthSession[];
   today: string;
   onOpen: (id: string) => void;
+  renderWorkout?: (session: MonthSession) => ReactNode;
 }) {
   // First-of-current-month as the initial viewing window.
   const [viewingMonth, setViewingMonth] = useState<Date>(() => {
@@ -1947,7 +1938,7 @@ function MonthAlternate({
   const todayMonthKey = today.slice(0, 7);
   const showTodayHighlight = viewingKey === todayMonthKey;
 
-  const byDate = new Map<string, PlanSessionInput[]>();
+  const byDate = new Map<string, MonthSession[]>();
   for (const s of sessions) {
     const bucket = byDate.get(s.date) ?? [];
     bucket.push(s);
@@ -2041,7 +2032,7 @@ function MonthAlternate({
           display: "grid",
           gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
           borderBottom: "1px solid var(--cp-border)",
-          fontFamily: "var(--cp-font-mono)",
+          fontFamily: renderWorkout ? "inherit" : "var(--cp-font-mono)",
           fontSize: 11,
           color: "var(--cp-text-muted)",
           textTransform: "uppercase",
@@ -2049,7 +2040,7 @@ function MonthAlternate({
         }}
       >
         {DOW_FULL.map((d) => (
-          <div key={d} style={{ padding: "10px 12px", minWidth: 0 }}>
+          <div key={d} style={{ padding: renderWorkout ? "10px 2px" : "10px 12px", textAlign: renderWorkout ? "center" : undefined, minWidth: 0 }}>
             {d}
           </div>
         ))}
@@ -2068,7 +2059,7 @@ function MonthAlternate({
                 minHeight: 80,
                 minWidth: 0,
                 overflow: "hidden",
-                padding: 6,
+                padding: renderWorkout ? 1 : 6,
                 borderRight: (i + 1) % 7 === 0 ? "0" : "1px solid var(--cp-border)",
                 borderBottom: i >= 35 ? "0" : "1px solid var(--cp-border)",
                 opacity: c.inMonth ? 1 : 0.35,
@@ -2087,9 +2078,10 @@ function MonthAlternate({
                 }}
               >
                 {Number(c.date.slice(8, 10))}
-                {isToday && <span className="today-chip mono" style={{ marginLeft: 4 }}>TODAY</span>}
+                {isToday && !renderWorkout && <span className="today-chip mono" style={{ marginLeft: 4 }}>TODAY</span>}
               </span>
               {items.map((s) => {
+                if (renderWorkout) return renderWorkout(s);
                 const kind = s.isRehab
                   ? "rehab"
                   : s.isCardio
@@ -2282,7 +2274,6 @@ export function SessionDrawer({
   // the swap error so a failed finish doesn't clear a swap message.
   const [cardioDoneError, setCardioDoneError] = useState<string | null>(null);
   const [cardioDonePending, setCardioDonePending] = useState(false);
-  const isToday = session.date === today;
   /**
    * Where "edit what actually happened" lives for a FINISHED session: the full
    * session view keyed by the logged session this plan slot produced. Null for
@@ -2487,51 +2478,6 @@ export function SessionDrawer({
     notesTimerRef.current = setTimeout(() => flushNotes(value), 500);
   };
 
-  const sections = useMemo(() => groupByMovementThenKind(session.items), [session.items]);
-  const mainLiftCount = sections.movements.filter(
-    (section) => !isSupplementalOnlySection(section),
-  ).length;
-  const supplementalLiftCount = sections.movements.filter(
-    isSupplementalOnlySection,
-  ).length;
-  const accessoryCount =
-    sections.accessories.length +
-    sections.hingeCompensations.length +
-    sections.tendon.length;
-  const rehabMovementCount = countDistinctRehabMovements(
-    sections.rehab.flatMap((row) => row.items),
-  );
-  const rehabProtocolName = sections.rehab
-    .flatMap((row) => row.items)
-    .map((item) => item.meta?.rehabProtocolName)
-    .find((name): name is string => typeof name === "string" && name.length > 0);
-  const compositionLabel = useMemo(() => {
-    const parts: string[] = [];
-    if (mainLiftCount > 0) {
-      parts.push(`${mainLiftCount} main lift${mainLiftCount === 1 ? "" : "s"}`);
-    }
-    if (supplementalLiftCount > 0) {
-      parts.push(
-        `${supplementalLiftCount} supplemental lift${
-          supplementalLiftCount === 1 ? "" : "s"
-        }`,
-      );
-    }
-    if (accessoryCount > 0) {
-      parts.push(`${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`);
-    }
-    if (rehabMovementCount > 0) {
-      parts.push(
-        `${rehabMovementCount} rehab movement${rehabMovementCount === 1 ? "" : "s"}`,
-      );
-    }
-    return parts.join(" + ");
-  }, [
-    mainLiftCount,
-    supplementalLiftCount,
-    accessoryCount,
-    rehabMovementCount,
-  ]);
   const dur = session.estDurationMin;
 
   const handleSwap = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -2605,7 +2551,7 @@ export function SessionDrawer({
         aria-hidden="true"
       />
       <aside
-        className={`plan-drawer${dragging ? " dragging" : ""}`}
+        className={`plan-drawer ${todayStyles.drawer}${dragging ? " dragging" : ""}`}
         role="dialog"
         aria-labelledby="plan-drawer-title"
         aria-modal="true"
@@ -2640,8 +2586,7 @@ export function SessionDrawer({
           <div>
             <h2 id="plan-drawer-title">{session.title}</h2>
             <div className="meta mono">
-              {shortDate(session.date)}
-              {isToday && " · Today"}
+              {new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(session.date))}
               {overdue && (
                 <span
                   className="overdue-pill mono"
@@ -2651,7 +2596,6 @@ export function SessionDrawer({
                   Overdue · {overdueDayCount}d
                 </span>
               )}
-              {compositionLabel && ` · ${compositionLabel}`}
               {dur != null && ` · ~${dur} min`}
             </div>
           </div>
@@ -2681,7 +2625,7 @@ export function SessionDrawer({
               onClick={() => setShowSwap((v) => !v)}
               data-testid="plan-drawer-swap"
             >
-              ⇄ Swap day
+              Swap day
             </button>
             {/* ✎ Edit means two different things depending on where the session
                 is in its life.
@@ -2707,7 +2651,7 @@ export function SessionDrawer({
                 className="cp-btn"
                 data-testid="plan-drawer-edit"
               >
-                ✎ Edit session
+                Edit session
               </Link>
             ) : (
               <button
@@ -2717,7 +2661,7 @@ export function SessionDrawer({
                 data-testid="plan-drawer-edit"
                 aria-pressed={editing}
               >
-                ✎ {editing ? "Done editing" : "Edit"}
+                {editing ? "Done editing" : "Edit"}
               </button>
             )}
             {/* "Mark done" and "Skip" only make sense for an un-logged session —
@@ -2733,7 +2677,7 @@ export function SessionDrawer({
                     data-testid="plan-drawer-mark-done"
                     data-one-tap="true"
                   >
-                    {cardioDonePending ? "Finishing…" : "✓ Mark done"}
+                    {cardioDonePending ? "Finishing…" : "Mark done"}
                   </button>
                 ) : (
                   allowLogging &&
@@ -2743,7 +2687,7 @@ export function SessionDrawer({
                       className="cp-btn"
                       data-testid="plan-drawer-mark-done"
                     >
-                      ✓ Mark done
+                      Mark done
                     </Link>
                   )
                 )}
@@ -2760,7 +2704,7 @@ export function SessionDrawer({
                     <input type="hidden" name="id" value={session.id} />
                     <button
                       type="submit"
-                      className="cp-btn ghost"
+                      className="cp-btn"
                       data-testid="plan-drawer-skip"
                       style={{ width: "100%" }}
                     >
@@ -2869,51 +2813,7 @@ export function SessionDrawer({
           ) : session.done && session.completedSessionId ? (
             <CompletedSummaryCard sessionId={session.completedSessionId} />
           ) : (
-            <>
-              {sections.rehab.length > 0 && (
-                <DrawerRowSection
-                  testId="plan-drawer-section-rehab"
-                  label={
-                    rehabProtocolName && rehabProtocolName !== "Rehab"
-                      ? `Rehab · ${rehabProtocolName}`
-                      : "Rehab"
-                  }
-                  hint={session.isRehab ? undefined : "Do during warm-up"}
-                  prefix="R"
-                  rows={sections.rehab}
-                  accent
-                />
-              )}
-              <DrawerMovementSections sections={sections.movements} />
-
-              {sections.accessories.length > 0 && (
-                <DrawerRowSection
-                  testId="plan-drawer-section-accessories"
-                  label="Accessories"
-                  prefix="A"
-                  rows={sections.accessories}
-                />
-              )}
-              {sections.tendon.length > 0 && (
-                <DrawerRowSection
-                  testId="plan-drawer-section-tendon"
-                  label="Tendon work"
-                  prefix="T"
-                  rows={sections.tendon}
-                />
-              )}
-              {sections.hingeCompensations.length > 0 && (
-                <DrawerRowSection
-                  testId="plan-drawer-section-hinge"
-                  label="Posterior chain"
-                  prefix="H"
-                  rows={sections.hingeCompensations}
-                />
-              )}
-              {sections.cardio.length > 0 && (
-                <DrawerCardio items={sections.cardio} />
-              )}
-            </>
+            <WorkoutExercises items={session.items} detailed />
           )}
 
           <div
@@ -3995,165 +3895,6 @@ function DrawerMovementGroup({
           </DrawerSupersetCluster>
         ),
       )}
-    </div>
-  );
-}
-
-function DrawerRowSection({
-  label,
-  hint,
-  prefix,
-  rows,
-  testId,
-  accent = false,
-}: {
-  label: string;
-  hint?: string;
-  prefix: string;
-  rows: PrescriptionMovementRow[];
-  testId: string;
-  accent?: boolean;
-}) {
-  const segments = segmentSupersetRows(rows);
-  const rendered: React.ReactNode[] = [];
-  let num = 0;
-  for (const seg of segments) {
-    if (seg.kind === "solo") {
-      num += 1;
-      rendered.push(
-        <DrawerAccessoryRow key={seg.row.rowKey} prefix={prefix} num={num} row={seg.row} />,
-      );
-      continue;
-    }
-    const inner: React.ReactNode[] = [];
-    for (const r of seg.rows) {
-      num += 1;
-      inner.push(<DrawerAccessoryRow key={r.rowKey} prefix={prefix} num={num} row={r} />);
-    }
-    rendered.push(
-      <DrawerSupersetCluster
-        key={seg.groupId}
-        groupId={seg.groupId}
-        name={circuitNameOfRow(seg.rows[0]!)}
-        size={seg.rows.length}
-      >
-        {inner}
-      </DrawerSupersetCluster>,
-    );
-  }
-  return (
-    <div
-      data-testid={testId}
-      style={
-        accent
-          ? {
-              borderLeft: "2px solid var(--cp-accent)",
-              paddingLeft: 10,
-            }
-          : undefined
-      }
-    >
-      <div className="section">
-        {label}
-        {hint && (
-          <span
-            style={{
-              marginLeft: 8,
-              fontSize: 11,
-              fontWeight: 500,
-              color: "var(--cp-accent)",
-              textTransform: "none",
-              letterSpacing: 0,
-            }}
-          >
-            {hint}
-          </span>
-        )}
-      </div>
-      {rendered}
-    </div>
-  );
-}
-
-function DrawerAccessoryRow({
-  prefix,
-  num,
-  row,
-}: {
-  prefix: string;
-  num: number;
-  row: PrescriptionMovementRow;
-}) {
-  return (
-    <div className="set-row">
-      <span className="n">
-        {prefix}
-        {num}
-      </span>
-      <span>{row.movementName}</span>
-      <SetRowValue
-        value={collapseIdenticalSetItems(row.items)
-          .map((it) => formatPrescriptionItem(it))
-          .join(" · ")}
-      />
-    </div>
-  );
-}
-
-function DrawerCardio({ items }: { items: PrescriptionItem[] }) {
-  return (
-    <div data-testid="plan-drawer-section-cardio">
-      <div className="section">Cardio</div>
-      {items.map((it, i) => {
-        const duration = it.durationMin != null ? `${it.durationMin} min` : null;
-        const target = it.hrCap ?? null;
-        const richNote = (it.notes ?? "").trim();
-        const protocol = cardioProtocolNote(it);
-        // No "Detail" fallback. At this point the only real datum the
-        // one-line formatter could add for cardio is the duration, which the
-        // pill beside the name already shows — and with nothing at all it
-        // emits the literal "cardio", so a reserved day read "Detail: cardio".
-        // It also printed `protocolNote` raw, re-surfacing the placeholder
-        // prose suppressed one line above under a different label.
-        return (
-          <div key={i} data-testid={`plan-drawer-cardio-${i}`} className="cardio-block">
-            <div className="movement-head">
-              <span>{it.movementName ?? "Cardio"}</span>
-              {duration && (
-                <span className="range-pill" data-testid="plan-drawer-cardio-duration">
-                  {duration}
-                </span>
-              )}
-            </div>
-            {it.cardioPlan ? (
-              <div style={{ marginTop: 8 }}>
-                <CardioPlanView plan={it.cardioPlan} />
-              </div>
-            ) : (
-              <>
-                {richNote && (
-                  <div className="cardio-line">
-                    <span className="lbl">Session</span>
-                    <span className="val">{richNote}</span>
-                  </div>
-                )}
-                {target && (
-                  <div className="cardio-line">
-                    <span className="lbl">Target</span>
-                    <span className="val">{target}</span>
-                  </div>
-                )}
-                {protocol && (
-                  <div className="cardio-line">
-                    <span className="lbl">Protocol</span>
-                    <span className="val">{protocol}</span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }

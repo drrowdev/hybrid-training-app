@@ -5911,3 +5911,31 @@ prompt priority, prescription ranges/structured cardio, pending/done/restore
 navigation and canonical week entries. Existing browser selectors retain their
 workflow assertions and deadlines. Linux automatic PR CI remains the acceptance
 gate; no local database/native runs, merge or deployment.
+
+## [2026-09-26] refine | Today workout previews and shared month navigation
+
+Owner feedback removes the bodyweight measurement prompt and its eligibility
+read from Today. Settings bodyweight logging and history remain unchanged;
+all other prompt priorities, including the separate bodyweight-training
+equipment notice, remain intact (DC-K4, DC-V1).
+
+Each planned workout in the Today week rail now opens the existing shared
+session drawer through its own accessible, 44px-minimum link. Start workout
+still opens logging; rest rows are not links. The shared drawer reuses Today's
+exercise rows and counts aggregated `sets` rather than prescription records,
+while retaining warm-ups, varying loads, optional work, editing and notes.
+Its action labels lose decorative glyphs and form a two-column mobile grid.
+
+Schedule opens the shared month through `view=month`. The unselected Schedule
+page now honors that view using the existing month grid with canonical shared
+dates, program-type colors and the program switcher. A Week / Month toggle
+keeps both views reachable; Week remains the default. Primary entries open
+the same drawer and swimming retains its existing overview destination.
+
+Synthetic 375px and 1280px screenshots cover the real Today components,
+single-workout and two-workout previews, and shared month. The new fixture
+is development-only even when the CI fixture flag is set; the existing
+logger fixture gate is untouched. Unit/browser checks cover prescription
+parity, keyboard opening/closing, target sizes and start links; authenticated
+CI assertions cover Today-to-month navigation and shared entries. No schema,
+RPC, migration, local real-database/native run, merge or deployment.

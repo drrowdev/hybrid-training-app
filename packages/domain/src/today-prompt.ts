@@ -8,7 +8,6 @@ const TODAY_PROMPT_ORDER = [
   "next-program",
   "program-recommendation",
   "bodyweight-only",
-  "bodyweight",
 ] as const;
 
 export type TodayPromptKind = (typeof TODAY_PROMPT_ORDER)[number];

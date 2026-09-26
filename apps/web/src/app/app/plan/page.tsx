@@ -7,7 +7,8 @@ import { ProgramSwitcher } from "@/components/program/ProgramSwitcher";
 import { blockOverviewItems, swimOverviewItems } from "@/lib/programs/overview";
 import { hasTemplateWorkoutTitles, programWorkoutTitle } from "@/lib/programs/presentation";
 import { notFound, redirect, unstable_rethrow } from "next/navigation";
-import { SharedTrainingWeek } from "@/components/program/SharedTrainingWeek";
+import { SharedTrainingWeek, SharedTrainingMonth } from "@/components/program/SharedTrainingWeek";
+import { ScheduleViewToggle } from "@/components/program/TrainingMonth";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   endBlock,
@@ -172,7 +173,11 @@ export default async function PlanPage({
       <PageHeader title="Schedule" back={{ href: "/app/programs", label: "Programs" }} />
       {programNavigation}
       {seasonEnabled && <SeasonViewTabs season={sp.view === "season"} />}
-      {sp.view === "season" ? seasonContent : <SharedTrainingWeek today={todayYmd(profileTz)} />}
+      {sp.view === "season" ? seasonContent : <>
+        <ScheduleViewToggle month={sp.view === "month"} />
+        {sp.view === "month" ? <SharedTrainingMonth today={todayYmd(profileTz)} />
+          : <SharedTrainingWeek today={todayYmd(profileTz)} />}
+      </>}
     </div>;
   }
 

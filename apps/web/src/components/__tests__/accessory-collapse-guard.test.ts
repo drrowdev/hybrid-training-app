@@ -25,7 +25,9 @@ const COMPONENTS_ROOT = path.resolve(
 
 /** Components that format prescription items but never render a multi-set row. */
 const ALLOWLIST = new Set<string>([
-  // (none today — both known surfaces collapse)
+  // Only formats a single timeline summary item or numbered legacy set.
+  // Multi-set drawer rows now use WorkoutExercises, which remains guarded.
+  "plan/PlanRedesign.tsx",
 ]);
 
 function walkTsx(dir: string): string[] {
