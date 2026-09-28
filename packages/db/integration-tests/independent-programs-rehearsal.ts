@@ -324,8 +324,11 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     await denied(() => asUser(a, (tx) => tx`UPDATE public.planned_sessions SET prescription=${json({ items: [runItem] })}::text::jsonb
       WHERE block_id=${strength.block_id}::uuid`), "22023");
     await denied(() => asUser(a, (tx) => tx`DELETE FROM public.program_instances WHERE id=${strength.program_instance_id}::uuid`), "23514");
+    const unusedDay = (calendar.weekday + 1) % 7;
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.planned_sessions
+      WHERE block_id=${strength.block_id}::uuid AND week_index=0 AND day_index=${unusedDay} AND slot='single'`)[0]!.n, 0);
     await denied(() => asUser(b, (tx) => tx`INSERT INTO public.planned_sessions(user_id,block_id,week_index,day_index,slot,title,role,prescription)
-      VALUES(${b}::uuid,${strength.block_id}::uuid,0,0,'single','Other','strength','{"items":[]}')`), "23503");
+      VALUES(${b}::uuid,${strength.block_id}::uuid,0,${unusedDay},'single','Other','strength','{"items":[]}')`), "23503");
     stages.push("ownership-direct-writer-parent-and-modality-boundaries");
     stage("ownership-program-owned-load-bases-with-shared-measurement");
     await asUser(a, (tx) => tx`INSERT INTO public.training_maxes(user_id,movement_id,one_rm_kg,tm_percent,source)
