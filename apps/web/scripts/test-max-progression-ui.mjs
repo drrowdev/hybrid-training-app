@@ -15,6 +15,7 @@ const output = await build({
     import { createRoot } from "react-dom/client";
     import { AppShell } from "./src/components/shell/AppShell";
     import { TodayDashboard } from "./src/components/today/TodayDashboard";
+    import { QuickWorkoutCard } from "./src/components/today/QuickWorkoutCard";
     import { TmSuggestionBanner } from "./src/components/today/TmSuggestionBanner";
     import { ScheduledMaxProgressionToggle } from "./src/components/settings/ScheduledMaxProgressionToggle";
     import { TmSection } from "./src/components/training-maxes/TmSection";
@@ -73,6 +74,21 @@ const output = await build({
           lockAction={async () => { throw new Error("Unexpected lock"); }} />
       </div>));
     };
+    window.showMondaySwim = (longTitle = false, completedToday = false) => {
+      window.route = "/app";
+      const title = longTitle ? "ContinuousFreestylePracticeWithLongUnbrokenTitle" : "Synthetic practice";
+      const swim = { id: "imported-swim", date: completedToday ? "2026-09-28" : "2026-09-27",
+        scheduledDate: "2026-09-28", title, program: "Synthetic private course", programId: "swim-plan",
+        kind: "swimming", done: true, href: "#recording", minutes: 15, summary: "350 m · 15 min · 2026-09-28",
+        action: "View swim", state: "completed" };
+      const next = { ...swim, id: "next-swim", date: "2026-09-30", done: false, state: "scheduled" };
+      const unexpected = async () => { throw new Error("Unexpected quick workout"); };
+      root.render(shell(<TodayDashboard today="2026-09-28" workouts={completedToday ? [swim] : []}
+        weekWorkouts={[swim, next]} hasProgram multiplePrograms={false} next={next} prompt={null}
+        quickWorkout={<QuickWorkoutCard variant={completedToday ? "planned" : "rest"} recent={[]}
+          startStrength={unexpected} repeatRecent={unexpected} generateStrength={unexpected}
+          generateHyrox={unexpected} hyroxStationDefaults={[]} />} />));
+    };
   `, loader: "tsx", resolveDir: root },
   bundle: true, write: false, outdir: "in-memory-max-ui", format: "iife", platform: "browser",
   jsx: "automatic", logLevel: "warning", conditions: ["style"],
@@ -80,7 +96,7 @@ const output = await build({
   plugins: [{
     name: "unexercised-boundaries",
     setup(builder) {
-      builder.onResolve({ filter: /^(next\/(?:link|navigation)|@\/components\/cmd-k\/CommandPaletteProvider|@\/components\/plan\/ThisWeekRail|\.\/WorkoutOptions)$/ },
+      builder.onResolve({ filter: /^(next\/(?:link|navigation)|@\/components\/cmd-k\/CommandPaletteProvider|@\/components\/plan\/(?:ThisWeekRail|PlanRedesign)|\.\/WorkoutOptions)$/ },
         args => ({ path: args.path, namespace: "fixture" }));
       builder.onLoad({ filter: /.*/, namespace: "fixture" }, args => ({
         contents: args.path === "next/link"
@@ -91,6 +107,8 @@ const output = await build({
           ? 'export const useCommandPalette=()=>({open(){throw new Error("Unexpected search");}});'
           : args.path.includes("ThisWeekRail")
           ? 'export const ThisWeekRail=()=>{throw new Error("Unexpected week drawer");};'
+          : args.path.includes("PlanRedesign")
+          ? 'export const shouldDismissSwipe=()=>{throw new Error("Unexpected drawer swipe");};'
           : 'export const WorkoutOptions=()=>{throw new Error("Unexpected options");};',
         loader: "js", resolveDir: root,
       }));
@@ -122,8 +140,23 @@ try {
   if (directory) await mkdir(directory, { recursive: true });
   async function screenshot(name) {
     await page.evaluate(() => document.fonts.ready);
+    if (!await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)) {
+      console.error(name, await page.evaluate(() => [...document.querySelectorAll("body *")]
+        .filter(element => element.getBoundingClientRect().right > innerWidth + 1)
+        .map(element => ({ tag: element.tagName, class: element.getAttribute("class"), width: element.scrollWidth,
+          right: Math.round(element.getBoundingClientRect().right), viewport: innerWidth })).slice(-12)));
+    }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "No horizontal overflow");
     if (directory) await page.screenshot({ path: path.join(directory, `${name}.png`), fullPage: true });
+  }
+  await page.setViewportSize({ width: 375, height: 900 });
+  for (const longTitle of [false, true]) {
+    for (const completedToday of [false, true]) {
+      await page.evaluate(({ longTitle, completedToday }) => window.showMondaySwim(longTitle, completedToday), { longTitle, completedToday });
+      await expect(page.getByTestId(completedToday ? "today-logged" : "today-rest")).toBeVisible();
+      await expect(page.getByTestId("today-prompt")).toHaveCount(0);
+      await screenshot(`today-monday-swim-${longTitle ? "long" : "normal"}-${completedToday ? "done" : "rest"}-375`);
+    }
   }
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });

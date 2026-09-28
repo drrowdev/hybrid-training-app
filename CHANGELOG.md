@@ -17,6 +17,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   source-workout guard queried a nonexistent column. Ownership now follows
   the planned workout link; legacy and off-plan advice works while typed
   program advice remains separate.
+- Today keeps long workout names inside the next-workout link and logged
+  workout cards on narrow screens.
 - Migration **0161_scheduled_max_progression** widens the existing source
   checks, adds pending-proposal uniqueness and atomic generation/decision/
   preference functions. No new columns, data backfill or RLS changes.

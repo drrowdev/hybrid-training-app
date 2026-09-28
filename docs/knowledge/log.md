@@ -5996,3 +5996,15 @@ acceptance and typed-program refusal remain regression-tested (DC-R6);
 no RLS or ownership policy changes. The same run exposed a Monday-only
 negative-fixture slot collision; that fixture now proves its slot empty
 before asserting the unchanged foreign-parent FK refusal.
+
+## [2026-09-28] repair | Narrow Today workout titles
+
+Automatic modular acceptance passed authenticated two-user isolation but
+reported a Today width assertion. Coordinator authorized a bounded Monday
+swim-only synthetic reproduction and failure-only element/width diagnostics.
+Ordinary titles fit; a long unbroken title pushed the rest-card Next chevron
+past 375px. The Next text now shrinks and wraps; logged title/program/summary
+text also wraps without clipping. Synthetic Monday rest/done and normal/long
+cases preserve the original viewport assertion. This does not establish
+that the separate live acceptance failure has the same cause; the next Linux
+run must confirm it. No new visible copy.

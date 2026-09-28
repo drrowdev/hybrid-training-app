@@ -28,6 +28,24 @@ type Planned = { id: string; block_id: string; week_index: number; day_index: nu
 const today = () => new Date().toISOString().slice(0, 10);
 const weekday = () => (new Date(`${today()}T00:00:00Z`).getUTCDay() + 6) % 7;
 
+async function assertNoHorizontalOverflow(page: Page) {
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
+  if (!fits) {
+    const overflow = await page.evaluate(() => {
+      const candidates = [...document.querySelectorAll<HTMLElement>("body *")]
+        .filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
+        .sort((a, b) => b.scrollWidth - a.scrollWidth);
+      const element = candidates[0] ?? document.documentElement;
+      const testId = element.getAttribute("data-testid") ?? "";
+      const identifier = /^[a-z-]{1,80}$/.test(testId) ? testId
+        : `${element.tagName.toLowerCase()} ${element.className}`.replace(/[^a-zA-Z0-9_. -]/g, "").slice(0, 180);
+      return { element: identifier, scrollWidth: element.scrollWidth, viewport: innerWidth };
+    });
+    test.info().annotations.push({ type: "viewport-overflow", description: JSON.stringify(overflow) });
+  }
+  expect(fits).toBe(true);
+}
+
 const test = seededTest.extend<{ actor: SupabaseClient; catalog: Movement[] }>({
   /* eslint-disable react-hooks/rules-of-hooks -- Playwright fixture callbacks. */
   seedConfig: async ({ baseURL }, use) => {
@@ -779,7 +797,7 @@ test.describe("Modular program builder", () => {
             await expect(scheduled.locator("xpath=ancestor::li").locator("time")).toHaveAttribute("datetime", scheduledDate);
             await expect(scheduled).not.toContainText("Completed");
           }
-          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+          await assertNoHorizontalOverflow(page);
           continue;
         }
         const hub = path.startsWith("/app/swim");
@@ -793,7 +811,7 @@ test.describe("Modular program builder", () => {
           await expect(page.getByRole("link", { name: /^Next swim\b/ }))
             .toHaveAttribute("href", new RegExp(`^/app/swim/${nextId}(?:\\?|$)`));
         }
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        await assertNoHorizontalOverflow(page);
       }
     };
     const openHistory = async (label: string) => {

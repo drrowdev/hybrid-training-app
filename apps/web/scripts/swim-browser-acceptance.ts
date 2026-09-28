@@ -14,6 +14,7 @@ import { MODULAR_BROWSER_CASES, type BrowserCase } from "./modular-browser-profi
 import {
   projectModularObservation, readModularAnnotations, readModularFailurePhase, readHistoryDeleteFailure,
   readNativeUiFailure, type NativeUiFailure, type ModularObservation, type ModularFailurePhase, type HistoryDeleteFailure,
+  readViewportOverflow, type ViewportOverflow,
 } from "./modular-browser-observations";
 
 export const SWIM_BROWSER_CASES = Object.freeze([
@@ -184,6 +185,7 @@ const failureLedgers = new WeakMap<object, {
     failurePhase?: ModularFailurePhase;
     historyDeleteFailure?: HistoryDeleteFailure;
     nativeUiFailure?: NativeUiFailure;
+    viewportOverflow?: ViewportOverflow;
     alertObservations: AlertObservation[];
   }>;
   counts: { expected: number; unexpected: number; flaky: number; skipped: number };
@@ -479,11 +481,13 @@ const resultSchema = z.object({
     alerts: readAlertAnnotations(value), modular: readModularAnnotations(value), phase: readModularFailurePhase(value),
     historyDelete: readHistoryDeleteFailure(value),
     nativeUi: [7, 8, 10, 12, 13].map((index) => readNativeUiFailure(value, index)),
+    viewportOverflow: readViewportOverflow(value),
   })),
 }).transform(({ errors, error, annotations, ...result }) => ({
   ...result, annotations: annotations.alerts, modularAnnotations: annotations.modular, failurePhase: annotations.phase,
   historyDeleteFailure: annotations.historyDelete,
   nativeUiFailures: annotations.nativeUi,
+  viewportOverflow: annotations.viewportOverflow,
   error: error.present, errors: errors.length, errorLocations: errors.map((error) => error.location),
   stacks: [...new Set([error.stack, ...errors.slice(0, 8).map((item) => item.stack)]
     .filter((stack): stack is string => stack !== undefined))],
@@ -643,6 +647,7 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
             attributedSources: attributedSources(test.results, webRoot),
             ...(last && last.status !== "passed" ? {
               failureDetails: projectStackAttribution(last.stacks, webRoot),
+              ...(last.viewportOverflow ? { viewportOverflow: last.viewportOverflow } : {}),
               ...(cases === MODULAR_BROWSER_CASES ? { failurePhase: last.failurePhase } : {}),
               ...(cases === MODULAR_BROWSER_CASES && index === 10 ? { historyDeleteFailure: last.historyDeleteFailure } : {}),
               ...(cases === MODULAR_BROWSER_CASES && [7, 8, 10, 12, 13].includes(index) ? {

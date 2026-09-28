@@ -15,6 +15,7 @@
 .program span { font-weight: 500; color: var(--cp-text-muted); letter-spacing: 0; }
 .title { margin: 5px 0 0; font-size: 24px; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; }
 .meta { margin-top: 5px; color: var(--cp-text-muted); font-size: 14px; }
+.title, .program, .meta { overflow-wrap: anywhere; }
 .right { display: flex; align-items: center; gap: 8px; }
 .status { color: var(--cp-text-soft); font-size: 13px; white-space: nowrap; }
 .done { color: var(--cp-success); }
@@ -68,6 +69,7 @@
 .restCard > a { min-height: 44px; }
 .next { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 60px; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--cp-border); text-decoration: none; color: var(--cp-text); }
 .next small { display: block; margin-top: 4px; color: var(--cp-text-muted); }
+.next > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .prompt { min-width: 0; }
 .prompt a, .prompt button { min-height: 44px; }
 .prompt input::placeholder { color: var(--cp-text-muted); opacity: 1; }
