@@ -16,6 +16,7 @@ export function tmBadgeText(source: TmSource, formula: TmFormula | null): string
   // kept out of user-facing copy. A derived TM just reads as an estimate.
   void formula;
   if (source === "entered") return "(entered)";
+  if (source === "scheduled_progression") return "(accepted increase)";
   return "(estimated)";
 }
 

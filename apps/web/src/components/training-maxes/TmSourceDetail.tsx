@@ -32,7 +32,7 @@ export function TmSourceDetail({
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  if (row.source === "entered") return null;
+  if (row.source === "entered" || row.source === "scheduled_progression") return null;
 
   const onLock = () => {
     const fd = new FormData();

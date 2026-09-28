@@ -80,7 +80,7 @@ export const getTrainingMaxContext = cache(async function getTrainingMaxContext(
     const effective = override ?? defaultPercent;
     const sourceRaw = (r as { source?: string }).source ?? "entered";
     const source: TmSource =
-      sourceRaw === "derived_amrap" || sourceRaw === "derived_rpe"
+      sourceRaw === "derived_amrap" || sourceRaw === "derived_rpe" || sourceRaw === "scheduled_progression"
         ? sourceRaw
         : "entered";
     const formulaRaw = (r as { derived_formula?: string | null }).derived_formula ?? null;

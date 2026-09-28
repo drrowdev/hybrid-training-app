@@ -26,8 +26,9 @@ import { setLogs } from "./set-logs";
  *  - 'entered'        · user typed the 1RM themselves.
  *  - 'derived_amrap'  · accepted from an AMRAP top-set e1RM suggestion.
  *  - 'derived_rpe'    · accepted from an RPE-anchored e1RM suggestion.
+ *  - 'scheduled_progression' · explicitly accepted scheduled account 1RM increase.
  */
-export const TM_SOURCES = ["entered", "derived_amrap", "derived_rpe"] as const;
+export const TM_SOURCES = ["entered", "derived_amrap", "derived_rpe", "scheduled_progression"] as const;
 export type TmSource = (typeof TM_SOURCES)[number];
 
 /** Formula label kept alongside derived TMs for UI disclosure. */

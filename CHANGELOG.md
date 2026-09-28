@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Scheduled 1RM increases
+- Today offers **Increase 1RMs** below the workouts after 21 days without a
+  max change or decision: +1.5 kg for confidently classified upper-body lifts,
+  +2.5 kg for lower-body lifts. Only measured 1RMs used by an active program's
+  prescriptions qualify; program-owned absolute working maxes stay separate.
+- Accept or decline each lift, or all visible lifts together. Workout-derived
+  advice takes precedence for the same lift. A decline restarts that lift's
+  21-day clock. Settings has **Suggest 1RM increases every 3 weeks**, on by
+  default. Scheduled increases are metric-only.
+- Migration **0161_scheduled_max_progression** widens the existing source
+  checks, adds pending-proposal uniqueness and atomic generation/decision/
+  preference functions. No new columns, data backfill or RLS changes.
+- **Deploy order:** release the app first; verify that exact production build,
+  then separately authorize/apply 0161 and refresh the API schema cache.
+  Before 0161, Today omits scheduled increases and keeps existing derived
+  suggestions; saving the new preference reports temporary unavailability.
+- **Down plan:** `packages/db/rollbacks/0161_scheduled_max_progression.down.sql`
+  restores the previous checks and removes the new functions/index only if no
+  scheduled proposal or accepted scheduled max exists. It preserves the JSON
+  preference. After use, repair forward; never delete history to enable down.
+  This change does not authorize a merge, deployment or production migration.
+
 ### Standalone pool swimming (ADR 0079, Slice 1)
 - Added swim setup, multiweek plans, Today/Plan access, whole-pool-length
   workouts, set progress, actual results and durable offline completion.

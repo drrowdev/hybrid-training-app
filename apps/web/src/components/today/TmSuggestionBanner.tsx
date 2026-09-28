@@ -11,6 +11,7 @@
 import { useState, useTransition } from "react";
 import type { TmFormula } from "@hta/db";
 import type { UpsertResult } from "@/lib/training-maxes/actions";
+import styles from "./TmSuggestionBanner.module.css";
 import {
   type WeightUnit,
   displayWeight,
@@ -48,30 +49,35 @@ export function TmSuggestionBanner({
   acceptAction,
   dismissAction,
   units = "metric",
+  oneRm = false,
 }: {
   suggestions: TmSuggestionView[];
   acceptAction: (fd: FormData) => Promise<UpsertResult>;
   dismissAction: (fd: FormData) => Promise<UpsertResult>;
   units?: WeightUnit;
+  oneRm?: boolean;
 }) {
   const fmtW = (n: number | null): string =>
-    n == null ? "—" : `${roundDisplayWeight(displayWeight(n, units), units)}`;
+    n == null ? "—" : oneRm ? String(n) : `${roundDisplayWeight(displayWeight(n, units), units)}`;
   const unitLabel = weightUnitLabel(units);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resolved, setResolved] = useState<string[]>([]);
   const [, startTransition] = useTransition();
 
-  if (suggestions.length === 0) return null;
+  const visible = suggestions.filter((suggestion) => !resolved.includes(suggestion.id));
+  if (visible.length === 0) return null;
 
-  const submit = (id: string, action: (fd: FormData) => Promise<UpsertResult>) => {
-    setPendingId(id);
+  const submit = (ids: string[], action: (fd: FormData) => Promise<UpsertResult>) => {
+    setPendingId(ids.length === 1 ? ids[0]! : "all");
     setError(null);
     const fd = new FormData();
-    fd.set("suggestionId", id);
+    for (const id of ids) fd.append("suggestionId", id);
     startTransition(async () => {
       try {
         const result = await action(fd);
         if (!result.ok) setError(result.error);
+        else setResolved((previous) => [...previous, ...ids]);
       } catch {
         setError("Couldn't save this choice. Try again.");
       } finally {
@@ -83,7 +89,7 @@ export function TmSuggestionBanner({
   return (
     <section
       data-testid="tm-suggestion-banner"
-      aria-label="Training-max suggestions"
+      aria-label={oneRm ? "1RM suggestions" : "Training-max suggestions"}
       style={{
         display: "grid",
         gap: 10,
@@ -93,8 +99,9 @@ export function TmSuggestionBanner({
         background: "var(--cp-surface)",
       }}
     >
+      {oneRm && <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Increase 1RMs</h2>}
       {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
-      {suggestions.map((s) => {
+      {visible.map((s) => {
         const isBusy = pendingId === s.id;
         const setText =
           s.setWeightKg != null && s.setReps != null
@@ -105,8 +112,9 @@ export function TmSuggestionBanner({
           <div
             key={s.id}
             data-testid={`tm-suggestion-${s.id}`}
+            className={oneRm ? styles.progressionRow : undefined}
             style={{
-              display: "flex",
+              display: oneRm ? undefined : "flex",
               flexWrap: "wrap",
               alignItems: "center",
               justifyContent: "space-between",
@@ -115,37 +123,46 @@ export function TmSuggestionBanner({
           >
             <div style={{ fontSize: 14, color: "var(--cp-text)", lineHeight: 1.5 }}>
               <h2 style={{ font: "inherit", fontWeight: 600, margin: 0 }}>
-                {s.movementName} training max: {s.currentTmKg != null ? `${fmtW(s.currentTmKg)} → ` : ""}{fmtW(s.suggestedTmKg)} {unitLabel}
+                {s.movementName}{!oneRm && " training max: "}
+                <span className={oneRm ? styles.values : undefined}>{s.currentTmKg != null ? `${fmtW(s.currentTmKg)} → ` : ""}{fmtW(s.suggestedTmKg)} {unitLabel}</span>
               </h2>
-              {setText && <div style={{ color: "var(--cp-text-muted)", fontSize: 13, marginTop: 3 }}>
+              {!oneRm && setText && <div style={{ color: "var(--cp-text-muted)", fontSize: 13, marginTop: 3 }}>
                 From {setText} {when}
               </div>}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button
                 type="button"
-                onClick={() => submit(s.id, acceptAction)}
-                disabled={isBusy}
+                onClick={() => submit([s.id], acceptAction)}
+                disabled={pendingId !== null}
+                aria-label={`Accept ${s.movementName}`}
                 data-testid={`tm-suggestion-accept-${s.id}`}
-                className="cp-btn primary"
-                style={{ fontSize: 12, padding: "6px 12px" }}
+                className={oneRm ? "cp-btn" : "cp-btn primary"}
+                style={{ fontSize: 12, padding: "6px 12px", minHeight: 44, minWidth: 44 }}
               >
                 {isBusy ? "…" : "Accept"}
               </button>
               <button
                 type="button"
-                onClick={() => submit(s.id, dismissAction)}
-                disabled={isBusy}
+                onClick={() => submit([s.id], dismissAction)}
+                disabled={pendingId !== null}
+                aria-label={`${oneRm ? "Decline" : "Dismiss"} ${s.movementName}`}
                 data-testid={`tm-suggestion-dismiss-${s.id}`}
                 className="cp-btn ghost"
-                style={{ fontSize: 12, padding: "6px 12px" }}
+                style={{ fontSize: 12, padding: "6px 12px", minHeight: 44, minWidth: 44 }}
               >
-                Dismiss
+                {oneRm ? "Decline" : "Dismiss"}
               </button>
             </div>
           </div>
         );
       })}
+      {oneRm && <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 10, borderTop: "1px solid var(--cp-border)" }}>
+        <button type="button" className="cp-btn primary" disabled={pendingId !== null}
+          onClick={() => submit(visible.map((suggestion) => suggestion.id), acceptAction)}>Accept all</button>
+        <button type="button" className="cp-btn ghost" disabled={pendingId !== null}
+          onClick={() => submit(visible.map((suggestion) => suggestion.id), dismissAction)}>Decline all</button>
+      </div>}
     </section>
   );
 }

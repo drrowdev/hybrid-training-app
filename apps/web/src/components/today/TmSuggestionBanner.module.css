@@ -1,0 +1,20 @@
+.progressionRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.values {
+  display: inline-block;
+  margin-left: 8px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .values {
+    display: block;
+    margin-left: 0;
+    color: var(--cp-text-muted);
+  }
+}

@@ -8,6 +8,7 @@
 
 export * from "./region-freshness";
 export * from "./today-prompt";
+export * from "./scheduled-progression";
 export * from "./ewma-series";
 export * from "./prescription-set-work";
 export * from "./prescribed-snapshot";

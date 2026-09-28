@@ -5966,3 +5966,22 @@ contain unexpected failures. The move form wraps its error below the controls
 at 375px. Synthetic date, action, query and browser regressions cover the two
 reported states. Linux automatic PR CI remains the acceptance gate. No real
 user rows, local database, schema/RPC/migration edits or production operations.
+
+## [2026-09-28] decision | Scheduled account 1RM suggestions
+
+Owner clarified that the three-week increase targets the stored measured 1RM,
+not a converted/rounded TM or a program-owned working max (DC-R6 / ADR 0087).
+The canonical domain rule classifies known movement metadata, filters all
+active account-fed prescriptions, and applies exact +1.5/+2.5 kg metric
+increments. Explicit decisions and a default-on JSON preference preserve
+DC-K4 choice; a decline restarts the lift's clock. Today combines scheduled
+and derived advice with one visible row per lift. Migration 0161 adds source
+values, pending uniqueness and owner-scoped invoker RPCs without columns,
+backfills or RLS changes; the unused down refuses any scheduled history.
+The app-first gap explicitly suppresses unavailable scheduled advice.
+Coordinator reviewed 375/1280 synthetic UI evidence and approved publication
+with compact mobile rows, secondary per-lift Accept, consistent error copy
+and a later-week Deadlift fixture. Linux PR/storage evidence remains a release
+gate; local browser evidence uses synthetic actions, not a real database.
+No production updater allowlist, merge, deployment or production operation
+is authorized. See the scheduled 1RM release note in `CHANGELOG.md`.
