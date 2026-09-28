@@ -33,7 +33,7 @@ import {
 import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
 import { isModularBrowserProfile, MODULAR_BROWSER_CASES } from "./modular-browser-profile";
-import { hasModularSchema, hasOwnershipSchema, requireAcceptanceMigrationFiles } from "./acceptance-migrations";
+import { hasModularSchema, hasOwnershipSchema, hasResumeSchema, requireAcceptanceMigrationFiles } from "./acceptance-migrations";
 import { createModularRoundTripProof, modularSchemaRoundTrip } from "./modular-schema-roundtrip";
 import { createLegacyUpgradeProof, createModularLegacyPreparation } from "./modular-legacy-fixture";
 import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
@@ -496,8 +496,10 @@ async function main(cleanupOnly: boolean) {
     });
     const modularProof = createModularRoundTripProof();
     const ownershipProof = createModularRoundTripProof();
-    const modularDdl = (phase: "down" | "up", ownership = false) => modularSchemaRoundTrip({
-      phase, command, dbId: target.dbId, proof: ownership ? ownershipProof : modularProof, ownership,
+    const resumeProof = createModularRoundTripProof();
+    const modularDdl = (phase: "down" | "up", layer: "modular" | "ownership" | "resume" = "modular") => modularSchemaRoundTrip({
+      phase, command, dbId: target.dbId,
+      proof: layer === "resume" ? resumeProof : layer === "ownership" ? ownershipProof : modularProof, layer,
       verifiedSql: (file) => {
         requireUnchanged();
         const bytes = readFileSync(join(root, file));
@@ -507,9 +509,13 @@ async function main(cleanupOnly: boolean) {
         return sql;
       },
     });
+    if (hasResumeSchema) {
+      manifest.resumeSchemaProof = resumeProof;
+      await stage("unused resume schema down before historical proofs", () => modularDdl("down", "resume"));
+    }
     if (hasOwnershipSchema) {
       manifest.ownershipSchemaProof = ownershipProof;
-      await stage("unused ownership schema down before historical modular proof", () => modularDdl("down", true));
+      await stage("unused ownership schema down before historical modular proof", () => modularDdl("down", "ownership"));
     }
     if (hasModularSchema) {
       manifest.modularSchemaProof = modularProof;
@@ -583,10 +589,11 @@ async function main(cleanupOnly: boolean) {
       legacyPreparation = legacy;
       await stage("exact ownership schema restoration and legacy preservation", async () => {
         await legacy.prepare();
-        await modularDdl("up", true);
+        await modularDdl("up", "ownership");
         await legacy.verifyUpgrade();
       });
     }
+    if (hasResumeSchema) await stage("exact resume schema restoration", () => modularDdl("up", "resume"));
     await stage("movement reference down-up and necessity proof", () => runMovementReferenceRoundTrip({
       command, dbId: target.dbId,
       verifiedSql: (file) => {
