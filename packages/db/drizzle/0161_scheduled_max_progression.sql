@@ -112,7 +112,7 @@ BEGIN
           AND s.source<>'scheduled_progression' AND s.created_at>=current_max.updated_at
           AND NOT EXISTS(SELECT 1 FROM public.planned_sessions p
             LEFT JOIN public.training_blocks b ON b.id=p.block_id AND b.user_id=u
-            WHERE p.session_id=workout.id AND p.user_id=u AND (b.id IS NULL OR b.program_kind IS NOT NULL))) THEN
+            WHERE p.completed_session_id=workout.id AND p.user_id=u AND (b.id IS NULL OR b.program_kind IS NOT NULL))) THEN
         RAISE EXCEPTION 'A workout suggestion is available for this lift. Reload Today.' USING ERRCODE='40001';
       END IF;
       proposed:=suggestion.suggested_tm_kg;
@@ -121,7 +121,7 @@ BEGIN
         WHERE s.id=suggestion.derived_from_session_id AND s.user_id=u
           AND NOT EXISTS(SELECT 1 FROM public.planned_sessions p
             LEFT JOIN public.training_blocks b ON b.id=p.block_id AND b.user_id=u
-            WHERE p.session_id=s.id AND p.user_id=u AND (b.id IS NULL OR b.program_kind IS NOT NULL))) THEN
+            WHERE p.completed_session_id=s.id AND p.user_id=u AND (b.id IS NULL OR b.program_kind IS NOT NULL))) THEN
         RAISE EXCEPTION 'Review the load settings in this workout''s program.' USING ERRCODE='42501';
       END IF;
       effective_percent:=COALESCE(current_max.tm_percent,default_percent);

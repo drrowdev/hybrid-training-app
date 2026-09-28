@@ -5989,7 +5989,7 @@ is authorized. See the scheduled 1RM release note in `CHANGELOG.md`.
 ## [2026-09-28] repair | Max suggestion source ownership
 
 Linux qualification exposed a copied pre-existing `sessions.block_id` query,
-but sessions link to programs through `planned_sessions.session_id` and
+but sessions link to programs through `planned_sessions.completed_session_id` and
 `planned_sessions.block_id`. The coordinator authorized repairing Today,
 accept, sync and 0161 through that actual relationship. Legacy/off-plan
 acceptance and typed-program refusal remain regression-tested (DC-R6);

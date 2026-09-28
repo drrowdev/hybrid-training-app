@@ -55,10 +55,10 @@ beforeEach(() => {
       }
       if (table === "planned_sessions") {
         expect(url.searchParams.get("user_id")).toBe(`eq.${owner}`);
-        expect(url.searchParams.get("session_id")).toBe(`in.(${session})`);
+        expect(url.searchParams.get("completed_session_id")).toBe(`in.(${session})`);
         return failLinkRead
           ? Response.json({ code: "42501", message: "Read refused" }, { status: 403 })
-          : Response.json(linked ? [{ session_id: session, block_id: block }] : []);
+          : Response.json(linked ? [{ completed_session_id: session, block_id: block }] : []);
       }
       if (table === "training_blocks") {
         expect(url.searchParams.get("user_id")).toBe(`eq.${owner}`);
