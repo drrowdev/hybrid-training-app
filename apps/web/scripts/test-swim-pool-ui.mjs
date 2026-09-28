@@ -927,7 +927,7 @@ try {
             : args.path === "@/lib/sessions/reorder-actions"
               ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
-              ? "export const endBlock = form => window.endProgram(form); export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); }; export const previewPlannedMove = () => { throw new Error('Unexpected move'); };"
+              ? "export const endBlock = form => window.endProgram(form); export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const resumeBlock = () => { throw new Error('Unexpected resume'); }; export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); }; export const previewPlannedMove = () => { throw new Error('Unexpected move'); };"
             : args.path === "@/lib/sessions/planned-movement-actions"
               ? "const unexpected = () => { throw new Error('Unexpected planned mutation'); }; export const removePlannedMovement = unexpected, swapPlannedMovement = unexpected, addPlannedMovement = unexpected;"
             : args.path === "@/lib/hyrox/station-swap-actions"

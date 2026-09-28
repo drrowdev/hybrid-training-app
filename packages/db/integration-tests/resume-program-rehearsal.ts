@@ -97,6 +97,7 @@ export async function rehearseProgramResume(database: postgres.Sql, stage: (name
       await tx`INSERT INTO public.training_blocks SELECT (jsonb_populate_record(NULL::public.training_blocks,
         to_jsonb(b)||jsonb_build_object('id',${legacy}::text,'program_kind',NULL))).*
         FROM public.training_blocks b WHERE b.id=${id}::uuid`;
+      await tx.unsafe("SET CONSTRAINTS ALL IMMEDIATE");
       await tx.unsafe("ALTER TABLE public.training_blocks ENABLE TRIGGER training_blocks_program_identity");
       await tx`INSERT INTO public.planned_sessions SELECT (jsonb_populate_record(NULL::public.planned_sessions,
         to_jsonb(p)||jsonb_build_object('id',gen_random_uuid(),'block_id',${legacy}::text))).*
@@ -110,6 +111,13 @@ export async function rehearseProgramResume(database: postgres.Sql, stage: (name
     return ["0162-up-down-up-preserves-function-grants-and-0158-guards", "0162-owner-only-deleted-empty-and-same-slot-refusals",
       "0162-DC-K4-overlap-rollback-explicit-consent-replay-and-retained-workouts",
       "0162-legacy-refuses-any-active-typed-slot-and-resumes-without-reclassification"];
+  } catch (error) {
+    if (error instanceof Error) {
+      const sqlstate = "code" in error && typeof error.code === "string" && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined;
+      const assertionLine = error.stack?.match(/resume-program-rehearsal\.ts:(\d+):\d+/)?.[1];
+      console.error(JSON.stringify({ scope: "resume-program-rehearsal", sqlstate, assertionLine }));
+    }
+    throw error;
   } finally {
     await database`DELETE FROM auth.users WHERE id IN (${owner},${foreign})`;
   }
