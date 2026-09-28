@@ -157,6 +157,15 @@ export async function rehearseScheduledMaxProgression(database: postgres.Sql, st
     return ["0161-up-down-up-and-unchanged-RLS", "0161-DC-R6-concurrent-generation-and-absolute-max-exclusion",
       "0161-single-accept-decline-replay-and-21-day-clock", "0161-atomic-bulk-decline-and-bulk-accept", "0161-stale-max-and-atomic-preference",
       "0161-derived-precedence-stale-bulk-rollback-and-imperial"];
+  } catch (error) {
+    if (error instanceof Error) {
+      const column = error.message.match(/column "([a-z_][a-z0-9_.]*)" (?:of relation "[a-z_]+")? ?does not exist/i)?.[1];
+      const context = "where" in error && typeof error.where === "string"
+        ? error.where.match(/function ([a-z_]+\([^)]*\)) line (\d+)/i) : null;
+      console.error(JSON.stringify({ scope: "scheduled-max-progression", column,
+        routine: context?.[1], line: context ? Number(context[2]) : undefined }));
+    }
+    throw error;
   } finally {
     await database`DELETE FROM public.tm_suggestions WHERE user_id IN (${owner}::uuid,${foreign}::uuid)`;
     await database`DELETE FROM public.training_maxes WHERE user_id IN (${owner}::uuid,${foreign}::uuid)`;
