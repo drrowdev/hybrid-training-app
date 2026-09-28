@@ -7,7 +7,7 @@
  * This test pins the derivation so a future query refactor can't
  * silently mis-count completions.
  */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => {
@@ -17,6 +17,7 @@ vi.mock("@/lib/supabase/server", () => ({
       eq: vi.fn().mockReturnValue(builder),
       is: vi.fn().mockReturnValue(builder),
       order: vi.fn().mockReturnValue(builder),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { timezone: "Pacific/Kiritimati" }, error: null }),
       range: vi.fn().mockResolvedValue({
         data: [
           {
@@ -58,6 +59,21 @@ vi.mock("@/lib/supabase/server", () => ({
             ],
           },
           {
+            id: "b-ended",
+            archetype: "strength_anchor",
+            started_on: "2026-05-04",
+            updated_at: "2026-05-09T00:00:00Z",
+            ended_at: "2026-05-09T00:00:00Z",
+            weeks: 1,
+            days_per_week: 1,
+            status: "archived",
+            day_index_overrides: null,
+            notes: null,
+            planned_sessions: [
+              { id: "remaining", role: "training", prescription: null, completed_session_id: null, skipped_at: null, week_index: 0, day_index: 6, sessions: null },
+            ],
+          },
+          {
             id: "b-custom",
             archetype: "custom",
             started_on: "2026-01-01",
@@ -83,10 +99,16 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 describe("getAllBlocksWithCompletionStats", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-05-09T12:30:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
   it("counts completed workouts, not started links, deleted results or planned rest", async () => {
     const { getAllBlocksWithCompletionStats } = await import("../queries");
     const rows = await getAllBlocksWithCompletionStats({ limit: 20 });
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     const active = rows[0]!;
     expect(active.totalSessions).toBe(4);
     expect(active.loggedSessions).toBe(1);
@@ -117,5 +139,13 @@ describe("getAllBlocksWithCompletionStats", () => {
     const custom = rows.find((r) => r.id === "b-custom")!;
     expect(custom.archetypeName).toBe("Push/Pull split");
     expect(custom.totalSessions).toBe(0);
+  });
+
+  it("DC-K4 offers resume only for ended programs with workouts remaining in the account's local day", async () => {
+    const { getAllBlocksWithCompletionStats } = await import("../queries");
+    const rows = await getAllBlocksWithCompletionStats();
+    expect(rows.filter((row) => row.canResume).map((row) => row.id)).toEqual(["b-ended"]);
+    vi.setSystemTime(new Date("2026-05-10T12:30:00Z"));
+    expect((await getAllBlocksWithCompletionStats()).some((row) => row.canResume)).toBe(false);
   });
 });

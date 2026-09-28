@@ -125,7 +125,13 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
       "        run: pnpm --filter @hta/web exec tsx scripts/swim-alert-announcer-probe.ts\n\n");
     expect(steps[install + 2]).toBe("Run guarded reference acceptance\n" +
       "        run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts\n\n");
-    expect(steps[install + 3]).toBe("Verify task cleanup\n" +
+    expect(steps[install + 3]).toBe("Retain synthetic resume menu screenshot\n" +
+      "        if: success() && matrix.profile == 'modular'\n" +
+      "        uses: actions/upload-artifact@v4\n        with:\n" +
+      "          name: resume-program-menu-375\n" +
+      "          path: ${{ env.SWIM_ACCEPTANCE_DIR }}/browser-output/**/resume-program-375.png\n" +
+      "          if-no-files-found: error\n          retention-days: 7\n\n");
+    expect(steps[install + 4]).toBe("Verify task cleanup\n" +
       "        if: always()\n        run: |\n" +
       '          if [ -n "${SWIM_ACCEPTANCE_DIR:-}" ]; then\n' +
       "            pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts --cleanup\n" +
