@@ -174,26 +174,26 @@ export function DeleteBlockMenu({
               {error}
             </p>
           )}
-          {preview && <ProgramDialog title="Resume program" busy={pending}
-            onClose={() => { setPreview(null); setError(null); setAcceptOverlap(false); }}>
-            <div style={{ display: "grid", gap: 16, padding: 20 }}>
-              <ul style={{ margin: 0, paddingLeft: 20, overflowWrap: "anywhere" }}>
-                {preview.overlaps.map((entry) => <li key={`${entry.source}:${entry.id}`}>{entry.date} · {entry.title}</li>)}
-              </ul>
-              <label style={{ display: "flex", gap: 8, alignItems: "start" }}>
-                <input type="checkbox" checked={acceptOverlap} disabled={pending}
-                  onChange={(event) => setAcceptOverlap(event.target.checked)} />
-                Keep both workouts on these dates
-              </label>
-              {error && <p role="alert" style={{ margin: 0, color: "var(--cp-danger)" }}>{error}</p>}
-              {error ? <button type="button" className="cp-btn ghost" disabled={pending}
-                onClick={() => { setPreview(null); setAcceptOverlap(false); setError(null); setOpen(true); }}>Review again</button>
-                : <button type="button" className="cp-btn primary" disabled={pending || !acceptOverlap}
-                  onClick={onResume}>Resume program</button>}
-            </div>
-          </ProgramDialog>}
         </div>
       )}
+      {preview && <ProgramDialog title="Resume program" busy={pending}
+        onClose={() => { setPreview(null); setError(null); setAcceptOverlap(false); }}>
+        <div style={{ display: "grid", gap: 16, padding: 20 }}>
+          <ul style={{ margin: 0, paddingLeft: 20, overflowWrap: "anywhere" }}>
+            {preview.overlaps.map((entry) => <li key={`${entry.source}:${entry.id}`}>{entry.date} · {entry.title}</li>)}
+          </ul>
+          <label style={{ display: "flex", gap: 8, alignItems: "start" }}>
+            <input type="checkbox" checked={acceptOverlap} disabled={pending}
+              onChange={(event) => setAcceptOverlap(event.target.checked)} />
+            Keep both workouts on these dates
+          </label>
+          {error && <p role="alert" style={{ margin: 0, color: "var(--cp-danger)" }}>{error}</p>}
+          {error ? <button type="button" className="cp-btn ghost" disabled={pending}
+            onClick={() => { setPreview(null); setAcceptOverlap(false); setError(null); setOpen(true); }}>Review again</button>
+            : <button type="button" className="cp-btn primary" disabled={pending || !acceptOverlap}
+              onClick={onResume}>Resume program</button>}
+        </div>
+      </ProgramDialog>}
     </div>
   );
 }

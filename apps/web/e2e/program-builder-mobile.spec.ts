@@ -1252,7 +1252,9 @@ test.describe("Modular program builder", () => {
       const history = page.locator(`[data-testid="block-history-row"][data-block-id="${program.block_id}"]`);
       await history.getByTestId("block-actions-trigger").click();
       const menu = history.getByRole("menu");
-      await expect(menu.getByRole("menuitem")).toHaveText(["Resume program", "Delete this program"]);
+      await expect(menu.getByRole("menuitem")).toHaveCount(2);
+      await expect(menu.getByRole("menuitem").nth(0)).toHaveAccessibleName("Resume program");
+      await expect(menu.getByRole("menuitem").nth(1)).toHaveAccessibleName("Delete this program");
       await assertNoHorizontalOverflow(page);
       await page.screenshot({ path: test.info().outputPath("resume-program-375.png"), fullPage: true });
       await history.getByRole("menuitem", { name: "Resume program", exact: true }).click();
