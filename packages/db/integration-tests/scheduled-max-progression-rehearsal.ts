@@ -134,6 +134,13 @@ export async function rehearseScheduledMaxProgression(database: postgres.Sql, st
       user_id,movement_id,current_tm_kg,suggested_tm_kg,source,derived_from_session_id,derived_formula)
       VALUES(${owner}::uuid,${derivedMovement}::uuid,90,92.5,'derived_amrap',${session.id}::uuid,'epley') RETURNING id`);
     assert.ok(derived);
+    await asUser(owner, (tx) => tx`UPDATE public.planned_sessions SET session_id=${session.id}::uuid
+      WHERE user_id=${owner}::uuid`);
+    await assertOwnershipRefusal(() => decisions([derived.id], true), "42501");
+    assert.equal(Number((await database`SELECT one_rm_kg FROM public.training_maxes
+      WHERE user_id=${owner}::uuid AND movement_id=${derivedMovement}::uuid`)[0]!.one_rm_kg), 100);
+    await asUser(owner, (tx) => tx`UPDATE public.planned_sessions SET session_id=NULL
+      WHERE user_id=${owner}::uuid`);
     await assertOwnershipRefusal(() => decisions([scheduled.find((row) => row.movement_id === derivedMovement)!.id], true), "40001");
     await asUser(owner, (tx) => tx`UPDATE public.training_maxes SET one_rm_kg=200,source='entered'
       WHERE movement_id=${staleMovement}::uuid AND user_id=${owner}::uuid`);

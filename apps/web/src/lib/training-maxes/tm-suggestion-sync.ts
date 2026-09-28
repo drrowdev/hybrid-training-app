@@ -6,7 +6,7 @@
  * `after()` cannot mint a cookie-based one.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadBlockProgramKinds } from "@/lib/programs/ownership";
+import { loadTypedProgramSessionIds } from "@/lib/programs/ownership";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import {
   evaluateTmSuggestion,
@@ -60,7 +60,7 @@ export async function syncTmSuggestionsForSession(
 ): Promise<string[]> {
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
-    .select("id, user_id, completed_at, block_id")
+    .select("id, user_id, completed_at")
     .eq("id", sessionId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -68,7 +68,7 @@ export async function syncTmSuggestionsForSession(
   if (!session || session.user_id !== userId || !session.completed_at) {
     return [];
   }
-  if (session.block_id && (await loadBlockProgramKinds(supabase, userId, [session.block_id])).get(session.block_id) != null) {
+  if ((await loadTypedProgramSessionIds(supabase, userId, [sessionId])).has(sessionId)) {
     return [];
   }
 

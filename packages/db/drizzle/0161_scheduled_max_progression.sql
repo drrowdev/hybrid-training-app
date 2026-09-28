@@ -108,17 +108,20 @@ BEGIN
       END IF;
       IF EXISTS(SELECT 1 FROM public.tm_suggestions s
         JOIN public.sessions workout ON workout.id=s.derived_from_session_id AND workout.user_id=u
-        LEFT JOIN public.training_blocks b ON b.id=workout.block_id AND b.user_id=u
         WHERE s.user_id=u AND s.movement_id=suggestion.movement_id AND s.status='pending'
           AND s.source<>'scheduled_progression' AND s.created_at>=current_max.updated_at
-          AND (workout.block_id IS NULL OR (b.id IS NOT NULL AND b.program_kind IS NULL))) THEN
+          AND NOT EXISTS(SELECT 1 FROM public.planned_sessions p
+            LEFT JOIN public.training_blocks b ON b.id=p.block_id AND b.user_id=u
+            WHERE p.session_id=workout.id AND p.user_id=u AND (b.id IS NULL OR b.program_kind IS NOT NULL))) THEN
         RAISE EXCEPTION 'A workout suggestion is available for this lift. Reload Today.' USING ERRCODE='40001';
       END IF;
       proposed:=suggestion.suggested_tm_kg;
     ELSE
-      IF NOT EXISTS(SELECT 1 FROM public.sessions s LEFT JOIN public.training_blocks b ON b.id=s.block_id AND b.user_id=u
+      IF NOT EXISTS(SELECT 1 FROM public.sessions s
         WHERE s.id=suggestion.derived_from_session_id AND s.user_id=u
-          AND (s.block_id IS NULL OR (b.id IS NOT NULL AND b.program_kind IS NULL))) THEN
+          AND NOT EXISTS(SELECT 1 FROM public.planned_sessions p
+            LEFT JOIN public.training_blocks b ON b.id=p.block_id AND b.user_id=u
+            WHERE p.session_id=s.id AND p.user_id=u AND (b.id IS NULL OR b.program_kind IS NOT NULL))) THEN
         RAISE EXCEPTION 'Review the load settings in this workout''s program.' USING ERRCODE='42501';
       END IF;
       effective_percent:=COALESCE(current_max.tm_percent,default_percent);

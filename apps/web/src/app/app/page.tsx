@@ -62,7 +62,7 @@ import {
 } from "@/lib/training-maxes/actions";
 import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
-import { loadBlockProgramKinds } from "@/lib/programs/ownership";
+import { loadTypedProgramSessionIds } from "@/lib/programs/ownership";
 import { generateScheduledProgression } from "@/lib/training-maxes/scheduled-progression";
 import { acceptMaxSuggestions, declineMaxSuggestions } from "@/lib/training-maxes/progression-actions";
 import { orderPlannedSessionsForToday } from "@/lib/sessions/today-hero";
@@ -174,14 +174,11 @@ export default async function TodayPage() {
           ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
           : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
         sessIds.length > 0
-          ? supabase.from("sessions").select("id, performed_at, block_id").eq("user_id", userId).in("id", sessIds)
-          : Promise.resolve({ data: [] as { id: string; performed_at: string; block_id: string | null }[], error: null }),
+          ? supabase.from("sessions").select("id, performed_at").eq("user_id", userId).in("id", sessIds)
+          : Promise.resolve({ data: [] as { id: string; performed_at: string }[], error: null }),
       ]);
       if (sessionsError) throw new Error("Couldn't read the source workouts. Try again.");
-      const blockIds = (sessRows ?? []).flatMap((session) => session.block_id ? [session.block_id] : []);
-      const kinds = await loadBlockProgramKinds(supabase, userId, blockIds);
-      const typedSessions = new Set((sessRows ?? [])
-        .filter((session) => session.block_id && kinds.get(session.block_id) != null).map((session) => session.id));
+      const typedSessions = await loadTypedProgramSessionIds(supabase, userId, sessIds);
       const movName = new Map((movRows ?? []).map((m) => [m.id, m.display_name as string]));
       const setMap = new Map(
         (setRows ?? []).map((s) => [

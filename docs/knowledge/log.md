@@ -5985,3 +5985,14 @@ and a later-week Deadlift fixture. Linux PR/storage evidence remains a release
 gate; local browser evidence uses synthetic actions, not a real database.
 No production updater allowlist, merge, deployment or production operation
 is authorized. See the scheduled 1RM release note in `CHANGELOG.md`.
+
+## [2026-09-28] repair | Max suggestion source ownership
+
+Linux qualification exposed a copied pre-existing `sessions.block_id` query,
+but sessions link to programs through `planned_sessions.session_id` and
+`planned_sessions.block_id`. The coordinator authorized repairing Today,
+accept, sync and 0161 through that actual relationship. Legacy/off-plan
+acceptance and typed-program refusal remain regression-tested (DC-R6);
+no RLS or ownership policy changes. The same run exposed a Monday-only
+negative-fixture slot collision; that fixture now proves its slot empty
+before asserting the unchanged foreign-parent FK refusal.

@@ -52,6 +52,18 @@ export async function loadBlockProgramKinds(
   return kinds;
 }
 
+export async function loadTypedProgramSessionIds(
+  client: Pick<SupabaseClient, "from">, userId: string, sessionIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (sessionIds.length === 0) return new Set();
+  const result = await client.from("planned_sessions").select("session_id,block_id")
+    .eq("user_id", userId).in("session_id", Array.from(new Set(sessionIds)));
+  if (result.error) throw new Error("Couldn't read the workout's program. Try again.", { cause: result.error });
+  const rows = z.array(z.object({ session_id: z.string(), block_id: z.string() })).parse(result.data);
+  const kinds = await loadBlockProgramKinds(client, userId, rows.map((row) => row.block_id));
+  return new Set(rows.filter((row) => kinds.get(row.block_id) != null).map((row) => row.session_id));
+}
+
 export function selectProgramTarget(
   programs: readonly OwnedActiveProgram[], kind: BlockProgramKind, editBlockId?: string,
 ): OwnedActiveProgram | null {

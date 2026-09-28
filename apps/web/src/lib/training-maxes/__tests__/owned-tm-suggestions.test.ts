@@ -23,12 +23,16 @@ const suggestion = "00000000-0000-4000-8000-000000000004";
 const movement = "00000000-0000-4000-8000-000000000005";
 let kind: string | null | undefined;
 let failBlockRead: boolean;
+let linked: boolean;
+let failLinkRead: boolean;
 let reads: string[];
 let writes: { table: string; body: Record<string, unknown> }[];
 
 beforeEach(() => {
   kind = "strength";
   failBlockRead = false;
+  linked = true;
+  failLinkRead = false;
   reads = [];
   writes = [];
   mock.edit.mockResolvedValue(null);
@@ -44,9 +48,17 @@ beforeEach(() => {
       }
       reads.push(table);
       if (table === "sessions") {
+        expect(url.searchParams.get("select")).not.toContain("block_id");
         expect(url.searchParams.get("id")).toBe(`eq.${session}`);
         expect(url.searchParams.get("user_id")).toBe(`eq.${owner}`);
-        return Response.json([{ id: session, user_id: owner, block_id: block, completed_at: "2026-09-14T12:00:00Z" }]);
+        return Response.json([{ id: session, user_id: owner, completed_at: "2026-09-14T12:00:00Z" }]);
+      }
+      if (table === "planned_sessions") {
+        expect(url.searchParams.get("user_id")).toBe(`eq.${owner}`);
+        expect(url.searchParams.get("session_id")).toBe(`in.(${session})`);
+        return failLinkRead
+          ? Response.json({ code: "42501", message: "Read refused" }, { status: 403 })
+          : Response.json(linked ? [{ session_id: session, block_id: block }] : []);
       }
       if (table === "training_blocks") {
         expect(url.searchParams.get("user_id")).toBe(`eq.${owner}`);
@@ -81,7 +93,7 @@ describe("DC-R6 program-owned TM advice", () => {
     kind = programKind;
     const client = await mock.client();
     expect(await syncTmSuggestionsForSession(client, owner, session)).toEqual([]);
-    expect(reads).toEqual(["sessions", "training_blocks"]);
+    expect(reads).toEqual(["sessions", "planned_sessions", "training_blocks"]);
     expect(await acceptTmSuggestion(input())).toMatchObject({ ok: false });
     expect(writes).toEqual([]);
   });
@@ -92,7 +104,21 @@ describe("DC-R6 program-owned TM advice", () => {
     expect(writes.find((write) => write.table === "training_maxes")?.body).toMatchObject({
       user_id: owner, movement_id: movement, one_rm_kg: 122.5, tm_percent: null,
     });
+
     expect(writes.some((write) => write.table === "program_instances")).toBe(false);
+  });
+
+  it("accepts a freestyle source without a planned-session link", async () => {
+    linked = false;
+    expect(await acceptTmSuggestion(input())).toEqual({ ok: true });
+    expect(writes.find((write) => write.table === "training_maxes")?.body.one_rm_kg).toBe(122.5);
+  });
+
+  it("refuses unreadable planned-session ownership without writing", async () => {
+    failLinkRead = true;
+    expect(await acceptTmSuggestion(input())).toMatchObject({ ok: false });
+    await expect(syncTmSuggestionsForSession(await mock.client(), owner, session)).rejects.toThrow();
+    expect(writes).toEqual([]);
   });
 
   it("does not guess when the stored kind or owning block is unreadable", async () => {

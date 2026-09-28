@@ -13,6 +13,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   advice takes precedence for the same lift. A decline restarts that lift's
   21-day clock. Settings has **Suggest 1RM increases every 3 weeks**, on by
   default. Scheduled increases are metric-only.
+- Fixed workout-derived suggestions failing to load or accept because the
+  source-workout guard queried a nonexistent column. Ownership now follows
+  the planned workout link; legacy and off-plan advice works while typed
+  program advice remains separate.
 - Migration **0161_scheduled_max_progression** widens the existing source
   checks, adds pending-proposal uniqueness and atomic generation/decision/
   preference functions. No new columns, data backfill or RLS changes.
