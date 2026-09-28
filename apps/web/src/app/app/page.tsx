@@ -1,4 +1,4 @@
-import { selectTodayPrompt } from "@hta/domain";
+import { preferredMaxSuggestions, selectTodayPrompt, suggestedAccountOneRm } from "@hta/domain";
 import { TodayDashboard, type TodayWorkout } from "@/components/today/TodayDashboard";
 import { loadTodaySwims, loadTodaySessionSummaries, loadTodayWeek, plannedTodayWorkout, plannedWeekSession } from "@/lib/today/workouts";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -62,7 +62,9 @@ import {
 } from "@/lib/training-maxes/actions";
 import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
-import { loadBlockProgramKinds } from "@/lib/programs/ownership";
+import { loadTypedProgramSessionIds } from "@/lib/programs/ownership";
+import { generateScheduledProgression } from "@/lib/training-maxes/scheduled-progression";
+import { acceptMaxSuggestions, declineMaxSuggestions } from "@/lib/training-maxes/progression-actions";
 import { orderPlannedSessionsForToday } from "@/lib/sessions/today-hero";
 
 export default async function TodayPage() {
@@ -75,7 +77,7 @@ export default async function TodayPage() {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_banner_dismissed_at, units, season_planning_enabled",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_banner_dismissed_at, units, season_planning_enabled, intake",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -132,7 +134,7 @@ export default async function TodayPage() {
     new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
   );
   const [
-    pendingSuggestions,
+    { suggestions: pendingSuggestions, oneRm: showOneRmSuggestions },
     nextEvent,
     { movementRegionById, movementSlugById },
     muscleFreshnessRows,
@@ -140,16 +142,17 @@ export default async function TodayPage() {
     // Group A — pending TM suggestions + their joined source set /
     // session / movement rows. The inner Promise.all stays inside
     // the IIFE because it depends on the suggestion list.
-    (async (): Promise<TmSuggestionView[]> => {
+    (async (): Promise<{ suggestions: TmSuggestionView[]; oneRm: boolean }> => {
+      const progression = await generateScheduledProgression(supabase, userId, activeBlocks, profile ?? {});
       const { data: pendingSuggestionsRaw, error: suggestionsError } = await supabase
         .from("tm_suggestions")
         .select(
-          "id, movement_id, current_tm_kg, suggested_tm_kg, derived_formula, derived_from_set_log_id, derived_from_session_id, created_at",
+          "id, movement_id, current_tm_kg, suggested_tm_kg, source, derived_formula, derived_from_set_log_id, derived_from_session_id, created_at",
         )
         .eq("user_id", userId).eq("status", "pending")
         .order("created_at", { ascending: false });
       if (suggestionsError) throw new Error("Couldn't read strength suggestions. Try again.");
-      if (!pendingSuggestionsRaw || pendingSuggestionsRaw.length === 0) return [];
+      if (!pendingSuggestionsRaw || pendingSuggestionsRaw.length === 0) return { suggestions: [], oneRm: false };
       const movIds = Array.from(new Set(pendingSuggestionsRaw.map((s) => s.movement_id)));
       const setIds = Array.from(
         new Set(
@@ -171,14 +174,11 @@ export default async function TodayPage() {
           ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
           : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
         sessIds.length > 0
-          ? supabase.from("sessions").select("id, performed_at, block_id").eq("user_id", userId).in("id", sessIds)
-          : Promise.resolve({ data: [] as { id: string; performed_at: string; block_id: string | null }[], error: null }),
+          ? supabase.from("sessions").select("id, performed_at").eq("user_id", userId).in("id", sessIds)
+          : Promise.resolve({ data: [] as { id: string; performed_at: string }[], error: null }),
       ]);
       if (sessionsError) throw new Error("Couldn't read the source workouts. Try again.");
-      const blockIds = (sessRows ?? []).flatMap((session) => session.block_id ? [session.block_id] : []);
-      const kinds = await loadBlockProgramKinds(supabase, userId, blockIds);
-      const typedSessions = new Set((sessRows ?? [])
-        .filter((session) => session.block_id && kinds.get(session.block_id) != null).map((session) => session.id));
+      const typedSessions = await loadTypedProgramSessionIds(supabase, userId, sessIds);
       const movName = new Map((movRows ?? []).map((m) => [m.id, m.display_name as string]));
       const setMap = new Map(
         (setRows ?? []).map((s) => [
@@ -190,7 +190,21 @@ export default async function TodayPage() {
         ]),
       );
       const sessMap = new Map((sessRows ?? []).map((s) => [s.id as string, s.performed_at as string]));
-      return pendingSuggestionsRaw.filter((s) => !typedSessions.has(s.derived_from_session_id)).map((s) => {
+      const available = pendingSuggestionsRaw.filter((s) => {
+        if (typedSessions.has(s.derived_from_session_id)) return false;
+        if (s.source !== "scheduled_progression") return true;
+        const max = tmRows.find((row) => row.movementId === s.movement_id);
+        return progression.available && progression.activeMovementIds.has(s.movement_id) && max &&
+          max.oneRmKg === Number(s.current_tm_kg) && Date.parse(max.updatedAt) <= Date.parse(s.created_at);
+      });
+      const oneRm = available.some((s) => s.source === "scheduled_progression");
+      const preferred = preferredMaxSuggestions(available.filter((s) => {
+        if (!oneRm) return true;
+        const max = tmRows.find((row) => row.movementId === s.movement_id);
+        return max && Date.parse(max.updatedAt) <= Date.parse(s.created_at);
+      }).map((s) => ({ ...s, movementId: s.movement_id as string, source: s.source as string })));
+      const suggestions = preferred.map((s) => {
+        const max = tmRows.find((row) => row.movementId === s.movement_id);
         const set = s.derived_from_set_log_id ? setMap.get(s.derived_from_set_log_id) : undefined;
         const formulaRaw = s.derived_formula as string | null;
         const formula: TmFormula | null =
@@ -200,8 +214,10 @@ export default async function TodayPage() {
         return {
           id: s.id,
           movementName: movName.get(s.movement_id) ?? "Lift",
-          currentTmKg: s.current_tm_kg == null ? null : Number(s.current_tm_kg),
-          suggestedTmKg: Number(s.suggested_tm_kg),
+          currentTmKg: oneRm && max ? max.oneRmKg : s.current_tm_kg == null ? null : Number(s.current_tm_kg),
+          suggestedTmKg: oneRm && max
+            ? suggestedAccountOneRm(Number(s.suggested_tm_kg), s.source, max.effectivePercent)
+            : Number(s.suggested_tm_kg),
           formula,
           setWeightKg: set?.weightKg ?? null,
           setReps: set?.reps ?? null,
@@ -210,6 +226,7 @@ export default async function TodayPage() {
             : null,
         };
       });
+      return { suggestions, oneRm };
     })(),
 
     // Group C — next priority event (drives the taper recommendation).
@@ -574,8 +591,10 @@ export default async function TodayPage() {
     case "taper": prompt = taperBannerProps && <TaperBanner {...taperBannerProps} />; break;
     case "active-limitation": prompt = <ActiveLimitationsCard limitations={activeLimitations}
       adjustedById={limitationSummary.adjustedById} pendingCount={limitationSummary.pendingCount} />; break;
-    case "training-max": prompt = <TmSuggestionBanner suggestions={pendingSuggestions.slice(0, 1)}
-      acceptAction={acceptTmSuggestion} dismissAction={dismissTmSuggestion}
+    case "training-max": prompt = <TmSuggestionBanner suggestions={showOneRmSuggestions ? pendingSuggestions : pendingSuggestions.slice(0, 1)}
+      oneRm={showOneRmSuggestions}
+      acceptAction={showOneRmSuggestions ? acceptMaxSuggestions : acceptTmSuggestion}
+      dismissAction={showOneRmSuggestions ? declineMaxSuggestions : dismissTmSuggestion}
       units={profile?.units === "imperial" ? "imperial" : "metric"} />; break;
     case "season": prompt = seasonNext && <NextBlockSuggestionCard compact
       nudge={{ suggestion: { programId: seasonNext.block.programId as SuggestProgramId, programName: seasonNext.programName,

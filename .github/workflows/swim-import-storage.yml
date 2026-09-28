@@ -19,6 +19,11 @@ on:
       - "packages/db/integration-tests/modular-production-legacy-graph.ts"
       - "packages/db/integration-tests/independent-programs-rehearsal.ts"
       - "packages/db/integration-tests/prescription-safety-rehearsal.ts"
+      - "packages/db/integration-tests/scheduled-max-progression-rehearsal.ts"
+      - "packages/db/rollbacks/0161_scheduled_max_progression.down.sql"
+      - "apps/web/scripts/test-max-progression-ui.mjs"
+      - "apps/web/src/components/today/TmSuggestionBanner.tsx"
+      - "apps/web/src/components/settings/ScheduledMaxProgressionToggle.tsx"
       - "packages/db/rollbacks/0159_prescription_edit_revisions.down.sql"
       - "packages/db/rollbacks/0160_atomic_swimming_replacement.down.sql"
       - "packages/db/rollbacks/0158_independent_program_ownership.down.sql"
@@ -132,5 +137,16 @@ jobs:
           path: |
             ${{ runner.temp }}/swim-ui-review/generated-swim-replacement-*.png
             ${{ runner.temp }}/swim-ui-review/chooser-four-*.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify scheduled max controls without external services
+        env:
+          UI_REVIEW_DIR: ${{ runner.temp }}/max-ui-review
+        run: pnpm --filter @hta/web exec node scripts/test-max-progression-ui.mjs
+      - name: Retain max progression screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: max-progression-ui
+          path: ${{ runner.temp }}/max-ui-review/*.png
           if-no-files-found: error
           retention-days: 7

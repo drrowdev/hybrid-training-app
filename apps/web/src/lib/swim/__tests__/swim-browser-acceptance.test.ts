@@ -13,7 +13,7 @@ import { isDeepStrictEqual } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 import {
   countsTowardAdherence, countsTowardHistory, countsTowardProgression,
-  estimateCriticalSwimSpeed, poolCourseEquals, validateSwimActualResult, validateSwimWorkout, type SwimActualResult,
+  estimateCriticalSwimSpeed, poolCourseEquals, swimScheduleAdvice, validateSwimActualResult, validateSwimWorkout, type SwimActualResult,
 } from "@hta/domain";
 import { generateSwimPlan, SWIM_GENERATOR_VERSION } from "@hta/engine";
 import { ScriptTarget, transpileModule } from "typescript";
@@ -1633,6 +1633,60 @@ describe("browser environment and static config", () => {
     const b2 = source.slice(source.indexOf('  test("B2 '), source.indexOf('  test("B3 '));
     expect(b2.match(/await saved\(actor, plans\[0\]\.id, 4\)/g)).toHaveLength(2);
     expect(b2).not.toContain("await saved(actor, plans[0].id)");
+  });
+  it("DC-SW7: reproduces empty Monday swim defaults with the primary baseline's planned rest", () => {
+    const start = "2026-09-28";
+    const sessions = Array.from({ length: 7 }, (_, offset) => ({
+      id: String(offset), date: addDaysToYmd(start, offset),
+      state: offset === 0 ? "scheduled" as const : "rest" as const,
+    }));
+    const defaults = swimScheduleAdvice({ blockId: "primary", sessions }, start, 6).defaults;
+    expect(defaults).toEqual([]);
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      pool: "25yd", goal: "base", experience: "beginner", comfortableLengths: "4",
+      timeBudgetMinutes: "30", startDate: start, weeks: "2", strokes: "freestyle",
+    })) form.set(key, value);
+    expect(() => parseSetupForm(form)).toThrow();
+    for (const day of [2, 5]) form.append("weekdays", String(day));
+    expect(parseSetupForm(form).weekdays).toEqual([2, 5]);
+  });
+  it.each([0, 1, 2, 3, 4, 5, 6])("DC-SW7: initial swim setup chooses two non-primary weekdays for baseline weekday %i", async (weekday) => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const calculationStart = source.indexOf("  const primaryWeekday =");
+    const calculation = source.slice(calculationStart, source.indexOf("  const linked =", calculationStart));
+    const baselineStart = addDaysToYmd("2026-09-20", weekday);
+    const weekdays = runInNewContext(`${calculation}\nswimWeekdays`, { baselineStart }) as number[];
+    expect(weekdays).toHaveLength(2);
+    expect(weekdays).not.toContain(weekday);
+    const selectionStart = source.indexOf("  const days =");
+    const selection = source.slice(selectionStart, source.indexOf("\n}", selectionStart));
+    for (const initial of [[], [weekday], [1, 4]]) {
+      const checked = new Set(initial);
+      const checkboxes = Array.from({ length: 7 }, (_, value) => ({
+        getAttribute: async () => String(value),
+        setChecked: async (selected: boolean) => { if (selected) checked.add(value); else checked.delete(value); },
+      }));
+      const days = { all: async () => checkboxes, and: () => checked };
+      const execute = runInNewContext(transpileModule(`(async () => { ${selection} })`, {
+        compilerOptions: { target: ScriptTarget.ES2022 },
+      }).outputText, {
+        weekdays, page: { getByRole: () => ({ getByRole: () => days }), locator: () => ({}) },
+        expect: (value: Set<number>) => ({ toHaveCount: async (count: number) => expect(value.size).toBe(count) }),
+      }) as () => Promise<void>;
+      await execute();
+      expect([...checked].sort()).toEqual([...weekdays].sort());
+      const dates = standaloneWeekRequests(addDaysToYmd(baselineStart, 7), 2, [...checked])
+        .flatMap((week) => week.slots.map((slot) => slot.dateISO));
+      expect(dates).toHaveLength(4);
+      expect(dates.every((date) => new Date(`${date}T00:00:00Z`).getUTCDay() !== weekday)).toBe(true);
+    }
+    const helper = source.slice(source.indexOf("async function createPlan"), source.indexOf("async function savedPlan"));
+    expect(helper.indexOf('page.locator("#swim-plan-preview-title")')).toBeLessThan(helper.indexOf('name: "Create swim plan"'));
+    const a7 = source.slice(source.indexOf('  test("A7,'));
+    const setup = a7.slice(a7.indexOf('await page.goto("/app/swim/setup")'), a7.indexOf("const beforeSetup ="));
+    expect(setup).toContain("await selectSwimDays(page, primary.swimWeekdays)");
+    expect(helper).toContain("await selectSwimDays(page, weekdays)");
   });
   it.each([{ initial: [] }, { initial: [2] }, { initial: [2, 5] }])("A3 DC-SW7: selects two replacement weekdays independently of shared-schedule defaults $initial", async ({ initial }) => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");

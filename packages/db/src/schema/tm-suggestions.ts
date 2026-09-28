@@ -14,6 +14,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -32,6 +33,7 @@ export const tmSuggestions = pgTable(
     movementId: uuid("movement_id")
       .notNull()
       .references(() => movements.id, { onDelete: "cascade" }),
+    /** Scheduled proposals store exact account 1RMs; derived proposals retain legacy TM units. */
     currentTmKg: numeric("current_tm_kg", { precision: 6, scale: 2 }),
     suggestedTmKg: numeric("suggested_tm_kg", { precision: 6, scale: 2 }).notNull(),
     source: text("source").notNull().default("derived_amrap"),
@@ -60,6 +62,8 @@ export const tmSuggestions = pgTable(
       t.userId,
       t.movementId,
     ),
+    scheduledPendingIdx: uniqueIndex("tm_suggestions_scheduled_pending_idx")
+      .on(t.userId, t.movementId).where(sql`${t.source} = 'scheduled_progression' AND ${t.status} = 'pending'`),
   }),
 );
 

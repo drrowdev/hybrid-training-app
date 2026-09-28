@@ -20,6 +20,8 @@ import {
 import { TmSection, type PickerGroup, type RoleGroupInput } from "@/components/training-maxes/TmSection";
 import { PageHeader } from "@/components/ui/PageHeader";
 import Link from "next/link";
+import { ScheduledMaxProgressionToggle } from "@/components/settings/ScheduledMaxProgressionToggle";
+import { setScheduledMaxProgression } from "@/lib/training-maxes/progression-actions";
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
   const ctx = await getTrainingMaxContext();
@@ -31,7 +33,7 @@ export default async function TrainingMaxesPage() {
   const { data: profile } = user
     ? await supabase
         .from("profiles")
-        .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, units, bodyweight_kg")
+        .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, units, bodyweight_kg, intake")
         .eq("id", user.id)
         .maybeSingle()
     : { data: null };
@@ -153,6 +155,9 @@ export default async function TrainingMaxesPage() {
         </p>
       ) : null}
 
+      {units === "metric" && <ScheduledMaxProgressionToggle
+        initial={profile?.intake?.suggestScheduled1RmIncreases !== false}
+        action={setScheduledMaxProgression} />}
       <TmSection
         units={units}
         requiredGroups={requiredGroups}

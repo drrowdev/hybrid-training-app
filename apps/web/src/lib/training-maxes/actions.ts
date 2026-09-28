@@ -8,7 +8,7 @@ import { roundToPlate } from "./queries";
 import { activeProgramTmPercent } from "./active-program-basis";
 import { syncTmSuggestionsForSession } from "./tm-suggestion-sync";
 import { getActiveBlocks } from "@/lib/planner/queries";
-import { loadBlockProgramKinds } from "@/lib/programs/ownership";
+import { loadTypedProgramSessionIds } from "@/lib/programs/ownership";
 
 const upsertSchema = z.object({
   movementId: z.string().uuid(),
@@ -156,16 +156,15 @@ export async function acceptTmSuggestion(formData: FormData): Promise<UpsertResu
   if (readErr) return { ok: false, error: readErr.message };
   if (!suggestion) return { ok: false, error: "Suggestion not found" };
   if (!suggestion.derived_from_session_id) return { ok: false, error: "The source workout is unavailable." };
-  const source = await supabase.from("sessions").select("block_id")
+  const source = await supabase.from("sessions").select("id")
     .eq("id", suggestion.derived_from_session_id).eq("user_id", user.id).maybeSingle();
-  if (source.error || !source.data) return { ok: false, error: "Could not read the source workout. Try again." };
+  if (source.error || !source.data) return { ok: false, error: "Couldn't read the source workout. Try again." };
   try {
-    const blockId = source.data.block_id as string | null;
-    if (blockId && (await loadBlockProgramKinds(supabase, user.id, [blockId])).get(blockId) != null) {
+    if ((await loadTypedProgramSessionIds(supabase, user.id, [source.data.id])).has(source.data.id)) {
       return { ok: false, error: "Review the load settings in this workout's program." };
     }
   } catch {
-    return { ok: false, error: "Could not read the workout's program. Try again." };
+    return { ok: false, error: "Couldn't read the workout's program. Try again." };
   }
 
   // Derive a 1RM from the suggested TM: the user's effective TM% governs the

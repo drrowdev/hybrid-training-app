@@ -5966,3 +5966,78 @@ contain unexpected failures. The move form wraps its error below the controls
 at 375px. Synthetic date, action, query and browser regressions cover the two
 reported states. Linux automatic PR CI remains the acceptance gate. No real
 user rows, local database, schema/RPC/migration edits or production operations.
+
+## [2026-09-28] decision | Scheduled account 1RM suggestions
+
+Owner clarified that the three-week increase targets the stored measured 1RM,
+not a converted/rounded TM or a program-owned working max (DC-R6 / ADR 0087).
+The canonical domain rule classifies known movement metadata, filters all
+active account-fed prescriptions, and applies exact +1.5/+2.5 kg metric
+increments. Explicit decisions and a default-on JSON preference preserve
+DC-K4 choice; a decline restarts the lift's clock. Today combines scheduled
+and derived advice with one visible row per lift. Migration 0161 adds source
+values, pending uniqueness and owner-scoped invoker RPCs without columns,
+backfills or RLS changes; the unused down refuses any scheduled history.
+The app-first gap explicitly suppresses unavailable scheduled advice.
+Coordinator reviewed 375/1280 synthetic UI evidence and approved publication
+with compact mobile rows, secondary per-lift Accept, consistent error copy
+and a later-week Deadlift fixture. Linux PR/storage evidence remains a release
+gate; local browser evidence uses synthetic actions, not a real database.
+No production updater allowlist, merge, deployment or production operation
+is authorized. See the scheduled 1RM release note in `CHANGELOG.md`.
+
+## [2026-09-28] repair | Max suggestion source ownership
+
+Linux qualification exposed a copied pre-existing `sessions.block_id` query,
+but sessions link to programs through `planned_sessions.completed_session_id` and
+`planned_sessions.block_id`. The coordinator authorized repairing Today,
+accept, sync and 0161 through that actual relationship. Legacy/off-plan
+acceptance and typed-program refusal remain regression-tested (DC-R6);
+no RLS or ownership policy changes. The same run exposed a Monday-only
+negative-fixture slot collision; that fixture now proves its slot empty
+before asserting the unchanged foreign-parent FK refusal.
+
+## [2026-09-28] repair | Narrow Today workout titles
+
+Automatic modular acceptance passed authenticated two-user isolation but
+reported a Today width assertion. Coordinator authorized a bounded Monday
+swim-only synthetic reproduction and failure-only element/width diagnostics.
+Ordinary titles fit; a long unbroken title pushed the rest-card Next chevron
+past 375px. The Next text now shrinks and wraps; logged title/program/summary
+text also wraps without clipping. Synthetic Monday rest/done and normal/long
+cases preserve the original viewport assertion. This does not establish
+that the separate live acceptance failure has the same cause; the next Linux
+run must confirm it. No new visible copy.
+
+## [2026-09-28] repair | Monday acceptance fixtures and Today loading
+
+Failure-only Linux diagnostics identified a 52px-wide `cp-card` beyond the
+375px viewport. Rendering the actual Today loading skeleton reproduced that
+exact signature: its seven minimum-content tracks extended to 442px.
+The tracks, cards and placeholder bars now shrink to fit. M7 waits for loaded
+Today content before checking absent completed-workout links; its original
+width assertion remains unchanged.
+
+Swimming setup does not call the repaired max-source ownership helper.
+Its unchanged schedule defaults exclude both primary workouts and explicit
+rest days, leaving no selected swim days for the Monday baseline. The
+lifecycle fixture now explicitly selects two non-primary weekdays relative
+to the seeded start day, and requires preview before Create. Tests cover all
+seven baseline weekdays and retain four generated swims (DC-SW7). Product
+defaults and overlap policy are unchanged. Failure diagnostics are scoped
+to the swim form rather than unrelated submit buttons.
+
+The coordinator authorized both repairs. Unchanged-main comparison run
+36425321311 at c5c1a480 reproduced M7's width failure and A1/A3/A4/A5/A7's
+Create timeouts without the progression changes. Local synthetic browser
+checks include the real loading skeleton at 375/1280; authenticated Linux
+qualification of the repairs remains required. No new visible copy.
+
+## [2026-09-28] repair | Limitation setup fixture input
+
+At 63542fcc, storage run 36427201806 and the full disposable modular profile
+in CI 36427202073 passed. Swimming A1/A3/A4/A5 also passed; A7 reached its
+second setup visit, where omitted weekdays still failed input validation
+before the expected limitation check. Both setup visits now reuse explicit
+weekday selection. The safety warning, affected region, absent Create
+button and unchanged-state assertions remain intact (DC-SW7/DC-SW9).

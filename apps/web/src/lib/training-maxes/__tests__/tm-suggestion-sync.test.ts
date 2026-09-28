@@ -114,6 +114,9 @@ function makeSupabase() {
           };
           Object.assign(chain, {
             then: (resolve: (v: unknown) => unknown) => {
+              if (table === "planned_sessions") {
+                return Promise.resolve(resolve({ data: [], error: null }));
+              }
               apply();
               return Promise.resolve(resolve({ data: null, error: null }));
             },

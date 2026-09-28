@@ -392,6 +392,17 @@ If a row is added here, the corresponding code constant must carry the `// heuri
 
 - **DC-R6 - Program-owned working load (owner decision, 2026-09-23; ADR 0087)** [DEF] - Measured strength and actual workload remain account-owned. Each program owns its working-max basis, progression and targets. Issued prescriptions and logged snapshots retain the appropriate basis; starting or editing another program cannot change it. *Test:* two programs using the same movement and measured 1RM retain different working percentages, and an engine-owned working max is not changed by another program's setup.
 
+  **Scheduled account 1RM extension (owner decision, 2026-09-28):** Today may
+  propose exact +1.5 kg upper-body / +2.5 kg lower-body account 1RM increases
+  after 21 days without a max update or accepted/declined suggestion. These
+  owner-selected defaults are not physiological estimates. Only active
+  prescriptions actually fed by the account measurement qualify; absolute
+  program working maxes never qualify or change. Unknown movement
+  classifications and imperial units are excluded. Proposals require explicit
+  acceptance (DC-K4), support individual/bulk decline and an account opt-out,
+  and defer to workout-derived advice for the same lift. Acceptance/decline
+  is atomic and replay-safe; a stale max cannot be overwritten.
+
 ## S. Pre-mortem-derived guardrails (new in this revision)
 
 - **DC-S1 — Explicit override path with consent for conservative-default deviations (new §10 pre-mortem #1)** [EV] — When a user wants to override a literature-derived conservative default (e.g., DC-D1 separation thresholds, DC-N1 polarized distribution, DC-J2/O5 progression ramps), the engine surfaces the source + confidence label + the specific trade-off, and requires explicit acknowledgement. The override is recorded in the audit log. *Test:* overriding DC-D1 surfaces "Robineau 2016 HIGH: substantial mTORC1 recovery at 6h+" before applying the override. **Confidence: HIGH** (`new` peer-reviewed pre-mortem + plan §3 override-and-warn principle + v1's continuity bias).

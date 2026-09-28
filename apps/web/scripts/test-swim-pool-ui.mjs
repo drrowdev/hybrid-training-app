@@ -2107,10 +2107,10 @@ try {
       assert.deepEqual(await page.evaluate(() => window.loadAdviceCalls), []);
     }
     await page.evaluate(() => window.showTmChoiceFailure());
-    await page.getByRole("button", { name: "Accept", exact: true }).click();
+    await page.getByRole("button", { name: "Accept Back Squat", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.getByTestId("tm-suggestion-legacy-advice")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Accept Back Squat", exact: true })).toBeEnabled();
     assert.equal(await page.evaluate(() => window.tmChoiceCalls), 1);
     await page.evaluate(() => window.showHybridLoadSetup());
     await page.getByRole("button", { name: "Continue", exact: true }).click();

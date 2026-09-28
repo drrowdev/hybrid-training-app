@@ -1,5 +1,40 @@
 import { z } from "zod";
 
+export const viewportOverflowSchema = z.object({
+  element: z.string().max(180).regex(/^[a-zA-Z0-9_. -]+$/),
+  scrollWidth: z.number().int().min(0).max(100000),
+  viewport: z.number().int().min(1).max(10000),
+}).strict();
+export type ViewportOverflow = z.infer<typeof viewportOverflowSchema>;
+
+export const swimSetupFailureSchema = z.object({
+  preview: z.enum(["present", "absent", "unavailable"]),
+  overlapConsent: z.enum(["visible", "hidden", "unavailable"]),
+  errorRegion: z.enum(["present", "absent", "unavailable"]),
+  create: z.enum(["enabled", "disabled", "absent", "unavailable"]),
+}).strict();
+export type SwimSetupFailure = z.infer<typeof swimSetupFailureSchema>;
+
+export function readSwimSetupFailure(value: unknown): SwimSetupFailure | undefined {
+  if (!Array.isArray(value) || value.length > 128) return undefined;
+  const records = value.filter((item) => item && typeof item === "object" && item.type === "swim-setup-failure");
+  if (records.length !== 1 || typeof records[0].description !== "string" || records[0].description.length > 512) return undefined;
+  try {
+    const parsed = swimSetupFailureSchema.safeParse(JSON.parse(records[0].description));
+    return parsed.success ? parsed.data : undefined;
+  } catch { return undefined; }
+}
+
+export function readViewportOverflow(value: unknown): ViewportOverflow | undefined {
+  if (!Array.isArray(value) || value.length > 128) return undefined;
+  const records = value.filter((item) => item && typeof item === "object" && item.type === "viewport-overflow");
+  if (records.length !== 1 || typeof records[0].description !== "string" || records[0].description.length > 512) return undefined;
+  try {
+    const parsed = viewportOverflowSchema.safeParse(JSON.parse(records[0].description));
+    return parsed.success ? parsed.data : undefined;
+  } catch { return undefined; }
+}
+
 const nativeRequest = z.enum(["not-observed", "pending", "http-success", "http-failure", "transport-failure", "unavailable"]);
 const nativeCalendar = z.object({
   day: z.enum(["none", "one", "multiple"]),
