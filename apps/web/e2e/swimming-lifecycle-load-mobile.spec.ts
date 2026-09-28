@@ -83,16 +83,20 @@ const test = seededTest.extend({
   },
 });
 
-async function createPlan(page: Page, weekdays: readonly number[] = [1, 4]) {
-  await page.goto("/app/swim/setup");
-  await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-  await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
-  await page.getByLabel("Weeks", { exact: true }).fill("2");
+async function selectSwimDays(page: Page, weekdays: readonly number[]) {
   const days = page.getByRole("group", { name: "Swim days", exact: true }).getByRole("checkbox");
   for (const day of await days.all()) {
     await day.setChecked(weekdays.includes(Number(await day.getAttribute("value"))));
   }
   await expect(days.and(page.locator(":checked"))).toHaveCount(2);
+}
+
+async function createPlan(page: Page, weekdays: readonly number[] = [1, 4]) {
+  await page.goto("/app/swim/setup");
+  await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
+  await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
+  await page.getByLabel("Weeks", { exact: true }).fill("2");
+  await selectSwimDays(page, weekdays);
   await page.getByRole("button", { name: "Preview plan", exact: true }).click();
   try {
     // Reserve time for bounded diagnostics before the overall test timeout.
@@ -1303,6 +1307,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
     await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
+    await selectSwimDays(page, primary.swimWeekdays);
     const beforeSetup = await lifecycleState(admin, userId);
     await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText("Review your active limitations before swimming");

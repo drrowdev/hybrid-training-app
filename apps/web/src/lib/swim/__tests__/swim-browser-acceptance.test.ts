@@ -1660,7 +1660,7 @@ describe("browser environment and static config", () => {
     expect(weekdays).toHaveLength(2);
     expect(weekdays).not.toContain(weekday);
     const selectionStart = source.indexOf("  const days =");
-    const selection = source.slice(selectionStart, source.indexOf('  await page.getByRole("button", { name: "Preview plan"', selectionStart));
+    const selection = source.slice(selectionStart, source.indexOf("\n}", selectionStart));
     for (const initial of [[], [weekday], [1, 4]]) {
       const checked = new Set(initial);
       const checkboxes = Array.from({ length: 7 }, (_, value) => ({
@@ -1683,6 +1683,10 @@ describe("browser environment and static config", () => {
     }
     const helper = source.slice(source.indexOf("async function createPlan"), source.indexOf("async function savedPlan"));
     expect(helper.indexOf('page.locator("#swim-plan-preview-title")')).toBeLessThan(helper.indexOf('name: "Create swim plan"'));
+    const a7 = source.slice(source.indexOf('  test("A7,'));
+    const setup = a7.slice(a7.indexOf('await page.goto("/app/swim/setup")'), a7.indexOf("const beforeSetup ="));
+    expect(setup).toContain("await selectSwimDays(page, primary.swimWeekdays)");
+    expect(helper).toContain("await selectSwimDays(page, weekdays)");
   });
   it.each([{ initial: [] }, { initial: [2] }, { initial: [2, 5] }])("A3 DC-SW7: selects two replacement weekdays independently of shared-schedule defaults $initial", async ({ initial }) => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");

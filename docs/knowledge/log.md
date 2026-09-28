@@ -6032,3 +6032,12 @@ The coordinator authorized both repairs. Unchanged-main comparison run
 Create timeouts without the progression changes. Local synthetic browser
 checks include the real loading skeleton at 375/1280; authenticated Linux
 qualification of the repairs remains required. No new visible copy.
+
+## [2026-09-28] repair | Limitation setup fixture input
+
+At 63542fcc, storage run 36427201806 and the full disposable modular profile
+in CI 36427202073 passed. Swimming A1/A3/A4/A5 also passed; A7 reached its
+second setup visit, where omitted weekdays still failed input validation
+before the expected limitation check. Both setup visits now reuse explicit
+weekday selection. The safety warning, affected region, absent Create
+button and unchanged-state assertions remain intact (DC-SW7/DC-SW9).
