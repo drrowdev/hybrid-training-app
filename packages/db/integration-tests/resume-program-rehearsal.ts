@@ -39,7 +39,7 @@ export async function rehearseProgramResume(database: postgres.Sql, stage: (name
     await tx`SELECT set_config('request.jwt.claims',${JSON.stringify(id ? { sub: id } : {})},true)`;
     return work(tx);
   });
-  const snapshot = (id = owner) => asUser(id, async (tx) =>
+  const snapshot = (id: string = owner) => asUser(id, async (tx) =>
     (await tx`SELECT public.training_schedule_snapshot()->>'revision' AS revision`)[0]!.revision as string);
   const commit = async (operation: string, args: unknown, options: { user?: string; accept?: boolean; revision?: string; requestId?: string } = {}) => {
     const user = options.user ?? owner, revision = options.revision ?? await snapshot(user);
