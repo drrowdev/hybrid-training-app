@@ -6041,3 +6041,17 @@ second setup visit, where omitted weekdays still failed input validation
 before the expected limitation check. Both setup visits now reuse explicit
 weekday selection. The safety warning, affected region, absent Create
 button and unchanged-state assertions remain intact (DC-SW7/DC-SW9).
+
+## [2026-09-28] decision | Resume an ended program's remaining workouts
+
+Migration 0162 adds owner-only `primary-resume` to the existing schedule
+transaction. It retains workouts, dates, program identity and prescriptions,
+restores active lifecycle state, and records `manual_resume` (DC-K4).
+Unfinished workouts must remain from the account's today onward; occupied
+program slots refuse with the current program's name, including legacy/typed
+conflicts. Existing overlap review, freshness and replay checks apply.
+No columns or RLS policies change; 0158 identity and prescription guards stay
+intact. The app fails closed before migration. The written down migration
+restores the prior function and refuses once resume history exists. SQL
+up/down/up and owner-boundary rehearsal plus a 375px end/resume browser case
+run only in disposable Linux CI. No merge or production operation is authorized.

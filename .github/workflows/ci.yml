@@ -540,6 +540,15 @@ jobs:
       - name: Run guarded reference acceptance
         run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts
 
+      - name: Retain synthetic resume menu screenshot
+        if: success() && matrix.profile == 'modular'
+        uses: actions/upload-artifact@v4
+        with:
+          name: resume-program-menu-375
+          path: ${{ env.SWIM_ACCEPTANCE_DIR }}/browser-output/**/resume-program-375.png
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Verify task cleanup
         if: always()
         run: |

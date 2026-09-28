@@ -25,7 +25,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export type EngineOverrideEventType = "skip" | "swap" | "manual_end" | "custom";
+export type EngineOverrideEventType = "skip" | "swap" | "manual_end" | "manual_resume" | "custom";
 
 /**
  * Engine state captured at the moment of the override. Shape is

@@ -125,6 +125,7 @@ const EVENT_VERB: Record<string, string> = {
   skip: "Skipped",
   swap: "Substituted",
   manual_end: "Ended program early on",
+  manual_resume: "Resumed program on",
   custom: "Adjusted",
 };
 

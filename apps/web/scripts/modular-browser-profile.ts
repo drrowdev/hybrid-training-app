@@ -20,6 +20,7 @@ export const MODULAR_BROWSER_CASES: readonly BrowserCase[] = Object.freeze([
   "M16 DC-K4/DC-SW8: independent completion exports retained history without fabricated swim results",
   "M17 DC-K4: completed advice and roadmap continuation survive a stale save and exact replay",
   "M18 DC-K4: an unrelated unlinked program save leaves the full roadmap unchanged",
+  "M19 DC-K4: end and resume returns remaining workouts to Today after overlap review",
 ].map((title) => Object.freeze({
   file: "e2e/program-builder-mobile.spec.ts", describe: "Modular program builder", title,
 })));

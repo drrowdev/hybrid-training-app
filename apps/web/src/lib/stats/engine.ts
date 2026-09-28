@@ -893,7 +893,7 @@ export function btsToTier(bts: number): UserTier {
 // ───────────────────────────────────────────────────────────────────
 
 export type OverrideEvent = {
-  kind: "skip" | "movement_swap" | "manual_end" | "custom";
+  kind: "skip" | "movement_swap" | "manual_end" | "manual_resume" | "custom";
   occurredAt: string; // ISO timestamp
   /** Short headline describing what was overridden. */
   what: string;
@@ -993,6 +993,9 @@ export async function getRecentOverrides(
           note: reason,
         };
       }
+      case "manual_resume":
+        return { kind: "manual_resume" as const, occurredAt: r.occurred_at as string,
+          what: `Resumed ${archetypeLabel}`, did: "Resumed the remaining workouts.", note: reason };
       case "manual_end": {
         const wc = ctx?.weeksCompleted;
         const wk = ctx?.weeks;

@@ -5,7 +5,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { cache } from "react";
 import { z } from "zod";
 import type { Prescription, SessionSlot } from "@hta/db";
-import { isPlannedRest, trainingWorkoutDates, type BlockProgramKind } from "@hta/domain";
+import { hasRemainingProgramWorkouts, isPlannedRest, trainingWorkoutDates, type BlockProgramKind } from "@hta/domain";
 import { assertActiveProgramKinds, independentProgramsAvailable } from "@/lib/programs/ownership";
 import {
   addDaysToYmd,
@@ -525,6 +525,7 @@ export type BlockWithCompletionStats = RecentBlock & {
   totalSessions: number;
   loggedSessions: number;
   skippedSessions: number;
+  canResume: boolean;
 };
 
 /**
@@ -557,6 +558,7 @@ export async function getAllBlocksWithCompletionStats(
   if (error) throw new Error(error.message);
   if (!data) return [];
 
+  const today = todayYmd(await getUserTimezone(user.id));
   return Promise.all(
     data.map(async (d) => {
       const planned = ((d.planned_sessions ?? []) as Array<{
@@ -622,6 +624,13 @@ export async function getAllBlocksWithCompletionStats(
         totalSessions,
         loggedSessions,
         skippedSessions,
+        canResume: d.status === "archived" && d.ended_at !== null && hasRemainingProgramWorkouts(planned.map((row) => {
+          const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
+          return {
+            date: dayDate(d.started_on, row.week_index, row.day_index), role: row.role, prescription: row.prescription,
+            skipped: row.skipped_at !== null, completed: !!session?.completed_at && !session.deleted_at,
+          };
+        }), today),
       };
     }),
   );

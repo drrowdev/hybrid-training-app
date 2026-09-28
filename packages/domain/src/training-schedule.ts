@@ -21,6 +21,13 @@ export function isPlannedRest(row: { role?: string | null; prescription?: unknow
   );
 }
 
+export function hasRemainingProgramWorkouts(
+  workouts: readonly { date: string; role?: string | null; prescription?: unknown; skipped: boolean; completed: boolean }[],
+  today: string,
+): boolean {
+  return workouts.some((row) => row.date >= today && !row.skipped && !row.completed && !isPlannedRest(row));
+}
+
 export function trainingScheduleAdvice(
   commitments: readonly TrainingCommitment[],
   proposedDates: readonly string[],

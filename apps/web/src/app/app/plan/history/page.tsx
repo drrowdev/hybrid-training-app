@@ -197,7 +197,7 @@ function BlockHistoryRow({
             status={<span data-testid="block-status-badge" data-status={block.status}>
               {block.status === "active" ? "Active" : block.status === "completed" ? "Completed" : "Ended"}
             </span>}
-            actions={<DeleteBlockMenu blockId={block.id} archetypeName={block.archetypeName} />} />
+            actions={<DeleteBlockMenu blockId={block.id} archetypeName={block.archetypeName} canResume={block.canResume} />} />
         </summary>
         <div style={{ display: "grid", gap: 4, padding: "4px 20px 12px" }}>
             {customized ? (
