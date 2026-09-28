@@ -6008,3 +6008,27 @@ text also wraps without clipping. Synthetic Monday rest/done and normal/long
 cases preserve the original viewport assertion. This does not establish
 that the separate live acceptance failure has the same cause; the next Linux
 run must confirm it. No new visible copy.
+
+## [2026-09-28] repair | Monday acceptance fixtures and Today loading
+
+Failure-only Linux diagnostics identified a 52px-wide `cp-card` beyond the
+375px viewport. Rendering the actual Today loading skeleton reproduced that
+exact signature: its seven minimum-content tracks extended to 442px.
+The tracks, cards and placeholder bars now shrink to fit. M7 waits for loaded
+Today content before checking absent completed-workout links; its original
+width assertion remains unchanged.
+
+Swimming setup does not call the repaired max-source ownership helper.
+Its unchanged schedule defaults exclude both primary workouts and explicit
+rest days, leaving no selected swim days for the Monday baseline. The
+lifecycle fixture now explicitly selects two non-primary weekdays relative
+to the seeded start day, and requires preview before Create. Tests cover all
+seven baseline weekdays and retain four generated swims (DC-SW7). Product
+defaults and overlap policy are unchanged. Failure diagnostics are scoped
+to the swim form rather than unrelated submit buttons.
+
+The coordinator authorized both repairs. Unchanged-main comparison run
+36425321311 at c5c1a480 reproduced M7's width failure and A1/A3/A4/A5/A7's
+Create timeouts without the progression changes. Local synthetic browser
+checks include the real loading skeleton at 375/1280; authenticated Linux
+qualification of the repairs remains required. No new visible copy.

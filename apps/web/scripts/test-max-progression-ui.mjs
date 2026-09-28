@@ -15,6 +15,7 @@ const output = await build({
     import { createRoot } from "react-dom/client";
     import { AppShell } from "./src/components/shell/AppShell";
     import { TodayDashboard } from "./src/components/today/TodayDashboard";
+    import TodayLoading from "./src/app/app/loading";
     import { QuickWorkoutCard } from "./src/components/today/QuickWorkoutCard";
     import { TmSuggestionBanner } from "./src/components/today/TmSuggestionBanner";
     import { ScheduledMaxProgressionToggle } from "./src/components/settings/ScheduledMaxProgressionToggle";
@@ -48,6 +49,10 @@ const output = await build({
       return { ok: true };
     };
     const shell = children => <AppShell displayName="Martin" signOutAction={async () => { throw new Error("Unexpected sign out"); }}>{children}</AppShell>;
+    window.showTodayLoading = () => {
+      window.route = "/app";
+      root.render(shell(<TodayLoading />));
+    };
     window.showToday = () => {
       window.route = "/app";
       root.render(shell(<TodayDashboard today="2026-09-28" workouts={[workout]} weekWorkouts={[workout, secondWorkout]}
@@ -148,6 +153,12 @@ try {
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "No horizontal overflow");
     if (directory) await page.screenshot({ path: path.join(directory, `${name}.png`), fullPage: true });
+  }
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showTodayLoading());
+    await expect(page.locator(".cp-main > div")).toBeVisible();
+    await screenshot(`today-loading-${width}`);
   }
   await page.setViewportSize({ width: 375, height: 900 });
   for (const longTitle of [false, true]) {

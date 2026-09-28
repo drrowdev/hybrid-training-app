@@ -776,6 +776,7 @@ test.describe("Modular program builder", () => {
       for (const path of ["/app", "/app/plan", `/app/swim?plan=${first.plan_id}`]) {
         await page.goto(path);
         if (path === "/app") {
+          await expect(page.getByTestId("today-eyebrow")).toBeVisible();
           const card = page.getByTestId(`today-card-${first.id}`);
           const week = page.getByRole("region", { name: "This week", exact: true });
           if (label === "Completed") {

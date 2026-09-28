@@ -83,25 +83,32 @@ const test = seededTest.extend({
   },
 });
 
-async function createPlan(page: Page) {
+async function createPlan(page: Page, weekdays: readonly number[] = [1, 4]) {
   await page.goto("/app/swim/setup");
   await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
   await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
   await page.getByLabel("Weeks", { exact: true }).fill("2");
+  const days = page.getByRole("group", { name: "Swim days", exact: true }).getByRole("checkbox");
+  for (const day of await days.all()) {
+    await day.setChecked(weekdays.includes(Number(await day.getAttribute("value"))));
+  }
+  await expect(days.and(page.locator(":checked"))).toHaveCount(2);
   await page.getByRole("button", { name: "Preview plan", exact: true }).click();
   try {
     // Reserve time for bounded diagnostics before the overall test timeout.
+    await expect(page.locator("#swim-plan-preview-title")).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click({ timeout: 20_000 });
   } catch (error) {
     let state: SwimSetupFailure = { preview: "unavailable", overlapConsent: "unavailable", errorRegion: "unavailable", create: "unavailable" };
     try {
       state = swimSetupFailureSchema.parse(await page.evaluate(() => {
-        const consent = document.querySelector<HTMLInputElement>('input[name="acceptOverlap"]');
-        const create = document.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="preview"])');
+        const form = document.querySelector('input[name="comfortableLengths"]')?.closest("form");
+        const consent = form?.querySelector<HTMLInputElement>('input[name="acceptOverlap"]');
+        const create = form?.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="preview"])');
         return {
-          preview: document.querySelector("#swim-plan-preview-title") ? "present" : "absent",
+          preview: form?.querySelector("#swim-plan-preview-title") ? "present" : "absent",
           overlapConsent: consent?.getClientRects().length ? "visible" : "hidden",
-          errorRegion: document.querySelector('[role="alert"]') ? "present" : "absent",
+          errorRegion: form?.querySelector('[role="alert"]') ? "present" : "absent",
           create: create ? create.disabled ? "disabled" : "enabled" : "absent",
         };
       }));
@@ -194,7 +201,10 @@ async function primaryBaseline(admin: SupabaseClient, user: { userId: string; em
   const prescription: Prescription = {
     items: [{ movementId, movementName: movement.data.display_name, kind: "main", sets: 3, reps: 5 }],
   };
-  const { blockId, plannedIds } = await seedSwimPrimaryBaseline(actor, userId, addDaysToYmd(todayYmd(timezone), -7), prescription);
+  const baselineStart = addDaysToYmd(todayYmd(timezone), -7);
+  const { blockId, plannedIds } = await seedSwimPrimaryBaseline(actor, userId, baselineStart, prescription);
+  const primaryWeekday = new Date(`${baselineStart}T00:00:00Z`).getUTCDay();
+  const swimWeekdays = [1, 4].map((offset) => (primaryWeekday + offset) % 7);
   const linked = await admin.from("planned_sessions").select("completed_session_id")
     .eq("user_id", userId).eq("id", plannedIds[0]).single();
   expect(linked.error).toBeNull();
@@ -219,7 +229,7 @@ async function primaryBaseline(admin: SupabaseClient, user: { userId: string; em
     }
     return rows.map((result) => result.data);
   }
-  return { snapshot, initial: await snapshot() };
+  return { snapshot, initial: await snapshot(), swimWeekdays };
 }
 
 function lifecycleTransition(before: SwimPlanRow, after: SwimPlanRow, status: SwimPlanRow["status"]) {
@@ -390,7 +400,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await markOnboarded(admin, freshUser.userId);
     const primary = await primaryBaseline(admin, freshUser, seedConfig);
     await signInAs(context, freshUser, seedConfig, baseURL!);
-    const { url, planId } = await createPlan(page);
+    const { url, planId } = await createPlan(page, primary.swimWeekdays);
     const created = await savedPlan(admin, freshUser.userId, planId);
     expect(created.plan.status).toBe("active");
     expect(created.plan.revision).toBeGreaterThan(0);
@@ -766,7 +776,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const primary = await primaryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
-    const original = await createPlan(page);
+    const original = await createPlan(page, primary.swimWeekdays);
     const issued = await lifecycleState(admin, userId);
     expect(issued.plans.length === 1 && issued.workouts.length === 4).toBe(true);
     const completedLengths = issued.workouts[0].definition.issued.totalLengths;
@@ -901,7 +911,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const primary = await primaryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
-    const original = await createPlan(page);
+    const original = await createPlan(page, primary.swimWeekdays);
     const actor = await retainedSwimActor(seedConfig, freshUser);
     const issued = await savedPlan(admin, userId, original.planId);
     await startSwimWorkout(actor, issued.workouts[0].id, issued.workouts[0].revision);
@@ -1036,7 +1046,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(saved.error === null && saved.data?.id === recovery.id && saved.data.role === "deload" &&
       isUuid(editRevision) &&
       isDeepStrictEqual(saved.data.prescription, { ...prescription, meta: { editRevision } })).toBe(true);
-    return { snapshot: primary.snapshot, initial: await primary.snapshot() };
+    return { snapshot: primary.snapshot, initial: await primary.snapshot(), swimWeekdays: primary.swimWeekdays };
   }
 
   function lifecycleActual(state: Awaited<ReturnType<typeof lifecycleState>>, workoutId: string) {
@@ -1062,7 +1072,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const primary = await primaryRecoveryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
-    const original = await createPlan(page);
+    const original = await createPlan(page, primary.swimWeekdays);
     const issued = await lifecycleState(admin, userId);
     const target = issued.workouts[0];
     const lengths = target.definition.issued.totalLengths;
@@ -1205,7 +1215,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const primary = await primaryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
-    const original = await createPlan(page);
+    const original = await createPlan(page, primary.swimWeekdays);
     const issued = await lifecycleState(admin, userId);
     const [target, future] = issued.workouts;
     const exposure = swimWorkoutExposure(target.definition.issued);

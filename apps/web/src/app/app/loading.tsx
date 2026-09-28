@@ -20,14 +20,14 @@ export default function TodayLoading() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
+          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
           gap: 8,
         }}
       >
         {Array.from({ length: 7 }).map((_, i) => (
-          <SkeletonCard key={i} h={64} padding={10}>
-            <Skeleton w={24} h={10} />
-            <Skeleton w={32} h={14} />
+          <SkeletonCard key={i} h={64} padding={10} style={{ minWidth: 0 }}>
+            <Skeleton w={24} h={10} style={{ maxWidth: "100%" }} />
+            <Skeleton w={32} h={14} style={{ maxWidth: "100%" }} />
           </SkeletonCard>
         ))}
       </div>
