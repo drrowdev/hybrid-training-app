@@ -34,6 +34,7 @@ import { retainedSwimActor, completeRetainedSwim } from "./fixtures/swim-retaine
 import { startSwimWorkout, editSwimResult } from "../src/lib/swim/storage";
 import { recomputeRegionState } from "../src/lib/engine/region-ledger";
 import { loadTrainingSchedule } from "../src/lib/schedule/storage";
+import { swimSetupFailureSchema, type SwimSetupFailure } from "../scripts/modular-browser-observations";
 
 const test = seededTest.extend({
   // Match the persistence spec: reject unsafe targets before any fixture writes.
@@ -88,7 +89,26 @@ async function createPlan(page: Page) {
   await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
   await page.getByLabel("Weeks", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Preview plan", exact: true }).click();
-  await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
+  try {
+    // Reserve time for bounded diagnostics before the overall test timeout.
+    await page.getByRole("button", { name: "Create swim plan", exact: true }).click({ timeout: 20_000 });
+  } catch (error) {
+    let state: SwimSetupFailure = { preview: "unavailable", overlapConsent: "unavailable", errorRegion: "unavailable", create: "unavailable" };
+    try {
+      state = swimSetupFailureSchema.parse(await page.evaluate(() => {
+        const consent = document.querySelector<HTMLInputElement>('input[name="acceptOverlap"]');
+        const create = document.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="preview"])');
+        return {
+          preview: document.querySelector("#swim-plan-preview-title") ? "present" : "absent",
+          overlapConsent: consent?.getClientRects().length ? "visible" : "hidden",
+          errorRegion: document.querySelector('[role="alert"]') ? "present" : "absent",
+          create: create ? create.disabled ? "disabled" : "enabled" : "absent",
+        };
+      }));
+    } catch { /* The browser may already be closed by the test timeout. */ }
+    test.info().annotations.push({ type: "swim-setup-failure", description: JSON.stringify(state) });
+    throw error;
+  }
   await expect(page).toHaveURL(/\/app\/swim\?plan=[^&]+$/);
   await expect(page.getByRole("heading", { name: "Swims", exact: true })).toBeVisible();
   const planId = new URL(page.url()).searchParams.get("plan");

@@ -8,7 +8,7 @@ import {
 import { buildBrowserEnv, buildBrowserServerEnv, requireBrowserEnvironment, SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
 import { requireManualContext } from "../../../../scripts/swim-acceptance-guards";
 import { ACCEPTANCE_MIGRATIONS, hasModularSchema, hasOwnershipSchema, requireAcceptanceMigrationFiles } from "../../../../scripts/acceptance-migrations";
-import { readViewportOverflow } from "../../../../scripts/modular-browser-observations";
+import { readViewportOverflow, readSwimSetupFailure } from "../../../../scripts/modular-browser-observations";
 
 const sha = "c".repeat(40);
 const context = {
@@ -22,6 +22,16 @@ const context = {
 };
 
 describe("DC-SW8 modular browser profile retains the isolated runtime boundaries", () => {
+  it("projects only enumerated swimming setup failure states", () => {
+    const state = { preview: "present", overlapConsent: "visible", errorRegion: "absent", create: "disabled" };
+    const annotation = (data: unknown) => ({ type: "swim-setup-failure", description: JSON.stringify(data) });
+    expect(readSwimSetupFailure([annotation(state)])).toEqual(state);
+    expect(readSwimSetupFailure([annotation({ ...state, text: "private" })])).toBeUndefined();
+    expect(readSwimSetupFailure([annotation({ ...state, create: "private" })])).toBeUndefined();
+    expect(readSwimSetupFailure([annotation(state), annotation(state)])).toBeUndefined();
+    expect(readSwimSetupFailure([{ type: "swim-setup-failure", description: "{" }])).toBeUndefined();
+  });
+
   it("projects only bounded non-content viewport diagnostics", () => {
     const value = { element: "div Today_next_abc", scrollWidth: 391, viewport: 375 };
     const annotation = (data: unknown) => ({ type: "viewport-overflow", description: JSON.stringify(data) });

@@ -7,6 +7,24 @@ export const viewportOverflowSchema = z.object({
 }).strict();
 export type ViewportOverflow = z.infer<typeof viewportOverflowSchema>;
 
+export const swimSetupFailureSchema = z.object({
+  preview: z.enum(["present", "absent", "unavailable"]),
+  overlapConsent: z.enum(["visible", "hidden", "unavailable"]),
+  errorRegion: z.enum(["present", "absent", "unavailable"]),
+  create: z.enum(["enabled", "disabled", "absent", "unavailable"]),
+}).strict();
+export type SwimSetupFailure = z.infer<typeof swimSetupFailureSchema>;
+
+export function readSwimSetupFailure(value: unknown): SwimSetupFailure | undefined {
+  if (!Array.isArray(value) || value.length > 128) return undefined;
+  const records = value.filter((item) => item && typeof item === "object" && item.type === "swim-setup-failure");
+  if (records.length !== 1 || typeof records[0].description !== "string" || records[0].description.length > 512) return undefined;
+  try {
+    const parsed = swimSetupFailureSchema.safeParse(JSON.parse(records[0].description));
+    return parsed.success ? parsed.data : undefined;
+  } catch { return undefined; }
+}
+
 export function readViewportOverflow(value: unknown): ViewportOverflow | undefined {
   if (!Array.isArray(value) || value.length > 128) return undefined;
   const records = value.filter((item) => item && typeof item === "object" && item.type === "viewport-overflow");
