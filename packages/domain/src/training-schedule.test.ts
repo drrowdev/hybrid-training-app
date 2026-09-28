@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { isPlannedRest, nextProgramCommitment, trainingWorkoutDates, type TrainingCommitment } from "./training-schedule";
+import { hasRemainingProgramWorkouts, isPlannedRest, nextProgramCommitment, trainingWorkoutDates, type TrainingCommitment } from "./training-schedule";
+
+describe("DC-K4: resuming retained program workouts", () => {
+  const workout = { date: "2026-09-28", role: "strength", skipped: false, completed: false };
+  it("includes unfinished work today or later without extending the program", () => {
+    expect(hasRemainingProgramWorkouts([workout], "2026-09-28")).toBe(true);
+    expect(hasRemainingProgramWorkouts([{ ...workout, date: "2026-10-04" }], "2026-09-28")).toBe(true);
+    expect(hasRemainingProgramWorkouts([workout], "2026-09-29")).toBe(false);
+  });
+  it("excludes skipped, completed and both representations of rest", () => {
+    for (const row of [{ ...workout, skipped: true }, { ...workout, completed: true },
+      { ...workout, role: "rest" }, { ...workout, prescription: { kind: "rest" } }]) {
+      expect(hasRemainingProgramWorkouts([row], "2026-09-28")).toBe(false);
+    }
+    expect(hasRemainingProgramWorkouts([], "2026-09-28")).toBe(false);
+  });
+});
 
 describe("DC-K4 / DC-E3: actual workout dates preserve the planned-day history", () => {
   it("keeps completed work on its actual day with a non-work trace on the scheduled day", () => {

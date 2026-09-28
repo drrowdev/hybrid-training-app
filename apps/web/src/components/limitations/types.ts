@@ -36,7 +36,7 @@ export type MovementRef = {
 export type EngineEventRow = {
   id: string;
   occurredAt: string;
-  eventType: "skip" | "swap" | "manual_end" | "custom";
+  eventType: "skip" | "swap" | "manual_end" | "manual_resume" | "custom";
   originalMovementSlug: string | null;
   newMovementSlug: string | null;
   reason: string | null;

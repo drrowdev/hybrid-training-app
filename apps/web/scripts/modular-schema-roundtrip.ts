@@ -10,6 +10,10 @@ export const OWNERSHIP_SCHEMA_FILES = {
   down: "packages/db/rollbacks/0158_independent_program_ownership.down.sql",
   up: "packages/db/drizzle/0158_independent_program_ownership.sql",
 } as const;
+export const RESUME_SCHEMA_FILES = {
+  down: "packages/db/rollbacks/0162_resume_ended_program.down.sql",
+  up: "packages/db/drizzle/0162_resume_ended_program.sql",
+} as const;
 
 const catalogStart = `
 BEGIN READ ONLY;
@@ -93,13 +97,15 @@ export const createModularRoundTripProof = (): ModularRoundTripProof => ({
 
 export async function modularSchemaRoundTrip(options: {
   phase: "down" | "up"; command: Command; dbId: string; proof: ModularRoundTripProof;
-  ownership?: boolean;
+  layer?: "modular" | "ownership" | "resume";
   verifiedSql: (file: typeof MODULAR_SCHEMA_FILES[keyof typeof MODULAR_SCHEMA_FILES] |
-    typeof OWNERSHIP_SCHEMA_FILES[keyof typeof OWNERSHIP_SCHEMA_FILES]) => string;
+    typeof OWNERSHIP_SCHEMA_FILES[keyof typeof OWNERSHIP_SCHEMA_FILES] |
+    typeof RESUME_SCHEMA_FILES[keyof typeof RESUME_SCHEMA_FILES]) => string;
 }) {
   const { phase, command, dbId, proof } = options;
-  const files = options.ownership ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
-  const catalogueSql = options.ownership ? OWNERSHIP_CATALOG_SQL : MODULAR_CATALOG_SQL;
+  const files = options.layer === "resume" ? RESUME_SCHEMA_FILES
+    : options.layer === "ownership" ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
+  const catalogueSql = options.layer === "ownership" || options.layer === "resume" ? OWNERSHIP_CATALOG_SQL : MODULAR_CATALOG_SQL;
   assert(/^[a-f0-9]{64}$/.test(dbId), "Owned database container required");
   const args = (sql: string) => ["exec", "-e", "PGOPTIONS=-c statement_timeout=30s -c lock_timeout=5s", dbId,
     "psql", "-XqAt", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", sql];

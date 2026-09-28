@@ -9,7 +9,8 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { todayYmd, ymdToUtc, daysBetweenYmd, ymdInTimezone } from "@/lib/dates";
 import { getUserTimezone, dayDate } from "./queries";
 import { commitUnreviewedScheduleChange, commitTrainingSchedule, loadTrainingSchedule, scheduleRequestId, scheduleReviewSchema, isMissingScheduleFunction, type ScheduleReview, type SchedulePreview } from "@/lib/schedule/storage";
-import { trainingScheduleAdvice } from "@hta/domain";
+import { hasRemainingProgramWorkouts, trainingScheduleAdvice } from "@hta/domain";
+import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 
 export type CreateBlockResult =
   | { ok: true }
@@ -97,6 +98,34 @@ export async function restoreBlock(
   revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
   return { ok: true };
+}
+
+export async function resumeBlock(id: string, review?: ScheduleReview): Promise<ActionResult> {
+  const fallback = "Couldn't resume. Try again in a moment.";
+  return actionResult(async () => {
+    const parsed = blockIdSchema.safeParse({ id });
+    if (!parsed.success) return { error: "Choose a program to resume." };
+    const checkedReview = review === undefined ? null : scheduleReviewSchema.safeParse(review);
+    if (checkedReview && !checkedReview.success) return { error: fallback };
+    const { data: { user } } = await getAuthUser();
+    if (!user) return { error: "Not signed in." };
+    const supabase = await createClient();
+    const { error } = checkedReview?.success
+      ? await commitTrainingSchedule(supabase, "primary-resume", parsed.data, checkedReview.data, parsed.data)
+      : await commitUnreviewedScheduleChange(supabase, "primary-resume", parsed.data);
+    if (error) {
+      console.error(fallback, error);
+      if (isMissingRpc(error) || (error.code === "22023" && error.message === "Unsupported schedule change.")) {
+        return { error: fallback };
+      }
+      const known = ["This program cannot be resumed.", "This program has no workouts left.",
+        "Your schedule changed. Review the dates again.", "Review and accept the overlapping workouts before saving."];
+      return { error: known.includes(error.message) || (error.code === "23505" && /^End [\s\S]+ first\.$/.test(error.message))
+        ? error.message : fallback };
+    }
+    for (const path of ["/app", "/app/plan", "/app/programs", "/app/plan/history", "/app/stats"]) revalidatePath(path);
+    return { ok: true as const };
+  }, fallback);
 }
 
 /**
@@ -203,10 +232,11 @@ function scheduleMutationFailure(error: { message: string }, fallback: string): 
   return { error: messages[error.message] ?? fallback };
 }
 
-const restoreInputSchema = z.object({ kind: z.enum(["block", "workout"]), id: z.string().uuid() }).strict();
+const restoreInputSchema = z.object({ kind: z.enum(["block", "workout", "resume"]), id: z.string().uuid() }).strict();
 
 export async function previewTrainingRestore(input: z.infer<typeof restoreInputSchema>): Promise<PlannedMovePreviewResult> {
-  return actionResult(() => trainingRestorePreview(input), "Couldn't review this restore. Try again.");
+  return actionResult(() => trainingRestorePreview(input), input.kind === "resume"
+    ? "Couldn't resume. Try again in a moment." : "Couldn't review this restore. Try again.");
 }
 
 async function trainingRestorePreview(input: z.infer<typeof restoreInputSchema>): Promise<PlannedMovePreview> {
@@ -220,32 +250,45 @@ async function trainingRestorePreview(input: z.infer<typeof restoreInputSchema>)
   if (selected?.error) throw new Error("Could not read the workout. Try again.");
   if (parsed.kind === "workout" && !selected?.data) throw new UserActionError("Workout not found.");
   if (selected?.data?.completed_session_id) throw new UserActionError("Started workouts cannot be restored.");
-  const blockId = parsed.kind === "block" ? parsed.id : selected!.data!.block_id;
-  const block = await supabase.from("training_blocks").select("id,started_on,status,deleted_at").eq("id", blockId).maybeSingle();
+  const blockId = parsed.kind !== "workout" ? parsed.id : selected!.data!.block_id;
+  const block = await supabase.from("training_blocks").select("id,started_on,status,deleted_at,ended_at").eq("id", blockId).maybeSingle();
   if (block.error) throw new Error("Could not read the program. Try again.");
   if (!block.data) throw new UserActionError("Program not found.");
+  if (parsed.kind === "resume" && (block.data.status !== "archived" || block.data.deleted_at || !block.data.ended_at)) {
+    throw new UserActionError("This program cannot be resumed.");
+  }
   if (parsed.kind === "workout" && (block.data.status !== "active" || block.data.deleted_at)) {
     throw new UserActionError("Only workouts in an active program can be restored.");
   }
   const planned = await supabase.from("planned_sessions")
-    .select("id,week_index,day_index,role,completed_session_id,skipped_at").eq("block_id", blockId);
+    .select("id,week_index,day_index,role,prescription,completed_session_id,skipped_at").eq("block_id", blockId);
   if (planned.error || !planned.data) throw new Error("Could not read the program's workouts. Try again.");
   const linkedIds = new Set<string>(planned.data.flatMap((row) => row.completed_session_id ? [row.completed_session_id] : []));
   const existingDates = new Set(snapshot.entries.filter((entry) =>
     entry.state !== "rest" && entry.state !== "paused" &&
     ((entry.source === "primary" && entry.programId === blockId) || (entry.source === "session" && linkedIds.has(entry.id))),
   ).map((entry) => entry.date));
-  const candidates = block.data.status === "active" ? planned.data.filter((row) =>
+  const candidates = block.data.status === "active" || parsed.kind === "resume" ? planned.data.filter((row) =>
     (parsed.kind === "workout" ? row.id === parsed.id : !row.skipped_at) &&
     (row.role !== "rest" || row.completed_session_id),
   ) : [];
   const completedIds = candidates.flatMap((row) => row.completed_session_id ? [row.completed_session_id] : []);
   const performedDates = new Map<string, string>();
+  const finishedIds = new Set<string>();
   if (completedIds.length) {
-    const sessions = await supabase.from("sessions").select("id,performed_at").in("id", completedIds);
+    const sessions = await supabase.from("sessions").select("id,performed_at,completed_at,deleted_at").in("id", completedIds);
     if (sessions.error || !sessions.data) throw new Error("Could not read the logged workout dates. Try again.");
     const timezone = await getUserTimezone(user.id);
-    for (const session of sessions.data) performedDates.set(session.id, ymdInTimezone(new Date(session.performed_at), timezone));
+    for (const session of sessions.data) {
+      performedDates.set(session.id, ymdInTimezone(new Date(session.performed_at), timezone));
+      if (session.completed_at && !session.deleted_at) finishedIds.add(session.id);
+    }
+  }
+  if (parsed.kind === "resume" && !hasRemainingProgramWorkouts(planned.data.map((row) => ({
+    date: dayDate(block.data!.started_on, row.week_index, row.day_index), role: row.role, prescription: row.prescription,
+    skipped: !!row.skipped_at, completed: finishedIds.has(row.completed_session_id ?? ""),
+  })), todayYmd(await getUserTimezone(user.id)))) {
+    throw new UserActionError("This program has no workouts left.");
   }
   const dates = [...new Set(candidates.map((row) =>
     performedDates.get(row.completed_session_id ?? "") ?? dayDate(block.data!.started_on, row.week_index, row.day_index),

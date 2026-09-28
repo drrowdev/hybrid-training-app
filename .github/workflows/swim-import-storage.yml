@@ -20,6 +20,8 @@ on:
       - "packages/db/integration-tests/independent-programs-rehearsal.ts"
       - "packages/db/integration-tests/prescription-safety-rehearsal.ts"
       - "packages/db/integration-tests/scheduled-max-progression-rehearsal.ts"
+      - "packages/db/integration-tests/resume-program-rehearsal.ts"
+      - "packages/db/rollbacks/0162_resume_ended_program.down.sql"
       - "packages/db/rollbacks/0161_scheduled_max_progression.down.sql"
       - "apps/web/scripts/test-max-progression-ui.mjs"
       - "apps/web/src/components/today/TmSuggestionBanner.tsx"

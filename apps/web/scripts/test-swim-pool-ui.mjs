@@ -823,7 +823,9 @@ try {
         };
         window.showRestore = (kind, overlap = true) => {
           window.restorePreviews = []; window.restoreSaves = []; window.restoreOverlap = overlap; window.restoreMode = "error";
-          root.render(<main className={styles.page} key={++key}>{kind === "block"
+          root.render(<main className={styles.page} key={++key}>{kind === "resume"
+            ? <DeleteBlockMenu blockId="00000000-0000-4000-8000-000000000012" archetypeName="Strength" canResume />
+            : kind === "block"
             ? <ul style={{ margin: 0, padding: 0 }}><TrashItemRow kind="block" id="00000000-0000-4000-8000-000000000012"
                 title="Strength and running" subtitle="Started 2026-09-14" confirmToken="Strength and running" deletedAt="2026-09-14" /></ul>
             : <ScheduleRestoreButton kind="workout" id="00000000-0000-4000-8000-000000000013" label="Un-skip"
@@ -927,7 +929,7 @@ try {
             : args.path === "@/lib/sessions/reorder-actions"
               ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
-              ? "export const endBlock = form => window.endProgram(form); export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); }; export const previewPlannedMove = () => { throw new Error('Unexpected move'); };"
+              ? "export const endBlock = form => window.endProgram(form); export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const resumeBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); }; export const previewPlannedMove = () => { throw new Error('Unexpected move'); };"
             : args.path === "@/lib/sessions/planned-movement-actions"
               ? "const unexpected = () => { throw new Error('Unexpected planned mutation'); }; export const removePlannedMovement = unexpected, swapPlannedMovement = unexpected, addPlannedMovement = unexpected;"
             : args.path === "@/lib/hyrox/station-swap-actions"
@@ -2156,6 +2158,25 @@ try {
     assert.deepEqual(await page.evaluate(() => window.historyDeletionCalls), ["hybrid"]);
     await page.evaluate(() => window.resolveHistoryDeletion());
     await expect(historyRow).toHaveCount(0);
+    await page.evaluate(() => window.showRestore("resume"));
+    await page.getByTestId("block-actions-trigger").click();
+    await page.getByRole("menuitem", { name: "Resume program", exact: true }).click();
+    const resumeDialog = page.getByRole("dialog", { name: "Resume program", exact: true });
+    await expect(resumeDialog).toBeVisible();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(resumeDialog.getByRole("button", { name: "Resume program", exact: true })).toBeDisabled();
+    await resumeDialog.getByRole("checkbox").check();
+    await resumeDialog.getByRole("button", { name: "Resume program", exact: true }).click();
+    await expect(resumeDialog.getByRole("alert")).toBeVisible();
+    await resumeDialog.getByRole("button", { name: "Review again", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Resume program", exact: true }).click();
+    await expect(resumeDialog.getByRole("checkbox")).not.toBeChecked();
+    await resumeDialog.getByRole("checkbox").check();
+    await page.evaluate(() => { window.restoreMode = "success"; });
+    await resumeDialog.getByRole("button", { name: "Resume program", exact: true }).click();
+    await expect(resumeDialog).toHaveCount(0);
+    assert.equal(await page.evaluate(() => window.restoreSaves.length), 2);
+    assert.deepEqual(await page.evaluate(() => window.restorePreviews.map(input => input.kind)), ["resume", "resume"]);
     await page.evaluate(() => window.showProgramEnd());
     await page.getByTestId("program-actions-more").click();
     await expect(page.getByRole("menuitem", { name: "Add recovery week", exact: true })).toHaveCount(0);

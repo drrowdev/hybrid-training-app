@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrainingCommitment } from "@hta/domain";
 
 const mock = vi.hoisted(() => ({
   rpc: vi.fn(), from: vi.fn(),
   revision: "a".repeat(32), entries: [] as TrainingCommitment[],
   user: { id: "11111111-2222-4222-8222-222222222222" } as { id: string } | null,
-  block: { id: "11111111-1111-4111-8111-111111111111", started_on: "2026-09-14", status: "active", deleted_at: "2026-09-14" as string | null },
+  block: { id: "11111111-1111-4111-8111-111111111111", started_on: "2026-09-14", status: "active", deleted_at: "2026-09-14" as string | null,
+    ended_at: "2026-09-14" as string | null },
   rows: [] as { id: string; block_id: string; week_index: number; day_index: number; role: string; completed_session_id: string | null; skipped_at: string | null }[],
   sessions: [] as { id: string; performed_at: string }[],
   failedTable: "",
@@ -32,6 +33,8 @@ const swim: TrainingCommitment = {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-13T12:30:00Z"));
   mock.user = { id: "11111111-2222-4222-8222-222222222222" };
   mock.block.status = "active"; mock.block.deleted_at = "2026-09-14";
   mock.revision = "a".repeat(32); mock.entries = [swim]; mock.sessions = []; mock.failedTable = "";
@@ -52,9 +55,23 @@ beforeEach(() => {
     query.in.mockResolvedValue({ data: mock.sessions, error });
     return query;
   });
+  afterEach(() => vi.useRealTimers());
 });
 
 describe("DC-K4 restored schedule review", () => {
+  it("previews resuming an ended program using the account's today and existing overlap consent", async () => {
+    mock.block.status = "archived"; mock.block.deleted_at = null;
+    const preview = await successfulPreview({ kind: "resume", id: mock.block.id });
+    expect(preview.dates).toEqual(["2026-09-14"]);
+    expect(preview.overlaps).toEqual([swim]);
+    mock.rows[0]!.day_index = -1;
+    expect(await previewTrainingRestore({ kind: "resume", id: mock.block.id })).toEqual({ error: "This program has no workouts left." });
+  });
+  it("does not confuse deleted or active programs with ended programs", async () => {
+    expect(await previewTrainingRestore({ kind: "resume", id: mock.block.id })).toHaveProperty("error");
+    mock.block.status = "archived";
+    expect(await previewTrainingRestore({ kind: "resume", id: mock.block.id })).toHaveProperty("error");
+  });
   it("previews a restored block's actual dates without writing and binds explicit consent to the receipt", async () => {
     const preview = await successfulPreview({ kind: "block", id: mock.block.id });
     expect(preview.dates).toEqual(["2026-09-14"]);

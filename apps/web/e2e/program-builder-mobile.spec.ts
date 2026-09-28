@@ -1229,6 +1229,58 @@ test.describe("Modular program builder", () => {
       }
     });
 
+  ownedTest("M19 DC-K4: end and resume returns remaining workouts to Today after overlap review",
+    async ({ page, actor, catalog }) => {
+      const liftId = movement(catalog, "bench-press-flat").id, runId = movement(catalog, "run-easy-z2").id;
+      const program = await prepareNativeProgram(actor,
+        nativeProgramDefinition("strength", "Finish this week", weekday(), liftId, runId), today());
+      await prepareNativeProgram(actor,
+        nativeProgramDefinition("running", "Running week", weekday(), liftId, runId), today());
+      const rows = await planned(actor);
+      const remaining = rows.find((row) => row.block_id === program.block_id && row.day_index === weekday())!;
+      await page.goto(`/app/plan?block=${program.block_id}`);
+      await page.getByTestId("program-actions-more").click();
+      await page.getByTestId("program-actions-end").click();
+      await page.getByTestId("end-block-confirm").click();
+      await expect.poll(async () => {
+        const result = await actor.from("training_blocks").select("status").eq("id", program.block_id).single();
+        expect(result.error).toBeNull(); return result.data?.status;
+      }).toBe("archived");
+      await page.goto("/app");
+      await expect(page.getByTestId(`today-card-${remaining.id}`)).toHaveCount(0);
+      await page.goto("/app/plan/history");
+      const history = page.locator(`[data-testid="block-history-row"][data-block-id="${program.block_id}"]`);
+      await history.getByTestId("block-actions-trigger").click();
+      const menu = history.getByRole("menu");
+      await expect(menu.getByRole("menuitem")).toHaveCount(2);
+      await expect(menu.getByRole("menuitem").nth(0)).toHaveAccessibleName("Resume program");
+      await expect(menu.getByRole("menuitem").nth(1)).toHaveAccessibleName("Delete this program");
+      await assertNoHorizontalOverflow(page);
+      await page.screenshot({ path: test.info().outputPath("resume-program-375.png"), fullPage: true });
+      await history.getByRole("menuitem", { name: "Resume program", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Resume program", exact: true });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Resume program", exact: true })).toBeDisabled();
+      await dialog.getByRole("checkbox", { name: "Keep both workouts on these dates", exact: true }).check();
+      await dialog.getByRole("button", { name: "Resume program", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(history.getByTestId("block-status-badge")).toHaveAttribute("data-status", "active");
+      expect(await planned(actor)).toEqual(rows);
+      const block = await actor.from("training_blocks").select("status,ended_at,archived_at").eq("id", program.block_id).single();
+      expect(block.error).toBeNull();
+      expect(block.data).toEqual({ status: "active", ended_at: null, archived_at: null });
+      const instance = await actor.from("program_instances").select("status").eq("block_id", program.block_id).single();
+      expect(instance.error).toBeNull(); expect(instance.data?.status).toBe("active");
+      await page.goto("/app/programs");
+      await expect(page.getByRole("region", { name: "Programs", exact: true }).getByText("Finish this week", { exact: true })).toBeVisible();
+      await page.goto("/app");
+      await expect(page.getByTestId(`today-card-${remaining.id}`)).toBeVisible();
+      await page.goto("/app/plan");
+      await expect(page.getByRole("region", { name: "This week", exact: true })
+        .locator(`a[href="/app/sessions/start/${remaining.id}"]`)).toHaveCount(1);
+      await assertNoHorizontalOverflow(page);
+    });
+
   ownedTest("M12 DC-K4: shared measurements and Hybrid load setup preserve Strength targets",
     async ({ page, actor, freshUser }) => {
       stage("m12-01");

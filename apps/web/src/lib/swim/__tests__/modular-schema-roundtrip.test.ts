@@ -3,22 +3,22 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   createModularRoundTripProof, modularSchemaRoundTrip, MODULAR_CATALOG_SQL, MODULAR_SCHEMA_FILES,
-  OWNERSHIP_CATALOG_SQL, OWNERSHIP_SCHEMA_FILES,
+  OWNERSHIP_CATALOG_SQL, OWNERSHIP_SCHEMA_FILES, RESUME_SCHEMA_FILES,
 } from "../../../../scripts/modular-schema-roundtrip";
 import type { ProcessResult } from "../../../../scripts/swim-acceptance-guards";
 
 const passed: ProcessResult = { code: 0, signal: null, timedOut: false };
 const catalogue = { functions: 200, triggers: 30, sha256: "a".repeat(64) };
-function setup(ownership = false) {
-  const sql = ownership ? OWNERSHIP_CATALOG_SQL : MODULAR_CATALOG_SQL;
-  const files = ownership ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
+function setup(layer: "modular" | "ownership" | "resume" = "modular") {
+  const sql = layer === "modular" ? MODULAR_CATALOG_SQL : OWNERSHIP_CATALOG_SQL;
+  const files = layer === "resume" ? RESUME_SCHEMA_FILES : layer === "ownership" ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
   const command = vi.fn(async (_executable: string, args: string[], options: unknown) => {
     expect(options).toMatchObject({ capture: true, allowFailure: true });
     return { text: args.at(-1) === sql ? JSON.stringify(catalogue) : "", result: passed };
   });
   const proof = createModularRoundTripProof();
   const verifiedSql = vi.fn((file: string) => file === files.down ? "SYNTHETIC_DOWN" : "SYNTHETIC_UP");
-  return { command, dbId: "d".repeat(64), proof, verifiedSql, ownership };
+  return { command, dbId: "d".repeat(64), proof, verifiedSql, layer };
 }
 
 describe("DC-SW8 modular native schema round trip retains role and routine definitions", () => {
@@ -29,7 +29,7 @@ describe("DC-SW8 modular native schema round trip retains role and routine defin
       expect(OWNERSHIP_CATALOG_SQL).toContain(entry);
     }
     expect(OWNERSHIP_CATALOG_SQL).not.toContain("k.contype='c'");
-    const options = setup(true);
+    const options = setup("ownership");
     await modularSchemaRoundTrip({ ...options, phase: "down" });
     await modularSchemaRoundTrip({ ...options, phase: "up" });
     expect(options.proof.restored).toBe(true);
@@ -39,7 +39,7 @@ describe("DC-SW8 modular native schema round trip retains role and routine defin
   });
 
   it.each(["down", "up", "catalogue"] as const)("refuses failed ownership %s without a restored proof or retry", async (failure) => {
-    const options = setup(true);
+    const options = setup("ownership");
     if (failure !== "down") await modularSchemaRoundTrip({ ...options, phase: "down" });
     const original = options.command.getMockImplementation()!;
     options.command.mockImplementation(async (...args) => {
@@ -49,12 +49,23 @@ describe("DC-SW8 modular native schema round trip retains role and routine defin
       }
       return failure === "catalogue" ? result : { ...result, result: { ...passed, code: 1 } };
     });
+
     const phase = failure === "down" ? "down" : "up";
     await expect(modularSchemaRoundTrip({ ...options, phase })).rejects.toThrow();
     expect(options.proof.restored).toBe(false);
     const calls = options.command.mock.calls.length;
     await expect(modularSchemaRoundTrip({ ...options, phase })).rejects.toThrow();
     expect(options.command).toHaveBeenCalledTimes(calls);
+  });
+
+  it("DC-K4 restores resume with the full ownership catalogue before browser acceptance", async () => {
+    const options = setup("resume");
+    await modularSchemaRoundTrip({ ...options, phase: "down" });
+    await modularSchemaRoundTrip({ ...options, phase: "up" });
+    expect(options.proof.restored).toBe(true);
+    expect(options.verifiedSql.mock.calls).toEqual([[RESUME_SCHEMA_FILES.down], [RESUME_SCHEMA_FILES.up]]);
+    expect(options.command.mock.calls.map(([, args]) => args.at(-1)))
+      .toEqual([OWNERSHIP_CATALOG_SQL, "SYNTHETIC_DOWN", "SYNTHETIC_UP", OWNERSHIP_CATALOG_SQL]);
   });
 
   it("DC-K4: final recovery/session lock inventory matches both migration guard lists", () => {
