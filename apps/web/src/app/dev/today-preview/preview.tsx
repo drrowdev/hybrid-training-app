@@ -71,7 +71,8 @@ export function TodayPreview({ month }: { month: boolean }) {
         : <TodayDashboard today={today} workouts={workouts.filter((workout) => workout.date === today)}
           weekWorkouts={workouts} hasProgram multiplePrograms prompt={null}
           quickWorkout={<QuickWorkoutCard variant="planned" recent={[]} startStrength={unavailable}
-            repeatRecent={unavailable} generateStrength={unavailable} generateHyrox={unavailable} hyroxStationDefaults={[]} />}
+            repeatRecent={unavailable} previewStrength={unavailable} generateStrength={unavailable}
+            previewHyrox={unavailable} generateHyrox={unavailable} hyroxStationDefaults={[]} />}
           weekPreview={preview} />}
     </AppShell>
   </CommandPaletteProvider>;

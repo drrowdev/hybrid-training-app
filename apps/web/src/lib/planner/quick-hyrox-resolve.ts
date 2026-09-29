@@ -159,7 +159,12 @@ export function pickFormat(
 export async function resolveQuickHyroxPlan(
   supabase: SupabaseClient,
   userId: string,
-  opts: { length: HyroxQuickLength; stations: HyroxQuickStation[] },
+  opts: {
+    length: HyroxQuickLength;
+    stations: HyroxQuickStation[];
+    /** The format the user reviewed; used when still feasible for `stations`. */
+    format?: HyroxQuickFormat;
+  },
 ): Promise<QuickHyroxResult> {
   const stationSet = new Set<HyroxQuickStation>(opts.stations);
   const feasible = feasibleFormats(stationSet);
@@ -176,7 +181,10 @@ export async function resolveQuickHyroxPlan(
     recencyByFormat(supabase, userId),
   ]);
 
-  const format = pickFormat(feasible, daysSince) ?? feasible[0]!;
+  const format =
+    opts.format && feasible.includes(opts.format)
+      ? opts.format
+      : (pickFormat(feasible, daysSince) ?? feasible[0]!);
   const assembleArgs = {
     format,
     stations: stationSet,
