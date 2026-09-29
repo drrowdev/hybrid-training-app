@@ -321,6 +321,7 @@ async function review(page: Page, timeout?: number) {
   await expect(page.getByRole("button", { name: "Saving...", exact: true })).toHaveCount(0, { timeout });
   await expect.poll(async () => /\/app\/plan\?block=/.test(page.url()) ||
     await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).isVisible() ||
+    await page.getByRole("button", { name: /^(Save|Save changes)$/ }).nth(1).isVisible() ||
     await page.getByRole("dialog").isVisible() || await page.getByRole("main").getByRole("alert").isVisible(),
   { timeout }).toBe(true);
 }
@@ -674,7 +675,7 @@ test.describe("Modular program builder", () => {
       await review(page);
       await save(page, actor, "strength");
       await review(otherTab);
-      await expect(otherTab.getByRole("alert")).toBeVisible();
+      await expect(otherTab.getByRole("main").getByRole("alert")).toBeVisible();
       await expect(otherTab.getByLabel("Reps", { exact: true })).toHaveValue("12");
       expect((await planned(actor)).find((row) => row.id === rows[0]!.id)?.prescription.items[0]?.reps).toBe(8);
       await otherTab.getByRole("button", { name: "Reload current version", exact: true }).click();

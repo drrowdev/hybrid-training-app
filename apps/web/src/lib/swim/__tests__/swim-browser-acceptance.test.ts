@@ -466,7 +466,8 @@ describe("DC-SW8 modular acceptance report membership", () => {
     observer.dispose();
   });
 
-  it.each([undefined, 30_000])("waits for the same authoritative save URL with the selected assertion budget (%s)", async (timeout) => {
+  it.each([undefined, 30_000].flatMap((timeout) => ["overlap", "rest"].map((review) => ({ timeout, review }))))(
+    "waits for the authoritative save URL after $review review with assertion budget $timeout", async ({ timeout, review }) => {
     const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
     const helper = source.slice(source.indexOf("async function review("), source.indexOf("async function planned("));
     const visible = vi.fn(async () => {});
@@ -475,10 +476,13 @@ describe("DC-SW8 modular acceptance report membership", () => {
     const savedId = "00000000-0000-4000-8000-000000000001";
     const query = { select: vi.fn(() => query), eq: vi.fn(() => query), is: vi.fn(() => query),
       single: vi.fn(async () => ({ error: null, data: { id: savedId } })) };
-    const submit = { click: vi.fn(async () => {}), isEnabled: vi.fn(async () => true), first: () => submit };
+    const submit = {
+      click: vi.fn(async () => {}), isEnabled: vi.fn(async () => true), first: () => submit,
+      nth: (index: number) => { expect(index).toBe(1); return { isVisible: async () => review === "rest" }; },
+    };
     const page = {
       url: vi.fn(() => "/app/program/build"),
-      getByRole: vi.fn((role: string) => role === "checkbox" ? { isVisible: async () => true } : submit),
+      getByRole: vi.fn((role: string) => role === "checkbox" ? { isVisible: async () => review === "overlap" } : submit),
     };
     const helpers = runInNewContext(transpileModule(`${helper}\n({review, save});`, {
       compilerOptions: { target: ScriptTarget.ES2022 },
