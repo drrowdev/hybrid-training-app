@@ -29,6 +29,8 @@ import {
   repeatRecentSession,
   generateQuickStrengthSession,
   generateQuickHyroxSession,
+  previewQuickStrengthWorkout,
+  previewQuickHyroxWorkout,
   updatePlannedSessionNotes,
   markExternalCardioComplete,
 } from "@/lib/sessions/actions";
@@ -625,6 +627,7 @@ export default async function TodayPage() {
     next={next} prompt={prompt} promptPlacement={selectedPrompt?.placement}
     quickWorkout={<QuickWorkoutCard variant={workouts.length ? "planned" : "rest"} recent={quickRepeatRecent}
       startStrength={startQuickStrengthSession} repeatRecent={repeatRecentSession}
-      generateStrength={generateQuickStrengthSession} generateHyrox={generateQuickHyroxSession}
+      previewStrength={previewQuickStrengthWorkout} generateStrength={generateQuickStrengthSession}
+      previewHyrox={previewQuickHyroxWorkout} generateHyrox={generateQuickHyroxSession}
       hyroxStationDefaults={hyroxStationDefaults} />} />;
 }

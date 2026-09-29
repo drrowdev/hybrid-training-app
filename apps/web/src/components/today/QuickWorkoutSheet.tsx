@@ -15,19 +15,42 @@
  * exposed via props rather than imported directly — keeps the component
  * pure for tests and lets the page wire the actions once.
  *
+ * Generated workouts (Strength Short/Normal, HYROX) open a review step first:
+ * the preview action builds a draft without writing anything, the user can
+ * regenerate or remove movements, and only "Start workout" creates the session.
+ *
  * Wraps the shared `<BottomSheet>` for the backdrop + swipe-down UX.
  */
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { WorkoutExercises } from "@/components/today/WorkoutExercises";
+import todayStyles from "@/components/today/Today.module.css";
+import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
+import {
+  quickDraftMovementIds,
+  quickDraftPrescription,
+  type QuickHyroxDraft,
+  type QuickPreviewResult,
+  type QuickStartResult,
+  type QuickStrengthDraft,
+} from "@/lib/sessions/quick-workout-draft";
 import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
+
+type QuickLength = "short" | "normal";
 
 export type StartStrengthFn = () => Promise<string>;
 export type RepeatFn = (input: { sessionId: string }) => Promise<string>;
+export type PreviewStrengthFn = (input: {
+  length: QuickLength;
+}) => Promise<QuickPreviewResult<QuickStrengthDraft>>;
 export type GenerateStrengthFn = (input: {
-  length: "short" | "normal";
-}) => Promise<string>;
+  length: QuickLength;
+  seed: number;
+  movementIds: string[];
+  removedMovementIds: string[];
+}) => Promise<QuickStartResult<QuickStrengthDraft>>;
 export type HyroxStation =
   | "run"
   | "ski_erg"
@@ -37,10 +60,21 @@ export type HyroxStation =
   | "wall_ball"
   | "farmers"
   | "burpees";
-export type GenerateHyroxFn = (input: {
-  length: "short" | "normal";
+export type PreviewHyroxFn = (input: {
+  length: QuickLength;
   stations: HyroxStation[];
-}) => Promise<string>;
+}) => Promise<QuickPreviewResult<QuickHyroxDraft>>;
+export type GenerateHyroxFn = (input: {
+  length: QuickLength;
+  stations: HyroxStation[];
+  format: QuickHyroxDraft["format"];
+}) => Promise<QuickStartResult<QuickHyroxDraft>>;
+
+type Review =
+  | { kind: "strength"; draft: QuickStrengthDraft; removed: string[] }
+  | { kind: "hyrox"; draft: QuickHyroxDraft };
+
+const GENERIC_ERROR = "Something went wrong. Try again.";
 
 const HYROX_STATION_LABELS: { id: HyroxStation; label: string }[] = [
   { id: "run", label: "Run" },
@@ -59,23 +93,32 @@ export function QuickWorkoutSheet({
   recent,
   startStrength,
   repeatRecent,
+  previewStrength,
   generateStrength,
+  previewHyrox,
   generateHyrox,
   hyroxStationDefaults,
+  initialReview = null,
 }: {
   open: boolean;
   onClose: () => void;
   recent: QuickRepeatCandidate[];
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
+  previewStrength: PreviewStrengthFn;
   generateStrength: GenerateStrengthFn;
+  previewHyrox: PreviewHyroxFn;
   generateHyrox: GenerateHyroxFn;
   hyroxStationDefaults: HyroxStation[];
+  /** Test/preview seam: open straight into the review step. */
+  initialReview?: Review | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [modality, setModality] = useState<"strength" | "hyrox">("strength");
+  const [review, setReview] = useState<Review | null>(initialReview);
+  const [error, setError] = useState<string | null>(null);
   const [stations, setStations] = useState<Set<HyroxStation>>(
     () => new Set(hyroxStationDefaults),
   );
@@ -98,6 +141,7 @@ export function QuickWorkoutSheet({
   const fire = (id: string, fn: () => Promise<string>) => {
     if (pending) return;
     setPendingId(id);
+    setError(null);
     startTransition(async () => {
       try {
         const sessionId = await fn();
@@ -113,15 +157,141 @@ export function QuickWorkoutSheet({
         if (!/NEXT_REDIRECT/i.test(msg)) {
           console.error("[quick-workout] action failed", err);
           setPendingId(null);
+          setError(GENERIC_ERROR);
         }
       }
     });
   };
 
+  const openReview = (
+    id: string,
+    fn: () => Promise<QuickPreviewResult<QuickStrengthDraft | QuickHyroxDraft>>,
+    kind: Review["kind"],
+  ) => {
+    if (pending) return;
+    setPendingId(id);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const result = await fn();
+        if (result.ok) {
+          setReview(
+            kind === "strength"
+              ? { kind, draft: result.draft as QuickStrengthDraft, removed: [] }
+              : { kind, draft: result.draft as QuickHyroxDraft },
+          );
+        } else {
+          setError(result.error);
+        }
+      } catch (err) {
+        console.error("[quick-workout] preview failed", err);
+        setError(GENERIC_ERROR);
+      } finally {
+        setPendingId(null);
+      }
+    });
+  };
+
+  const startReviewed = () => {
+    if (pending || !review) return;
+    setPendingId("start");
+    setError(null);
+    startTransition(async () => {
+      try {
+        const result: QuickStartResult<QuickStrengthDraft | QuickHyroxDraft> =
+          review.kind === "strength"
+            ? await generateStrength({
+                length: review.draft.length,
+                seed: review.draft.seed,
+                movementIds: quickDraftMovementIds(review.draft.items),
+                removedMovementIds: review.removed,
+              })
+            : await generateHyrox({
+                length: review.draft.length,
+                stations: review.draft.stations,
+                format: review.draft.format,
+              });
+        if (result.ok) {
+          router.push(`/app/sessions/${result.sessionId}`);
+          return;
+        }
+        setError(result.error);
+        if (result.draft) {
+          setReview(
+            review.kind === "strength"
+              ? { kind: "strength", draft: result.draft as QuickStrengthDraft, removed: [] }
+              : { kind: "hyrox", draft: result.draft as QuickHyroxDraft },
+          );
+        }
+        setPendingId(null);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/NEXT_REDIRECT/i.test(msg)) {
+          console.error("[quick-workout] start failed", err);
+          setError(GENERIC_ERROR);
+          setPendingId(null);
+        }
+      }
+    });
+  };
+
+  const close = () => {
+    setReview(null);
+    setError(null);
+    onClose();
+  };
+
+  if (review) {
+    return (
+      <BottomSheet
+        open={open}
+        onClose={close}
+        testId="quick-workout-sheet"
+        ariaLabelledById="quick-workout-sheet-title"
+        title={
+          <h2
+            id="quick-workout-sheet-title"
+            style={{ margin: 0, fontSize: 16, fontWeight: 700 }}
+          >
+            {review.draft.title}
+          </h2>
+        }
+      >
+        <ReviewPanel
+          review={review}
+          error={error}
+          pendingId={pendingId}
+          disabled={pending}
+          onBack={() => {
+            setReview(null);
+            setError(null);
+          }}
+          onRemove={(movementId) =>
+            review.kind === "strength" &&
+            setReview({ ...review, removed: [...review.removed, movementId] })
+          }
+          onUndo={() =>
+            review.kind === "strength" &&
+            setReview({ ...review, removed: review.removed.slice(0, -1) })
+          }
+          onRegenerate={() =>
+            review.kind === "strength" &&
+            openReview(
+              "regenerate",
+              () => previewStrength({ length: review.draft.length }),
+              "strength",
+            )
+          }
+          onStart={startReviewed}
+        />
+      </BottomSheet>
+    );
+  }
+
   return (
     <BottomSheet
       open={open}
-      onClose={onClose}
+      onClose={close}
       testId="quick-workout-sheet"
       ariaLabelledById="quick-workout-sheet-title"
       title={
@@ -224,8 +394,10 @@ export function QuickWorkoutSheet({
               disabled={pending || !canGenerateHyrox}
               loading={pendingId === "hyrox:short"}
               onClick={() =>
-                fire("hyrox:short", () =>
-                  generateHyrox({ length: "short", stations: [...stations] }),
+                openReview(
+                  "hyrox:short",
+                  () => previewHyrox({ length: "short", stations: [...stations] }),
+                  "hyrox",
                 )
               }
             />
@@ -236,8 +408,10 @@ export function QuickWorkoutSheet({
               disabled={pending || !canGenerateHyrox}
               loading={pendingId === "hyrox:normal"}
               onClick={() =>
-                fire("hyrox:normal", () =>
-                  generateHyrox({ length: "normal", stations: [...stations] }),
+                openReview(
+                  "hyrox:normal",
+                  () => previewHyrox({ length: "normal", stations: [...stations] }),
+                  "hyrox",
                 )
               }
             />
@@ -280,7 +454,11 @@ export function QuickWorkoutSheet({
             disabled={pending}
             loading={pendingId === "generate:short"}
             onClick={() =>
-              fire("generate:short", () => generateStrength({ length: "short" }))
+              openReview(
+                "generate:short",
+                () => previewStrength({ length: "short" }),
+                "strength",
+              )
             }
           />
           <GenerateTile
@@ -290,8 +468,10 @@ export function QuickWorkoutSheet({
             disabled={pending}
             loading={pendingId === "generate:normal"}
             onClick={() =>
-              fire("generate:normal", () =>
-                generateStrength({ length: "normal" }),
+              openReview(
+                "generate:normal",
+                () => previewStrength({ length: "normal" }),
+                "strength",
               )
             }
           />
@@ -340,7 +520,207 @@ export function QuickWorkoutSheet({
       )}
         </>
       )}
+      {error && <ErrorText>{error}</ErrorText>}
     </BottomSheet>
+  );
+}
+
+function ErrorText({ children }: { children: string }) {
+  return (
+    <p
+      role="alert"
+      data-testid="quick-workout-error"
+      style={{ margin: "12px 0 0", fontSize: 13, color: "var(--cp-danger)" }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function ReviewPanel({
+  review,
+  error,
+  pendingId,
+  disabled,
+  onBack,
+  onRemove,
+  onUndo,
+  onRegenerate,
+  onStart,
+}: {
+  review: Review;
+  error: string | null;
+  pendingId: string | null;
+  disabled: boolean;
+  onBack: () => void;
+  onRemove: (movementId: string) => void;
+  onUndo: () => void;
+  onRegenerate: () => void;
+  onStart: () => void;
+}) {
+  const strengthItems =
+    review.kind === "strength"
+      ? quickDraftPrescription(review.draft.items, review.removed).items
+      : [];
+  const movementCount = quickDraftMovementIds(strengthItems).length;
+  const minutes =
+    review.kind === "strength" ? estimateSessionMinutes(strengthItems) : null;
+  const lastRemovedId =
+    review.kind === "strength" ? review.removed.at(-1) : undefined;
+  const lastRemovedName = lastRemovedId
+    ? review.kind === "strength" &&
+      review.draft.items.find((item) => item.movementId === lastRemovedId)
+        ?.movementName
+    : null;
+  const meta =
+    review.kind === "strength"
+      ? [
+          `${movementCount} ${movementCount === 1 ? "movement" : "movements"}`,
+          minutes != null ? `~${minutes} min` : null,
+        ]
+      : [
+          review.draft.length === "short" ? "~30 min" : "up to ~60 min",
+          review.draft.view.divisionLabel,
+        ];
+
+  return (
+    <div data-testid="quick-review" style={{ display: "grid", gap: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <button
+          type="button"
+          className="cp-btn ghost"
+          data-testid="quick-review-back"
+          onClick={onBack}
+          disabled={disabled}
+          style={{ padding: "6px 8px", marginLeft: -8, fontSize: 13 }}
+        >
+          ‹ Back
+        </button>
+        <span
+          data-testid="quick-review-meta"
+          style={{ fontSize: 13, color: "var(--cp-text-muted)" }}
+        >
+          {meta.filter(Boolean).join(" · ")}
+        </span>
+      </div>
+
+      <div
+        style={{
+          background: "var(--cp-bg)",
+          border: "1px solid var(--cp-border)",
+          borderRadius: 12,
+          overflow: "hidden",
+        }}
+      >
+        {review.kind === "strength" ? (
+          <WorkoutExercises
+            items={strengthItems}
+            onRemove={movementCount > 1 && !disabled ? onRemove : undefined}
+          />
+        ) : (
+          <HyroxReview draft={review.draft} />
+        )}
+      </div>
+
+      {lastRemovedName && (
+        <div
+          data-testid="quick-review-removed"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            fontSize: 13,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          <span>Removed {lastRemovedName}</span>
+          <button
+            type="button"
+            className="cp-btn ghost"
+            data-testid="quick-review-undo"
+            onClick={onUndo}
+            disabled={disabled}
+            style={{ padding: "6px 8px", marginRight: -8, fontSize: 13 }}
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
+      {error && <ErrorText>{error}</ErrorText>}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: review.kind === "strength" ? "1fr 1fr" : "1fr",
+          gap: 8,
+        }}
+      >
+        {review.kind === "strength" && (
+          <button
+            type="button"
+            className="cp-btn big"
+            data-testid="quick-review-regenerate"
+            onClick={onRegenerate}
+            disabled={disabled}
+          >
+            {pendingId === "regenerate" ? "Generating…" : "Regenerate"}
+          </button>
+        )}
+        <button
+          type="button"
+          className="cp-btn primary big"
+          data-testid="quick-review-start"
+          onClick={onStart}
+          disabled={disabled}
+        >
+          {pendingId === "start" ? "Starting…" : "Start workout"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HyroxReview({ draft }: { draft: QuickHyroxDraft }) {
+  const s = todayStyles;
+  return (
+    <div className={s.groups} data-testid="quick-review-hyrox">
+      <section className={s.group}>
+        <h3>Workout</h3>
+        <ul className={s.rows}>
+          {draft.view.structure.map((row, index) => (
+            <li className={s.exercise} key={`${row.name}-${index}`}>
+              <div>
+                {row.name}
+                {row.detail && <div className={s.cue}>{row.detail}</div>}
+              </div>
+              {row.amount && <span className={s.dose}>{row.amount}</span>}
+            </li>
+          ))}
+        </ul>
+      </section>
+      {draft.view.loadedStations.length > 0 && (
+        <section className={s.group}>
+          <h3>Weights</h3>
+          <ul className={s.rows}>
+            {draft.view.loadedStations.map((station) => (
+              <li className={s.exercise} key={station.key}>
+                <span>{station.name}</span>
+                <span className={s.dose}>{station.loadLabel}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }
 

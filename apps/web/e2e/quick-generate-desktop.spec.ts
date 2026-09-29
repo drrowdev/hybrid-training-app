@@ -42,9 +42,22 @@ test.describe("@desktop quick-generate strength", () => {
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
 
-    // Generate a Normal quick strength session.
+    // Generate a Normal quick strength session: it opens for review first and
+    // nothing is created until Start.
     await page.getByTestId("quick-workout-card").click();
     await page.getByTestId("quick-tile-generate-normal").click();
+    const review = page.getByTestId("quick-review");
+    await review.waitFor({ state: "visible", timeout: 30000 });
+    await expect(page).toHaveURL(/\/app\/?$/);
+    await expect(review.getByText("Back Squat").first()).toBeVisible();
+
+    // Remove an accessory, then start the reviewed workout.
+    const removeButtons = review.locator('[data-testid^="remove-movement-"]');
+    const before = await removeButtons.count();
+    expect(before).toBeGreaterThan(1);
+    await removeButtons.last().click();
+    await expect(removeButtons).toHaveCount(before - 1);
+    await page.getByTestId("quick-review-start").click();
     await page.waitForURL(/\/app\/sessions\/.+/, { timeout: 30000 });
     await page
       .getByRole("heading", { name: /Quick workout/i })

@@ -91,7 +91,8 @@ const output = await build({
       root.render(shell(<TodayDashboard today="2026-09-28" workouts={completedToday ? [swim] : []}
         weekWorkouts={[swim, next]} hasProgram multiplePrograms={false} next={next} prompt={null}
         quickWorkout={<QuickWorkoutCard variant={completedToday ? "planned" : "rest"} recent={[]}
-          startStrength={unexpected} repeatRecent={unexpected} generateStrength={unexpected}
+          startStrength={unexpected} repeatRecent={unexpected} previewStrength={unexpected}
+          generateStrength={unexpected} previewHyrox={unexpected}
           generateHyrox={unexpected} hyroxStationDefaults={[]} />} />));
     };
   `, loader: "tsx", resolveDir: root },

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { actionResult } from "@/lib/action-result";
+import { actionResult, UserActionError } from "@/lib/action-result";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
@@ -16,8 +16,18 @@ import { roundToPlate } from "@/lib/planner/archetypes";
 import { roundWarmupLoadKg } from "@/lib/planner/warmups";
 import { resolveQuickStrengthPlan } from "@/lib/planner/quick-generate-resolve";
 import { resolveQuickHyroxPlan } from "@/lib/planner/quick-hyrox-resolve";
-import type { HyroxQuickStation } from "@/lib/planner/quick-hyrox";
+import type { HyroxQuickFormat, HyroxQuickStation } from "@/lib/planner/quick-hyrox";
 import type { QuickLength } from "@/lib/planner/quick-generate";
+import {
+  QUICK_DRAFT_MAX_MOVEMENTS,
+  quickDraftMovementIds,
+  quickDraftPrescription,
+  sameMovementIds,
+  type QuickHyroxDraft,
+  type QuickPreviewResult,
+  type QuickStartResult,
+  type QuickStrengthDraft,
+} from "./quick-workout-draft";
 import { TM_RESOLUTION_SELECT } from "@/lib/training-maxes/columns";
 import { applyAutoregVolumeScale } from "@/lib/planner/autoreg-volume";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
@@ -2660,61 +2670,143 @@ export async function repeatRecentSession(input: RepeatRecentInput): Promise<str
  * Zod `.strict()`. Off-plan: never links to a planned_sessions slot.
  * ──────────────────────────────────────────────────────────────────── */
 
-const generateQuickStrengthSchema = z
+const QUICK_BUILD_FAILED = "Couldn't build a workout. Try again.";
+const QUICK_START_FAILED = "Couldn't start this workout. Try again.";
+
+const quickSeedSchema = z.number().int().min(0).max(999_999);
+
+async function buildQuickStrengthDraft(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  length: QuickLength,
+  seed: number,
+): Promise<QuickStrengthDraft> {
+  const tz = await getUserTimezone();
+  const plan = await resolveQuickStrengthPlan(supabase, userId, {
+    length,
+    tz,
+    seed,
+  });
+  if (!plan.ok) throw new Error(plan.error);
+  // Expanded per-set items, exactly as stored on the session (see below).
+  return {
+    length,
+    seed,
+    title: plan.title,
+    items: expandPrescriptionSetItems(plan.items),
+  };
+}
+
+const previewQuickStrengthSchema = z
   .object({
     length: z.enum(["short", "normal"]),
   })
   .strict();
 
+/**
+ * Build a quick strength workout for review. Writes nothing. Each call uses a
+ * fresh variation seed, so calling it again is "Regenerate" (ADR 0029).
+ */
+export async function previewQuickStrengthWorkout(input: {
+  length: QuickLength;
+}): Promise<QuickPreviewResult<QuickStrengthDraft>> {
+  return actionResult(async () => {
+    const parsed = previewQuickStrengthSchema.safeParse(input);
+    if (!parsed.success) throw new UserActionError(QUICK_BUILD_FAILED);
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await getAuthUser();
+    if (!user) throw new UserActionError("Not signed in.");
+
+    const seed = Math.floor(Math.random() * 1_000_000);
+    const draft = await buildQuickStrengthDraft(
+      supabase,
+      user.id,
+      parsed.data.length,
+      seed,
+    );
+    return { ok: true as const, draft };
+  }, QUICK_BUILD_FAILED);
+}
+
+const generateQuickStrengthSchema = z
+  .object({
+    length: z.enum(["short", "normal"]),
+    seed: quickSeedSchema,
+    /** Every movement in the reviewed draft, in order (before removals). */
+    movementIds: z
+      .array(z.string().uuid())
+      .min(1)
+      .max(QUICK_DRAFT_MAX_MOVEMENTS),
+    removedMovementIds: z
+      .array(z.string().uuid())
+      .max(QUICK_DRAFT_MAX_MOVEMENTS),
+  })
+  .strict();
+
 export type GenerateQuickStrengthInput = {
   length: QuickLength;
+  seed: number;
+  movementIds: string[];
+  removedMovementIds: string[];
 };
 
+/**
+ * Start a reviewed quick strength workout. Re-resolves the draft server-side
+ * from its seed (the client never supplies prescription items), drops the
+ * movements the user removed, and inserts the session. If the workout now
+ * resolves to different movements than the user reviewed, nothing is written
+ * and the new draft is returned for another look.
+ */
 export async function generateQuickStrengthSession(
   input: GenerateQuickStrengthInput,
-): Promise<string> {
-  const parsed = generateQuickStrengthSchema.safeParse(input);
-  if (!parsed.success) {
-    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
-  }
+): Promise<QuickStartResult<QuickStrengthDraft>> {
+  return actionResult(async () => {
+    const parsed = generateQuickStrengthSchema.safeParse(input);
+    if (!parsed.success) throw new UserActionError(QUICK_START_FAILED);
+    const { length, seed, movementIds, removedMovementIds } = parsed.data;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (!user) redirect("/login");
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await getAuthUser();
+    if (!user) throw new UserActionError("Not signed in.");
 
-  const tz = await getUserTimezone();
-  // Fresh per-generate seed so each "Generate" rotates the main lift + accessory
-  // picks (deterministic given the seed; varies per click). See ADR 0029.
-  const variationSeed = Math.floor(Math.random() * 1_000_000);
-  const plan = await resolveQuickStrengthPlan(supabase, user.id, {
-    length: parsed.data.length,
-    tz,
-    seed: variationSeed,
-  });
-  if (!plan.ok) throw new Error(plan.error);
+    const draft = await buildQuickStrengthDraft(supabase, user.id, length, seed);
+    if (!sameMovementIds(quickDraftMovementIds(draft.items), movementIds)) {
+      return {
+        error: "This workout has changed. Review it before starting.",
+        draft,
+      };
+    }
+    const prescription = quickDraftPrescription(
+      draft.items,
+      removedMovementIds.filter((id) => movementIds.includes(id)),
+    );
+    if (quickDraftMovementIds(prescription.items).length === 0) {
+      throw new UserActionError("A workout needs at least one movement.");
+    }
 
-  // Store the generated prescription ON the session (off-plan — no
-  // planned_sessions linkage). The session page renders the grouped MAIN
-  // LIFTS / ACCESSORY WORK layout and the "0 of N" progress counter from this,
-  // identical to a planned workout. We deliberately do NOT pre-insert set_logs:
-  // those would read as already-logged. The user logs each set interactively,
-  // and the per-set target weight (%TM × TM) is computed at render time.
-  const prescription: Prescription = {
-    items: expandPrescriptionSetItems(plan.items),
-  };
-  const { data: created, error: insErr } = await supabase
-    .from("sessions")
-    .insert({ user_id: user.id, title: plan.title, prescription })
-    .select("id")
-    .single();
-  if (insErr || !created) {
-    throw new Error(insErr?.message ?? "Could not create session");
-  }
+    // Store the prescription ON the session (off-plan — no planned_sessions
+    // linkage). The session page renders the grouped MAIN LIFTS / ACCESSORY
+    // WORK layout and the "0 of N" progress counter from this, identical to a
+    // planned workout. We deliberately do NOT pre-insert set_logs: those would
+    // read as already-logged. The per-set target weight (%TM × TM) is computed
+    // at render time.
+    const { data: created, error: insErr } = await supabase
+      .from("sessions")
+      .insert({ user_id: user.id, title: draft.title, prescription })
+      .select("id")
+      .single();
+    if (insErr || !created) {
+      throw new Error(insErr?.message ?? "Could not create session");
+    }
 
-  revalidatePath("/app");
-  return created.id;
+    revalidatePath("/app");
+    return { ok: true as const, sessionId: created.id as string };
+  }, QUICK_START_FAILED);
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -2751,44 +2843,103 @@ const generateQuickHyroxSchema = z
   })
   .strict();
 
-export type GenerateQuickHyroxInput = {
+const startQuickHyroxSchema = generateQuickHyroxSchema
+  .extend({
+    format: z.enum(["circuit", "compromised", "erg", "run"]),
+  })
+  .strict();
+
+export type PreviewQuickHyroxInput = {
   length: QuickLength;
   stations: HyroxQuickStation[];
 };
 
-export async function generateQuickHyroxSession(
-  input: GenerateQuickHyroxInput,
-): Promise<string> {
-  const parsed = generateQuickHyroxSchema.safeParse(input);
-  if (!parsed.success) {
-    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
-  }
+export type GenerateQuickHyroxInput = PreviewQuickHyroxInput & {
+  /** The format the user reviewed. */
+  format: HyroxQuickFormat;
+};
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (!user) redirect("/login");
-
-  const plan = await resolveQuickHyroxPlan(supabase, user.id, {
-    length: parsed.data.length,
-    stations: [...parsed.data.stations],
+async function buildQuickHyroxDraft(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  input: PreviewQuickHyroxInput & { format?: HyroxQuickFormat },
+): Promise<{ draft: QuickHyroxDraft; items: PrescriptionItem[] }> {
+  const plan = await resolveQuickHyroxPlan(supabase, userId, {
+    length: input.length,
+    stations: [...input.stations],
+    format: input.format,
   });
   if (!plan.ok) throw new Error(plan.error);
-
-  const prescription: Prescription = {
+  return {
+    draft: {
+      length: input.length,
+      stations: [...input.stations],
+      format: plan.format,
+      title: plan.title,
+      view: plan.view,
+    },
     items: plan.items,
-    meta: { hyroxQuickFormat: plan.format, hyroxQuickView: plan.view },
   };
-  const { data: createdHyrox, error: insHyroxErr } = await supabase
-    .from("sessions")
-    .insert({ user_id: user.id, title: plan.title, prescription })
-    .select("id")
-    .single();
-  if (insHyroxErr || !createdHyrox) {
-    throw new Error(insHyroxErr?.message ?? "Could not create session");
-  }
+}
 
-  revalidatePath("/app");
-  return createdHyrox.id;
+/** Build a quick HYROX workout for review. Writes nothing. */
+export async function previewQuickHyroxWorkout(
+  input: PreviewQuickHyroxInput,
+): Promise<QuickPreviewResult<QuickHyroxDraft>> {
+  return actionResult(async () => {
+    const parsed = generateQuickHyroxSchema.safeParse(input);
+    if (!parsed.success) throw new UserActionError(QUICK_BUILD_FAILED);
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await getAuthUser();
+    if (!user) throw new UserActionError("Not signed in.");
+
+    const { draft } = await buildQuickHyroxDraft(supabase, user.id, parsed.data);
+    return { ok: true as const, draft };
+  }, QUICK_BUILD_FAILED);
+}
+
+export async function generateQuickHyroxSession(
+  input: GenerateQuickHyroxInput,
+): Promise<QuickStartResult<QuickHyroxDraft>> {
+  return actionResult(async () => {
+    const parsed = startQuickHyroxSchema.safeParse(input);
+    if (!parsed.success) throw new UserActionError(QUICK_START_FAILED);
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await getAuthUser();
+    if (!user) throw new UserActionError("Not signed in.");
+
+    const { draft, items } = await buildQuickHyroxDraft(
+      supabase,
+      user.id,
+      parsed.data,
+    );
+    if (draft.format !== parsed.data.format) {
+      return {
+        error: "This workout has changed. Review it before starting.",
+        draft,
+      };
+    }
+
+    const prescription: Prescription = {
+      items,
+      meta: { hyroxQuickFormat: draft.format, hyroxQuickView: draft.view },
+    };
+    const { data: created, error: insErr } = await supabase
+      .from("sessions")
+      .insert({ user_id: user.id, title: draft.title, prescription })
+      .select("id")
+      .single();
+    if (insErr || !created) {
+      throw new Error(insErr?.message ?? "Could not create session");
+    }
+
+    revalidatePath("/app");
+    return { ok: true as const, sessionId: created.id as string };
+  }, QUICK_START_FAILED);
 }

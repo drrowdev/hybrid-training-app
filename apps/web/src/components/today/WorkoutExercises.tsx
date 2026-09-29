@@ -33,7 +33,9 @@ export function workoutDose(items: PrescriptionItem[]): { text: string; spoken: 
   return { text, spoken };
 }
 
-function Row({ row, detailed = false }: { row: PrescriptionMovementRow; detailed?: boolean }) {
+function Row({ row, detailed = false, onRemove }: {
+  row: PrescriptionMovementRow; detailed?: boolean; onRemove?: (movementId: string) => void;
+}) {
   const dose = workoutDose(row.items);
   const first = row.items[0];
   const load = detailed && first ? [
@@ -49,17 +51,20 @@ function Row({ row, detailed = false }: { row: PrescriptionMovementRow; detailed
     <span className={styles.dose} data-testid="prescription-value" aria-label={[dose.spoken, load].filter(Boolean).join(", ")}>
       {splitPrescriptionChunks(value).map((chunk, index) => <Fragment key={index}>{index > 0 ? " · " : ""}<span data-prescription-chunk>{chunk}</span></Fragment>)}
     </span>
+    {onRemove && row.movementId && <button type="button" className={styles.remove} aria-label={`Remove ${row.movementName}`}
+      data-testid={`remove-movement-${row.movementId}`} onClick={() => onRemove(row.movementId!)}>×</button>}
   </li>;
 }
 
-function Group({ title, rows, minutes, detailed = false }: {
+function Group({ title, rows, minutes, detailed = false, onRemove }: {
   title: string; rows: PrescriptionMovementRow[]; minutes?: number | null; detailed?: boolean;
+  onRemove?: (movementId: string) => void;
 }) {
   if (!rows.length) return null;
   const renderRow = (row: PrescriptionMovementRow) => detailed
     ? collapseIdenticalSetItems(row.items).map((item, index) =>
       <Row key={`${row.rowKey}-${index}`} row={{ ...row, items: [item] }} detailed />)
-    : <Row key={row.rowKey} row={row} />;
+    : <Row key={row.rowKey} row={row} onRemove={onRemove} />;
   return <section className={styles.group} data-testid={`session-preview-section-${title === "Warm-up rehab" ? "rehab" : title === "Main lifts" ? "strength" : title.toLowerCase()}`}>
     <h3>{title}{minutes != null && <span>~{minutes} min</span>}</h3>
     {segmentSupersetRows(rows).map((segment) => segment.kind === "solo"
@@ -72,7 +77,11 @@ function Group({ title, rows, minutes, detailed = false }: {
   </section>;
 }
 
-export function WorkoutExercises({ items, detailed = false }: { items: PrescriptionItem[]; detailed?: boolean }) {
+export function WorkoutExercises({ items, detailed = false, onRemove }: {
+  items: PrescriptionItem[]; detailed?: boolean;
+  /** Adds a remove control to each movement row (summary view only). */
+  onRemove?: (movementId: string) => void;
+}) {
   const groups = groupByMovementThenKind(items);
   const rows = (supplemental: boolean) => groups.movements.filter((group) =>
     isSupplementalOnlySection(group) === supplemental && (!detailed || group.sets.length > 0))
@@ -81,9 +90,9 @@ export function WorkoutExercises({ items, detailed = false }: { items: Prescript
     <Group title="Warm-up rehab" rows={groups.rehab} minutes={estimateSessionMinutes(groups.rehab.flatMap((row) => row.items))} detailed={detailed} />
     {detailed && <Group title="Warm-up" rows={groups.movements.filter((group) => group.warmups.length > 0)
       .map((group) => ({ ...group, items: group.warmups }))} detailed />}
-    <Group title="Main lifts" rows={rows(false)} detailed={detailed} />
-    <Group title="Supplemental" rows={rows(true)} detailed={detailed} />
-    <Group title="Accessories" rows={[...groups.accessories, ...groups.hingeCompensations, ...groups.tendon]} detailed={detailed} />
+    <Group title="Main lifts" rows={rows(false)} detailed={detailed} onRemove={onRemove} />
+    <Group title="Supplemental" rows={rows(true)} detailed={detailed} onRemove={onRemove} />
+    <Group title="Accessories" rows={[...groups.accessories, ...groups.hingeCompensations, ...groups.tendon]} detailed={detailed} onRemove={onRemove} />
     {groups.cardio.map((item, index) => <section className={styles.group} key={index}>
       <h3>{item.movementName ?? "Conditioning"}</h3>
       {item.cardioPlan ? <>
