@@ -29,7 +29,7 @@ import type { PrescriptionItem } from "@hta/db";
 import type { DeclaredExperience } from "@hta/engine";
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import { assemblePrescriptionItems } from "./assemble-prescription";
-import type { CatalogMovement } from "./accessory-picker";
+import { mixSeed, type CatalogMovement } from "./accessory-picker";
 import type { WarmupScheme } from "./warmups";
 import type { LimitationsContext } from "./limitations-context";
 import type { FocusMuscle } from "./focus-muscles";
@@ -137,6 +137,57 @@ export function pickFreshestStrengthRole(
     }
   }
   return best;
+}
+
+/**
+ * How far below the freshest role's score another role may sit and still be
+ * offered when the user asks for a different quick workout. 0.2 admits a
+ * pattern with one prime mover at "ready" (2–3 days recovered) alongside a
+ * fully fresh one, but never a pattern whose movers were loaded in the last
+ * ~2 days while a fresh alternative exists.
+ */
+// heuristic — recovery-window mapping (CP-1), per Damas 2016 / MPS kinetics
+export const ROLE_VARIATION_TOLERANCE = 0.2;
+
+/**
+ * Quick-generate role pick. Without a seed this is `pickFreshestStrengthRole`.
+ * With a seed it rotates among every role within `ROLE_VARIATION_TOLERANCE` of
+ * the freshest, so regenerating can change the main pattern instead of always
+ * landing on the single freshest one.
+ */
+export function pickQuickStrengthRole(
+  candidateRoles: readonly StrengthRole[],
+  freshnessByGroup: ReadonlyMap<MuscleGroup, MuscleFreshnessBand>,
+  variationSeed?: number,
+): StrengthRole | null {
+  if (variationSeed == null) {
+    return pickFreshestStrengthRole(candidateRoles, freshnessByGroup);
+  }
+  const scored = candidateRoles.map((role) => ({
+    role,
+    score: scoreRoleFreshness(role, freshnessByGroup),
+  }));
+  if (scored.length === 0) return null;
+  const best = Math.max(...scored.map((s) => s.score));
+  const near = scored.filter((s) => s.score >= best - ROLE_VARIATION_TOLERANCE - 1e-9);
+  return near[mixSeed(variationSeed ^ 0x5bd1e995) % near.length]!.role;
+}
+
+/**
+ * How much a candidate quick workout repeats the one being replaced: shared
+ * movements, plus one when the main lift is the same. Lower = more different.
+ */
+export function quickWorkoutOverlap(
+  items: readonly PrescriptionItem[],
+  previousMovementIds: readonly string[],
+): number {
+  const previous = new Set(previousMovementIds);
+  const ids = new Set(items.map((item) => item.movementId).filter(Boolean));
+  let overlap = 0;
+  for (const id of ids) if (previous.has(id)) overlap += 1;
+  const main = items.find((item) => item.kind === "main")?.movementId;
+  if (main && previousMovementIds[0] === main) overlap += 1;
+  return overlap;
 }
 
 /**

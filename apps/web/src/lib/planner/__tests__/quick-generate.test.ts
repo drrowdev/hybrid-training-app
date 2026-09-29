@@ -5,6 +5,8 @@ import {
   freshnessValue,
   scoreRoleFreshness,
   pickFreshestStrengthRole,
+  pickQuickStrengthRole,
+  quickWorkoutOverlap,
   buildAestheticFreshnessMask,
   quickWorkingWeekIndex,
   durationCapMinutes,
@@ -78,6 +80,44 @@ describe("quick-generate — role freshness scoring", () => {
     ) as (keyof typeof STRENGTH_ROLE_PRIME_MUSCLES)[]) {
       expect(STRENGTH_ROLE_PRIME_MUSCLES[role].length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("quick-generate — regenerate variety", () => {
+  const roles = ["squat", "horizontal_press", "deadlift", "vertical_press"] as const;
+
+  it("without a seed, keeps the freshest-role pick", () => {
+    expect(pickQuickStrengthRole(roles, bands({}))).toBe("squat");
+  });
+
+  it("with seeds, rotates among equally fresh roles", () => {
+    const picked = new Set(
+      Array.from({ length: 40 }, (_, seed) => pickQuickStrengthRole(roles, bands({}), seed)),
+    );
+    expect(picked.size).toBeGreaterThan(2);
+  });
+
+  it("never picks a loaded pattern while a fresh one exists", () => {
+    const m = bands({
+      quads: "loaded",
+      glutes: "loaded",
+      hamstrings: "loaded",
+      erectors: "loaded",
+    });
+    for (let seed = 0; seed < 40; seed += 1) {
+      const role = pickQuickStrengthRole(roles, m, seed);
+      expect(role === "horizontal_press" || role === "vertical_press").toBe(true);
+    }
+  });
+
+  it("scores overlap by shared movements plus a repeated main lift", () => {
+    const items: PrescriptionItem[] = [
+      { movementId: "press", kind: "main", reps: 5 },
+      { movementId: "carry", kind: "accessory", sets: 3 },
+    ];
+    expect(quickWorkoutOverlap(items, ["press", "carry", "rdl"])).toBe(3);
+    expect(quickWorkoutOverlap(items, ["squat", "carry"])).toBe(1);
+    expect(quickWorkoutOverlap(items, ["squat", "row"])).toBe(0);
   });
 });
 

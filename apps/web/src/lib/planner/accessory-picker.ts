@@ -1098,7 +1098,8 @@ const AESTHETIC_ELIGIBLE_PATTERNS: ReadonlySet<string> = new Set([
  * splitmix32 finalizer). Ensures additively-adjacent seeds (e.g. base + a
  * per-slot cursor) produce uncorrelated rotations instead of a uniform shift.
  */
-function mixSeed(seed: number): number {
+/** Bit-mix a seed so neighbouring seeds map to unrelated picks. */
+export function mixSeed(seed: number): number {
   let x = seed | 0;
   x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
   x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);

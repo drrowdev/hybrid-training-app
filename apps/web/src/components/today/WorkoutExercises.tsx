@@ -50,15 +50,27 @@ function Row({ row, detailed = false, loadContext, onRemove }: {
   ].filter(Boolean).join(" · ") : "";
   const value = [dose.text, load].filter(Boolean).join(" · ");
   const cue = [...new Set(row.items.flatMap((item) => item.notes ? [item.notes] : item.intensityCue ? [item.intensityCue] : []))].join(" ");
+  const doseChunks = splitPrescriptionChunks(value).map((chunk, index) =>
+    <Fragment key={index}>{index > 0 ? " · " : ""}<span data-prescription-chunk>{chunk}</span></Fragment>);
+  const ariaDose = [dose.spoken, load].filter(Boolean).join(", ");
+  if (onRemove && row.movementId) {
+    const movementId = row.movementId;
+    return <li className={`${styles.exercise} ${styles.editable}`} data-testid={`session-preview-movement-${row.rowKey}`}>
+      <div>
+        <span data-testid="prescription-name">{row.movementName}</span>
+        <span className={styles.editDose} data-testid="prescription-value" aria-label={ariaDose}>{doseChunks}</span>
+      </div>
+      <button type="button" className={styles.remove} aria-label={`Remove ${row.movementName}`}
+        data-testid={`remove-movement-${movementId}`} onClick={() => onRemove(movementId)}>×</button>
+    </li>;
+  }
   return <li className={styles.exercise} data-testid={`session-preview-movement-${row.rowKey}`}
     data-optional={detailed && first?.optional && !first.setRange ? "true" : undefined}>
     <div><span data-testid="prescription-name">{row.movementName}</span>{cue && <div className={styles.cue}>{cue}</div>}
       {detailed && first?.optional && !first.setRange && <div className={styles.cue}>Optional</div>}</div>
-    <span className={styles.dose} data-testid="prescription-value" aria-label={[dose.spoken, load].filter(Boolean).join(", ")}>
-      {splitPrescriptionChunks(value).map((chunk, index) => <Fragment key={index}>{index > 0 ? " · " : ""}<span data-prescription-chunk>{chunk}</span></Fragment>)}
+    <span className={styles.dose} data-testid="prescription-value" aria-label={ariaDose}>
+      {doseChunks}
     </span>
-    {onRemove && row.movementId && <button type="button" className={styles.remove} aria-label={`Remove ${row.movementName}`}
-      data-testid={`remove-movement-${row.movementId}`} onClick={() => onRemove(row.movementId!)}>×</button>}
   </li>;
 }
 

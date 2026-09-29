@@ -14,7 +14,10 @@ import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-se
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import { roundWarmupLoadKg } from "@/lib/planner/warmups";
-import { resolveQuickStrengthPlan } from "@/lib/planner/quick-generate-resolve";
+import {
+  QUICK_SEED_SPACE,
+  resolveQuickStrengthPlan,
+} from "@/lib/planner/quick-generate-resolve";
 import { resolveQuickHyroxPlan } from "@/lib/planner/quick-hyrox-resolve";
 import type { HyroxQuickFormat, HyroxQuickStation } from "@/lib/planner/quick-hyrox";
 import type { QuickLength } from "@/lib/planner/quick-generate";
@@ -2680,18 +2683,20 @@ async function buildQuickStrengthDraft(
   userId: string,
   length: QuickLength,
   seed: number,
+  avoidMovementIds?: readonly string[],
 ): Promise<QuickStrengthDraft> {
   const tz = await getUserTimezone();
   const plan = await resolveQuickStrengthPlan(supabase, userId, {
     length,
     tz,
     seed,
+    avoidMovementIds,
   });
   if (!plan.ok) throw new Error(plan.error);
   // Expanded per-set items, exactly as stored on the session (see below).
   return {
     length,
-    seed,
+    seed: plan.seed ?? seed,
     title: plan.title,
     items: expandPrescriptionSetItems(plan.items),
   };
@@ -2700,15 +2705,22 @@ async function buildQuickStrengthDraft(
 const previewQuickStrengthSchema = z
   .object({
     length: z.enum(["short", "normal"]),
+    /** Movements of the draft being regenerated, so the new one differs. */
+    replacingMovementIds: z
+      .array(z.string().uuid())
+      .max(QUICK_DRAFT_MAX_MOVEMENTS)
+      .optional(),
   })
   .strict();
 
 /**
  * Build a quick strength workout for review. Writes nothing. Each call uses a
- * fresh variation seed, so calling it again is "Regenerate" (ADR 0029).
+ * fresh variation seed (ADR 0029); "Regenerate" passes the current draft's
+ * movements so the new draft repeats as little of it as possible.
  */
 export async function previewQuickStrengthWorkout(input: {
   length: QuickLength;
+  replacingMovementIds?: string[];
 }): Promise<QuickPreviewResult<QuickStrengthDraft>> {
   return actionResult(async () => {
     const parsed = previewQuickStrengthSchema.safeParse(input);
@@ -2720,12 +2732,13 @@ export async function previewQuickStrengthWorkout(input: {
     } = await getAuthUser();
     if (!user) throw new UserActionError("Not signed in.");
 
-    const seed = Math.floor(Math.random() * 1_000_000);
+    const seed = Math.floor(Math.random() * QUICK_SEED_SPACE);
     const draft = await buildQuickStrengthDraft(
       supabase,
       user.id,
       parsed.data.length,
       seed,
+      parsed.data.replacingMovementIds,
     );
     return { ok: true as const, draft };
   }, QUICK_BUILD_FAILED);
