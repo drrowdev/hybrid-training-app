@@ -470,25 +470,37 @@ describe("DC-SW8 modular acceptance report membership", () => {
     const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
     const helper = source.slice(source.indexOf("async function review("), source.indexOf("async function planned("));
     const visible = vi.fn(async () => {});
+    const count = vi.fn(async () => {});
     const url = vi.fn<(expected: RegExp, options: { timeout?: number }) => Promise<void>>(async () => {});
     const savedId = "00000000-0000-4000-8000-000000000001";
     const query = { select: vi.fn(() => query), eq: vi.fn(() => query), is: vi.fn(() => query),
       single: vi.fn(async () => ({ error: null, data: { id: savedId } })) };
-    const submit = { click: vi.fn(async () => {}), isEnabled: vi.fn(async () => true) };
-    const page = { getByRole: vi.fn(() => submit) };
+    const submit = { click: vi.fn(async () => {}), isEnabled: vi.fn(async () => true), first: () => submit };
+    const page = {
+      url: vi.fn(() => "/app/program/build"),
+      getByRole: vi.fn((role: string) => role === "checkbox" ? { isVisible: async () => true } : submit),
+    };
     const helpers = runInNewContext(transpileModule(`${helper}\n({review, save});`, {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText, {
-      expect: (value: unknown, message?: string) => value === null || typeof value === "boolean"
-        ? expect(value, message) : { toBeVisible: visible, toHaveURL: url },
+      expect: Object.assign((value: unknown, message?: string) => value === null || typeof value === "boolean"
+        ? expect(value, message) : { toBeVisible: visible, toHaveURL: url, toHaveCount: count }, {
+        poll: (callback: () => Promise<boolean>, options: { timeout?: number }) => ({
+          toBe: async (expected: boolean) => {
+            expect(options).toEqual({ timeout });
+            expect(await callback()).toBe(expected);
+          },
+        }),
+      }),
       z: { string: () => ({ uuid: () => ({ parse: (value: string) => value }) }) },
     }) as {
       review(page: unknown, timeout?: number): Promise<void>;
       save(page: unknown, actor: unknown, kind: string, timeout?: number): Promise<string>;
     };
     await helpers.review(page, timeout);
-    expect(visible).toHaveBeenCalledWith({ timeout });
+    expect(count).toHaveBeenCalledWith(0, { timeout });
     expect(await helpers.save(page, { from: () => query }, "strength", timeout)).toBe(savedId);
+    expect(visible).toHaveBeenCalledWith({ timeout });
     expect(url).toHaveBeenCalledTimes(2);
     for (const [, options] of url.mock.calls) expect(options).toEqual({ timeout });
     expect(String(url.mock.calls[0]![0])).toBe(String(/\/app\/plan\?block=[0-9a-f-]{36}$/));
@@ -507,6 +519,11 @@ describe("DC-SW8 modular acceptance report membership", () => {
     expect(submit.click).toHaveBeenCalledTimes(3);
     expect(url).toHaveBeenCalledTimes(3);
     expect(query.single).toHaveBeenCalledTimes(1);
+    page.url.mockReturnValue(`/app/plan?block=${savedId}`);
+    expect(await helpers.save(page, { from: () => query }, "strength", timeout)).toBe(savedId);
+    expect(submit.click).toHaveBeenCalledTimes(3);
+    expect(url).toHaveBeenCalledTimes(5);
+    expect(query.single).toHaveBeenCalledTimes(2);
   });
 
   it.each(["completed", "scheduled", "wrong-date", "wrong-session"] as const)(
@@ -516,11 +533,11 @@ describe("DC-SW8 modular acceptance report membership", () => {
       const day = "2026-09-24", sessionId = "00000000-0000-4000-8000-000000000002";
       let checked = false;
       const events: string[] = [];
-      const time = {}, title = {}, submit = {};
+      const time = {}, title = {}, submit = { first: () => submit };
       const notice = { locator: (selector: string) => selector === "time" ? time : title };
       const overlap = { locator: () => notice, check: async () => { checked = true; events.push("consent"); } };
       const page = { getByRole: (role: string, options: { name: string; exact: boolean }) => {
-        expect(options).toEqual({ name: role === "checkbox" ? "Keep both workouts on these dates." : "Start program", exact: true });
+        expect(options).toEqual({ name: role === "checkbox" ? "Keep both workouts on these dates." : "Save", exact: true });
         return role === "checkbox" ? overlap : submit;
       } };
       const save = vi.fn(async (_page: unknown, _actor: unknown, kind: string, timeout: number) => {
