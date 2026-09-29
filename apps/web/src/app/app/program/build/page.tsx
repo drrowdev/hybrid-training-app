@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { AuthoredCatalogMovement, ProgramActivity } from "@hta/domain";
+import { upgradeAuthoredProgram } from "@hta/domain";
+import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { ProgramBuilder } from "@/components/program/ProgramBuilder";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { loadAuthoredProgram } from "@/lib/programs/authored/actions";
@@ -30,18 +32,20 @@ export default async function ProgramBuildPage({ searchParams }: {
   if (!params.edit && !["strength", "running", "hybrid"].includes(params.activity ?? "")) redirect("/app/programs?new=1");
   const editBlockId = params.edit ? z.string().uuid().parse(params.edit) : undefined;
   const snapshot = await loadAvailableTrainingSchedule(client);
-  const [profileResult, initial, navigation, courses, rehabProtocols, active] = await Promise.all([
-    client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profileResult, initial, navigation, courses, rehabProtocols, active, maxes] = await Promise.all([
+    client.from("profiles").select("timezone,bodyweight_kg").eq("id", user.id).maybeSingle(),
     editBlockId ? loadAuthoredProgram(editBlockId) : undefined,
     getSwimNavigation(client, user.id),
     privateSwimCourseAvailable(client),
     listRehabProtocols(),
     getActiveBlocks(),
+    getTrainingMaxDict(),
   ]);
   if (!snapshot) return <section><h1>New program</h1><p role="status">Program setup is temporarily unavailable. Try again shortly.</p><Link href="/app/programs">Back to programs</Link></section>;
   if (profileResult.error) throw new Error("Couldn't load your training settings.");
   let initialStartDate: string | undefined;
   let workoutId: string | undefined;
+  let initialWeekIndex = 0;
   const plannedSessionId = params.workout ? z.string().uuid().parse(params.workout) : undefined;
   if (editBlockId) {
     const result = await client.from("training_blocks").select("started_on").eq("id", editBlockId).eq("user_id", user.id).single();
@@ -51,10 +55,15 @@ export default async function ProgramBuildPage({ searchParams }: {
       const selected = await client.from("planned_sessions").select("prescription,completed_session_id,skipped_at")
         .eq("id", plannedSessionId).eq("block_id", editBlockId).eq("user_id", user.id).single();
       if (selected.error || selected.data.completed_session_id || selected.data.skipped_at) throw new Error("Only unstarted workouts can be edited.");
-      const prescription = z.object({ programRef: z.string(), meta: z.object({ authoredWorkout: authoredWorkoutSchema }).passthrough() }).parse(selected.data.prescription);
-      const workout = prescription.meta.authoredWorkout;
+      const prescription = z.object({ programRef: z.string(), meta: z.object({
+        authoredWorkout: authoredWorkoutSchema, authoredVersion: z.literal(2).optional(),
+      }).passthrough() }).parse(selected.data.prescription);
+      const workout = prescription.meta.authoredVersion === 2 ? prescription.meta.authoredWorkout
+        : upgradeAuthoredProgram({ version: 1, activity: initial.activity, name: initial.name, weeks: initial.weeks.length,
+          workouts: [prescription.meta.authoredWorkout] }).workouts[0]!;
       if (!initial.workouts.some((entry) => entry.id === workout.id) || !prescription.programRef.startsWith(`authored:${workout.id}:`)) throw new Error("This workout is no longer available to edit.");
       workoutId = workout.id;
+      initialWeekIndex = z.coerce.number().int().min(0).max(initial.weeks.length - 1).parse(prescription.programRef.split(":").at(-1));
       initial.workouts = initial.workouts.map((entry) => entry.id === workout.id ? workout : entry);
     }
   }
@@ -77,5 +86,7 @@ export default async function ProgramBuildPage({ searchParams }: {
     rehabProtocols={rehabProtocols.map((protocol) => ({ id: protocol.id, name: protocol.name, summary: formatProtocolSummary(protocol.items) }))}
     commitments={snapshot.entries} activity={activity} initial={initial} editBlockId={editBlockId} initialStartDate={initialStartDate}
     workoutId={workoutId} plannedSessionId={plannedSessionId} initialRevision={snapshot.revision}
+    initialWeekIndex={initialWeekIndex} oneRmByMovementId={Object.fromEntries(maxes.oneRmByMovementId)}
+    bodyweightKg={profileResult.data?.bodyweight_kg == null ? undefined : Number(profileResult.data.bodyweight_kg)}
     swimHref={navigation.setupEnabled && courses ? "/app/swim/import" : navigation.hasPlans ? "/app/swim" : null} />;
 }

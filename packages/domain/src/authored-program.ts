@@ -1,19 +1,40 @@
 import type { BlockProgramKind } from "./program-ownership";
+import type { ProgramLoadBasis } from "./program-load-basis";
+import { resolveTargetLoadKg } from "./target-load";
+import { isSystemLoadMovementSlug } from "./movement-load-identity";
 
 export type ProgramActivity = BlockProgramKind;
 
 export type MovementDose =
-  | { kind: "reps"; reps: number }
+  | { kind: "reps"; reps: number | string }
   | { kind: "hold"; seconds: number }
   | { kind: "distance"; metres: number };
+
+export type AuthoredLoad = { kind: "pct" | "kg" | "rir"; value: number | string };
+export type AuthoredTestAfter = "updateFromLoggedSet" | "fixedIncrease" | "keep";
+export interface AuthoredWeek {
+  type: "Build" | "Deload" | "Test";
+  sets: string;
+  reps: string;
+  pct: number;
+  fewer?: boolean;
+  after?: AuthoredTestAfter;
+}
+export interface AuthoredMovementOverride {
+  sets?: string;
+  reps?: string;
+  load?: AuthoredLoad | null;
+}
 
 export interface AuthoredMovement {
   id: string;
   movementId: string;
   role: "main" | "accessory" | "tendon";
-  sets: number;
+  sets: number | string;
   dose: MovementDose;
   weightKg?: number;
+  load?: AuthoredLoad | null;
+  overrides?: Record<string, AuthoredMovementOverride>;
   restSeconds: number;
   notes: string;
 }
@@ -28,7 +49,11 @@ export interface AuthoredInterval {
 export type AuthoredWorkoutPart =
   | { id: string; kind: "movement"; movement: AuthoredMovement }
   | { id: string; kind: "rehab"; protocolId: string }
-  | { id: string; kind: "circuit"; name: string; rounds: number; movements: AuthoredMovement[] }
+  | {
+      id: string; kind: "circuit"; name: string; rounds: number; movements: AuthoredMovement[];
+      weeks?: { rounds: number; runMetres?: number }[];
+      runMovementId?: string;
+    }
   | {
       id: string;
       kind: "cardio";
@@ -38,6 +63,8 @@ export type AuthoredWorkoutPart =
       repeats: number;
       intervals: AuthoredInterval[];
       notes: string;
+      duration?: string;
+      effort?: string;
     };
 
 export interface AuthoredWorkout {
@@ -47,13 +74,19 @@ export interface AuthoredWorkout {
   parts: AuthoredWorkoutPart[];
 }
 
-export interface AuthoredProgramDefinition {
+export interface AuthoredProgramDefinitionV1 {
   version: 1;
   activity: ProgramActivity;
   name: string;
   weeks: number;
   workouts: AuthoredWorkout[];
 }
+
+export interface AuthoredProgramDefinitionV2 extends Omit<AuthoredProgramDefinitionV1, "version" | "weeks"> {
+  version: 2;
+  weeks: AuthoredWeek[];
+}
+export type AuthoredProgramDefinition = AuthoredProgramDefinitionV1 | AuthoredProgramDefinitionV2;
 
 export interface AuthoredCatalogMovement {
   id: string;
@@ -69,11 +102,15 @@ export interface AuthoredPrescriptionItem {
   movementName: string;
   kind: "main" | "accessory" | "tendon" | "cardio_z2" | "cardio_vo2" | "cardio_threshold" | "cardio_alactic";
   sets?: number;
+  setRange?: { min: number; max: number };
+  optional?: boolean;
   reps?: number;
   repRange?: { min: number; max: number };
   holdSec?: { min: number; max: number };
   distanceM?: { min: number; max: number };
   targetWeightKg?: number;
+  percentTm?: number;
+  targetRir?: { min: number; max: number };
   isAmrap?: false;
   durationMin?: number;
   notes?: string;
@@ -92,13 +129,109 @@ export interface AuthoredPrescriptionItem {
     repeats?: number;
     modality?: string;
     rehab?: boolean;
+    programLoadBasis?: ProgramLoadBasis;
+    authoredLoadRoundingKg?: number;
+    authoredReps?: string;
+  };
+}
+
+export function authoredRange(value: string | number, max = 500): { min: number; max: number } {
+  const match = /^(\d+(?:\.\d+)?)(?:\s*[-–]\s*(\d+(?:\.\d+)?))?(?:\s*\/\s*(?:side|leg))?$/.exec(String(value).trim());
+  if (!match) throw new Error("Enter a number or range, such as 6–10.");
+  const low = Number(match[1]), high = Number(match[2] ?? match[1]);
+  if (low < 0 || high < low || high > max) throw new Error(`Enter a range between 0 and ${max}.`);
+  return { min: low, max: high };
+}
+
+export function parseAuthoredLoad(value: string): AuthoredLoad | null {
+  if (!value.trim()) return null;
+  const match = /^(?:(RIR)\s+)?(\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?)\s*(%|kg)?$/i.exec(value.trim());
+  if (!match || (match[1] && match[3]) || (!match[1] && !match[3])) {
+    throw new Error("Enter a load such as 75%, 80 kg or RIR 2.");
+  }
+  const kind = match[1] ? "rir" : match[3] === "%" ? "pct" : "kg";
+  const text = match[2]!.replaceAll(",", ".");
+  const range = authoredRange(text, kind === "rir" ? 10 : kind === "pct" ? 100 : 1000);
+  if (kind !== "rir" && range.min !== range.max) throw new Error("Enter one percentage or weight.");
+  return { kind, value: range.min === range.max ? range.min : text };
+}
+
+export function formatAuthoredLoad(load: AuthoredLoad | null | undefined): string {
+  return !load ? "" : load.kind === "rir" ? `RIR ${load.value}` : `${load.value}${load.kind === "pct" ? "%" : " kg"}`;
+}
+
+export function authoredLoadDisplay(
+  load: AuthoredLoad | null | undefined, movement: Pick<AuthoredCatalogMovement, "slug"> | undefined,
+  oneRmKg?: number, bodyweightKg?: number,
+): { text: string; note: string; rounded: boolean } {
+  if (load?.kind !== "pct") return { text: formatAuthoredLoad(load), note: "", rounded: false };
+  const system = isSystemLoadMovementSlug(movement?.slug);
+  const kg = resolveTargetLoadKg({
+    percentTm: Number(load.value), meta: {
+      programLoadBasis: { version: 1, kind: "one-rm", percent: 100, roundingKg: null }, authoredLoadRoundingKg: 2.5,
+    },
+  }, { oneRmKg, bodyweightKg, isSystemLoad: system });
+  if (kg === null) return { text: formatAuthoredLoad(load), note: "", rounded: false };
+  const unrounded = resolveTargetLoadKg({ percentTm: Number(load.value), meta: {
+    programLoadBasis: { version: 1, kind: "one-rm", percent: 100, roundingKg: null },
+  } }, { oneRmKg, bodyweightKg, isSystemLoad: system });
+  const text = `${system ? "+" : ""}${kg} kg`;
+  return {
+    text,
+    rounded: unrounded !== null && Math.abs(unrounded - kg) > 0.001,
+    note: system && bodyweightKg != null && oneRmKg != null
+      ? `${load.value}% of ${oneRmKg} kg (${bodyweightKg} kg bodyweight + ${Math.round((oneRmKg - bodyweightKg) * 100) / 100} kg) = ${text}`
+      : `${load.value}% of ${oneRmKg} kg = ${text}`,
+  };
+}
+
+export function authoredWeekCount(definition: AuthoredProgramDefinition): number {
+  return definition.version === 1 ? definition.weeks : definition.weeks.length;
+}
+
+/** Upgrades in memory only. Every legacy main lift retains its own fixed dose. */
+export function upgradeAuthoredProgram(definition: AuthoredProgramDefinition): AuthoredProgramDefinitionV2 {
+  if (definition.version === 2) return definition;
+  const weeks: AuthoredWeek[] = Array.from({ length: definition.weeks }, () => ({ type: "Build", sets: "3", reps: "5", pct: 75 }));
+  const movement = (entry: AuthoredMovement, followsWeek: boolean): AuthoredMovement => {
+    const { weightKg, ...rest } = entry;
+    const load: AuthoredLoad | null = weightKg === undefined ? null : { kind: "kg", value: weightKg };
+    return {
+      ...rest, sets: String(entry.sets), load,
+      ...(followsWeek && entry.role === "main" ? { overrides: Object.fromEntries(weeks.map((_, index) => [index, {
+        sets: String(entry.sets), ...(entry.dose.kind === "reps" ? { reps: String(entry.dose.reps) } : {}), load,
+      }])) } : {}),
+    };
+  };
+  return {
+    ...definition, version: 2, weeks,
+    workouts: definition.workouts.map((workout) => ({ ...workout, parts: workout.parts.map((part) =>
+      part.kind === "movement" ? { ...part, movement: movement(part.movement, true) }
+        : part.kind === "circuit" ? { ...part, movements: part.movements.map((entry) => movement(entry, false)),
+          weeks: weeks.map(() => ({ rounds: part.rounds })) } : part) })),
+  };
+}
+
+export function effectiveAuthoredMovement(movement: AuthoredMovement, week?: AuthoredWeek, weekIndex = 0) {
+  const followsWeek = movement.role === "main" && movement.dose.kind === "reps" && week != null;
+  const override = movement.overrides?.[weekIndex] ?? {};
+  let sets = followsWeek ? week.sets : String(movement.sets);
+  const fewer = week?.type === "Deload" && week.fewer && movement.role === "accessory";
+  if (fewer) sets = sets.replace(/\d+/g, (value) => String(Math.max(1, Number(value) - 1)));
+  return {
+    sets: override.sets ?? sets,
+    reps: override.reps ?? (followsWeek ? week.reps : movement.dose.kind === "reps" ? String(movement.dose.reps) : ""),
+    load: override.load !== undefined ? override.load : followsWeek ? { kind: "pct" as const, value: week.pct }
+      : movement.load ?? (movement.weightKg === undefined ? null : { kind: "kg" as const, value: movement.weightKg }),
+    overridden: Object.keys(override).length > 0,
+    deload: !!fewer && override.sets === undefined,
   };
 }
 
 export function authoredMovementIds(definition: AuthoredProgramDefinition): string[] {
   return [...new Set(definition.workouts.flatMap((workout) => workout.parts.flatMap((part) =>
     part.kind === "rehab" ? [] : part.kind === "movement" ? [part.movement.movementId]
-      : part.kind === "circuit" ? part.movements.map((movement) => movement.movementId)
+      : part.kind === "circuit" ? [...part.movements.map((movement) => movement.movementId), ...(part.runMovementId ? [part.runMovementId] : [])]
         : [part.movementId],
   )))];
 }
@@ -115,7 +248,17 @@ export function authoredWorkoutActivities(workout: AuthoredWorkout): ("strength"
     if (part.kind !== "cardio") activities.add("strength");
     else if (part.modality === "run") activities.add("running");
   }
+
   return [...activities];
+}
+
+export function authoredWorkoutActivity(workout: AuthoredWorkout, catalog: readonly AuthoredCatalogMovement[]): ProgramActivity {
+  const movements = workout.parts.flatMap((part) => part.kind === "movement" ? [part.movement]
+    : part.kind === "circuit" ? part.movements : []);
+  const cardio = workout.parts.some((part) => part.kind === "cardio" || part.kind === "circuit" && part.weeks?.some((week) => week.runMetres))
+    || movements.some((movement) => catalog.find((entry) => entry.id === movement.movementId)?.pattern === "cardio");
+  const strength = movements.some((movement) => catalog.find((entry) => entry.id === movement.movementId)?.pattern !== "cardio");
+  return cardio ? strength ? "hybrid" : "running" : "strength";
 }
 
 export function formatAuthoredInterval(interval: AuthoredInterval): string {
@@ -132,6 +275,8 @@ export function compileAuthoredWorkout(
   workout: AuthoredWorkout,
   catalog: readonly AuthoredCatalogMovement[],
   compileRehab?: (protocolId: string, partId: string) => AuthoredPrescriptionItem[],
+  week?: AuthoredWeek,
+  weekIndex = 0,
 ): { items: AuthoredPrescriptionItem[]; meta: { authoredWorkout: AuthoredWorkout } } {
   const byId = new Map(catalog.map((movement) => [movement.id, movement]));
   const resolve = (id: string) => {
@@ -143,17 +288,35 @@ export function compileAuthoredWorkout(
     movement: AuthoredMovement, partId: string, circuit?: Omit<NonNullable<AuthoredPrescriptionItem["circuit"]>, "round">,
   ): AuthoredPrescriptionItem[] => {
     const selected = resolve(movement.movementId);
-    if (selected.pattern === "cardio") throw new Error("Add running or machine intervals as a cardio part.");
-    return Array.from({ length: circuit?.rounds ?? movement.sets }, (_, round) => ({
+    if (selected.pattern === "cardio") {
+      if (!circuit || movement.dose.kind !== "distance") throw new Error("Add running or machine intervals as a cardio part.");
+      return Array.from({ length: circuit.rounds }, (_, round) => ({
+        movementId: selected.id, movementSlug: selected.slug, movementName: selected.displayName,
+        kind: "cardio_threshold", distanceM: { min: movement.dose.kind === "distance" ? movement.dose.metres : 0, max: movement.dose.kind === "distance" ? movement.dose.metres : 0 },
+        circuit: { ...circuit, round },
+        cardioPlan: { summary: selected.displayName, meta: "", segments: [{ label: selected.displayName, detail: `${movement.dose.kind === "distance" ? movement.dose.metres : 0} m` }], effort: "" },
+        meta: { authoredPartId: partId, authoredMovementId: movement.id, ...(selected.modality ? { modality: selected.modality } : {}) },
+      }));
+    }
+    const effective = effectiveAuthoredMovement(movement, circuit ? undefined : week, weekIndex);
+    const sets = authoredRange(effective.sets, 20);
+    const reps = movement.dose.kind === "reps" ? authoredRange(effective.reps) : null;
+    const load = effective.load;
+    return Array.from({ length: circuit?.rounds ?? sets.max }, (_, round) => ({
       movementId: selected.id, movementSlug: selected.slug, movementName: selected.displayName,
       kind: movement.role, sets: 1, isAmrap: false,
-      ...(movement.dose.kind === "reps" ? { reps: movement.dose.reps }
+      ...(sets.min !== sets.max && !circuit ? { setRange: sets, optional: round >= sets.min } : {}),
+      ...(reps ? reps.min === reps.max ? { reps: reps.min } : { repRange: reps }
         : movement.dose.kind === "hold" ? { holdSec: { min: movement.dose.seconds, max: movement.dose.seconds } }
-          : { distanceM: { min: movement.dose.metres, max: movement.dose.metres } }),
-      ...(movement.weightKg !== undefined ? { targetWeightKg: movement.weightKg } : {}),
+          : movement.dose.kind === "distance" ? { distanceM: { min: movement.dose.metres, max: movement.dose.metres } } : {}),
+      ...(load?.kind === "pct" ? { percentTm: Number(load.value), intensityLabel: `${load.value}% 1RM` }
+        : load?.kind === "kg" ? { targetWeightKg: Number(load.value) }
+          : load?.kind === "rir" ? { targetRir: authoredRange(load.value, 10) } : {}),
       ...(movement.notes ? { notes: movement.notes } : {}),
       ...(circuit ? { circuit: { ...circuit, round } } : {}),
       meta: { authoredPartId: partId, authoredMovementId: movement.id, restSeconds: movement.restSeconds,
+        ...(load?.kind === "pct" ? { programLoadBasis: { version: 1 as const, kind: "one-rm" as const, percent: 100, roundingKg: null }, authoredLoadRoundingKg: 2.5 } : {}),
+        ...(reps ? { authoredReps: effective.reps } : {}),
         ...(movement.role === "tendon" ? { rehab: true } : {}) },
     }));
   };
@@ -164,8 +327,32 @@ export function compileAuthoredWorkout(
     }
     if (part.kind === "movement") return compileMovement(part.movement, part.id);
     if (part.kind === "circuit") {
+      const plan = part.weeks?.[weekIndex] ?? { rounds: part.rounds };
+      if (plan.runMetres !== undefined) {
+        const running = part.runMovementId ? resolve(part.runMovementId) : null;
+        if (!running || running.pattern !== "cardio" || running.modality !== "run") throw new Error("Choose a running exercise for this circuit.");
+        return Array.from({ length: plan.rounds }, (_, round) => {
+          const station = part.movements[round % part.movements.length];
+          if (!station) throw new Error("Add a circuit station.");
+          const runItem: AuthoredPrescriptionItem = {
+            movementId: running.id, movementSlug: running.slug, movementName: running.displayName, kind: "cardio_threshold",
+            distanceM: { min: plan.runMetres!, max: plan.runMetres! },
+            cardioPlan: { summary: running.displayName, meta: "", segments: [{ label: "Run", detail: `${plan.runMetres} m` }], effort: "" },
+            meta: { authoredPartId: `${part.id}:run:${round}`, modality: "run" },
+          };
+          return [runItem, ...compileMovement(station, `${part.id}:station:${round}`, {
+            id: `${part.id}:${round}`, name: part.name, position: 0, size: 1, rounds: 1,
+          })];
+        }).flat();
+      }
+      if (part.movements.some((movement) => resolve(movement.movementId).pattern === "cardio")) {
+        return Array.from({ length: plan.rounds }, (_, round) =>
+          part.movements.flatMap((movement, position) => compileMovement(movement, `${part.id}:${round}:${position}`, {
+            id: `${part.id}:${round}:${position}`, name: part.name, position: 0, size: 1, rounds: 1,
+          }))).flat();
+      }
       return part.movements.flatMap((movement, position) => compileMovement(movement, part.id, {
-        id: part.id, name: part.name, position, size: part.movements.length, rounds: part.rounds,
+        id: part.id, name: part.name, position, size: part.movements.length, rounds: plan.rounds,
       }));
     }
     const selected = resolve(part.movementId);
@@ -175,18 +362,22 @@ export function compileAuthoredWorkout(
     const timed = part.intervals.every((interval) => interval.target.kind === "time");
     const seconds = part.intervals.reduce((sum, interval) =>
       sum + (interval.target.kind === "time" ? interval.target.seconds : 0), 0) * part.repeats;
+    const duration = part.duration ? authoredRange(part.duration.replace(/\s*min$/, ""), 600) : null;
+    const intervals: AuthoredInterval[] = duration ? [{ id: part.intervals[0]?.id ?? part.id,
+      label: selected.displayName, effort: part.intervals[0]?.effort ?? "easy", target: { kind: "time", seconds: duration.min * 60 } }] : part.intervals;
     return [{
       movementId: selected.id, movementSlug: selected.slug, movementName: selected.displayName,
       kind: `cardio_${part.intensity}`,
-      ...(timed ? { durationMin: seconds / 60 } : {}),
+      ...(duration ? { durationMin: duration.min } : timed ? { durationMin: seconds / 60 } : {}),
       ...(part.notes ? { notes: part.notes } : {}),
       cardioPlan: {
         summary: selected.displayName,
-        meta: `${part.repeats} ${part.repeats === 1 ? "round" : "rounds"}`,
-        segments: part.intervals.map((interval) => ({ label: interval.label, detail: formatAuthoredInterval(interval) })),
-        effort: "",
+        meta: part.duration ? `${part.duration.replace(/\s*min$/, "")} min` : `${part.repeats} ${part.repeats === 1 ? "round" : "rounds"}`,
+        segments: intervals.map((interval) => ({ label: interval.label, detail: duration
+          ? `${part.duration!.replace(/\s*min$/, "")} min${part.effort ? ` ${part.effort}` : ""}` : formatAuthoredInterval(interval) })),
+        effort: part.effort ?? "",
       },
-      meta: { authoredPartId: part.id, intervals: part.intervals, repeats: part.repeats, modality: part.modality },
+      meta: { authoredPartId: part.id, intervals, repeats: duration ? 1 : part.repeats, modality: part.modality },
     }];
   });
   return { items, meta: { authoredWorkout: workout } };
@@ -194,7 +385,8 @@ export function compileAuthoredWorkout(
 
 /** A weekly plan starts on the selected date, not the preceding Monday. */
 export function authoredProgramDates(definition: AuthoredProgramDefinition, startedOn: string) {
-  if (!Number.isInteger(definition.weeks) || definition.weeks < 1 || definition.weeks > 16) {
+  const weeks = authoredWeekCount(definition);
+  if (!Number.isInteger(weeks) || weeks < 1 || weeks > 16) {
     throw new Error("Choose between 1 and 16 weeks.");
   }
   const start = new Date(`${startedOn}T00:00:00Z`);
@@ -202,12 +394,12 @@ export function authoredProgramDates(definition: AuthoredProgramDefinition, star
     throw new Error("Choose a valid start date.");
   }
   const startWeekday = (start.getUTCDay() + 6) % 7;
-  return Array.from({ length: definition.weeks }, (_, week) =>
+  return Array.from({ length: weeks }, (_, week) =>
     [...definition.workouts].sort((a, b) => a.weekday - b.weekday).map((workout) => {
       const offset = (workout.weekday - startWeekday + 7) % 7 + week * 7;
       const date = new Date(start.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
       return {
-        date, workout, ref: `authored:${workout.id}:${week}`,
+        date, workout, ref: `authored:${workout.id}:${week}`, authoredWeekIndex: week,
         weekIndex: Math.floor((startWeekday + offset) / 7), dayIndex: workout.weekday,
       };
     }),

@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { authoredLoadDisplay } from "@hta/domain";
 import type { PrescriptionItem } from "@hta/db";
 import { collapseIdenticalSetItems, groupByMovementThenKind, isSupplementalOnlySection, type PrescriptionMovementRow } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows, circuitNameOfRow } from "@/lib/plan/superset-grouping";
@@ -33,10 +34,15 @@ export function workoutDose(items: PrescriptionItem[]): { text: string; spoken: 
   return { text, spoken };
 }
 
-function Row({ row, detailed = false }: { row: PrescriptionMovementRow; detailed?: boolean }) {
+export type WorkoutLoadContext = { oneRmByMovementId: Record<string, number>; bodyweightKg?: number };
+
+function Row({ row, detailed = false, loadContext }: { row: PrescriptionMovementRow; detailed?: boolean; loadContext?: WorkoutLoadContext }) {
   const dose = workoutDose(row.items);
   const first = row.items[0];
-  const load = detailed && first ? [
+  const authored = first?.meta?.authoredLoadRoundingKg === 2.5 && first.percentTm != null;
+  const resolved = authored ? authoredLoadDisplay({ kind: "pct", value: first.percentTm! },
+    { slug: first.movementSlug ?? "" }, loadContext?.oneRmByMovementId[first.movementId], loadContext?.bodyweightKg) : null;
+  const load = resolved ? [first?.intensityLabel, resolved.text.includes("kg") ? resolved.text : null].filter(Boolean).join(" · ") : detailed && first ? [
     first.targetWeightKg != null ? `${first.targetWeightKg} kg` : null,
     first.intensityLabel ?? (first.percentTm != null ? `${first.percentTm}% TM` : null),
   ].filter(Boolean).join(" · ") : "";
@@ -52,14 +58,14 @@ function Row({ row, detailed = false }: { row: PrescriptionMovementRow; detailed
   </li>;
 }
 
-function Group({ title, rows, minutes, detailed = false }: {
-  title: string; rows: PrescriptionMovementRow[]; minutes?: number | null; detailed?: boolean;
+function Group({ title, rows, minutes, detailed = false, loadContext }: {
+  title: string; rows: PrescriptionMovementRow[]; minutes?: number | null; detailed?: boolean; loadContext?: WorkoutLoadContext;
 }) {
   if (!rows.length) return null;
   const renderRow = (row: PrescriptionMovementRow) => detailed
     ? collapseIdenticalSetItems(row.items).map((item, index) =>
-      <Row key={`${row.rowKey}-${index}`} row={{ ...row, items: [item] }} detailed />)
-    : <Row key={row.rowKey} row={row} />;
+      <Row key={`${row.rowKey}-${index}`} row={{ ...row, items: [item] }} detailed loadContext={loadContext} />)
+    : <Row key={row.rowKey} row={row} loadContext={loadContext} />;
   return <section className={styles.group} data-testid={`session-preview-section-${title === "Warm-up rehab" ? "rehab" : title === "Main lifts" ? "strength" : title.toLowerCase()}`}>
     <h3>{title}{minutes != null && <span>~{minutes} min</span>}</h3>
     {segmentSupersetRows(rows).map((segment) => segment.kind === "solo"
@@ -72,7 +78,7 @@ function Group({ title, rows, minutes, detailed = false }: {
   </section>;
 }
 
-export function WorkoutExercises({ items, detailed = false }: { items: PrescriptionItem[]; detailed?: boolean }) {
+export function WorkoutExercises({ items, detailed = false, loadContext }: { items: PrescriptionItem[]; detailed?: boolean; loadContext?: WorkoutLoadContext }) {
   const groups = groupByMovementThenKind(items);
   const rows = (supplemental: boolean) => groups.movements.filter((group) =>
     isSupplementalOnlySection(group) === supplemental && (!detailed || group.sets.length > 0))
@@ -81,9 +87,9 @@ export function WorkoutExercises({ items, detailed = false }: { items: Prescript
     <Group title="Warm-up rehab" rows={groups.rehab} minutes={estimateSessionMinutes(groups.rehab.flatMap((row) => row.items))} detailed={detailed} />
     {detailed && <Group title="Warm-up" rows={groups.movements.filter((group) => group.warmups.length > 0)
       .map((group) => ({ ...group, items: group.warmups }))} detailed />}
-    <Group title="Main lifts" rows={rows(false)} detailed={detailed} />
-    <Group title="Supplemental" rows={rows(true)} detailed={detailed} />
-    <Group title="Accessories" rows={[...groups.accessories, ...groups.hingeCompensations, ...groups.tendon]} detailed={detailed} />
+    <Group title="Main lifts" rows={rows(false)} detailed={detailed} loadContext={loadContext} />
+    <Group title="Supplemental" rows={rows(true)} detailed={detailed} loadContext={loadContext} />
+    <Group title="Accessories" rows={[...groups.accessories, ...groups.hingeCompensations, ...groups.tendon]} detailed={detailed} loadContext={loadContext} />
     {groups.cardio.map((item, index) => <section className={styles.group} key={index}>
       <h3>{item.movementName ?? "Conditioning"}</h3>
       {item.cardioPlan ? <>

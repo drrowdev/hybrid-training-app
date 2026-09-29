@@ -5,7 +5,7 @@ import type { PlatformContext, ProgramEngine } from "@hta/program-core";
 import type { Page } from "@playwright/test";
 import {
   authoredMovementIds, authoredProgramDates, authoredRehabProtocolIds, compileAuthoredWorkout, poolCourse,
-  SWIM_COURSE_VERSION, type AuthoredCatalogMovement, type AuthoredProgramDefinition, type AuthoredWorkoutPart,
+  SWIM_COURSE_VERSION, type AuthoredCatalogMovement, type AuthoredProgramDefinition, type AuthoredProgramDefinitionV1, type AuthoredWorkoutPart,
 } from "@hta/domain";
 import { acceptanceAssert as assert } from "../../scripts/swim-acceptance-errors";
 import { authoredProgramSchema } from "../../src/lib/programs/authored/schema";
@@ -103,7 +103,7 @@ export function authoredProgramInput(
 export function nativeProgramDefinition(
   activity: AuthoredProgramDefinition["activity"], name: string, weekday: number,
   liftId: string, runId: string, protocolId?: string,
-): AuthoredProgramDefinition {
+): AuthoredProgramDefinitionV1 {
   const lift: AuthoredWorkoutPart = { id: randomUUID(), kind: "movement", movement: {
     id: randomUUID(), movementId: liftId, role: "main", sets: 1, dose: { kind: "reps", reps: 5 },
     weightKg: 20, restSeconds: 0, notes: "",

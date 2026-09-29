@@ -95,7 +95,9 @@ export function resolveTargetLoadKg(
   ctx: TargetLoadContext = {},
 ): number | null {
   if (!item) return null;
-  const round = ctx.roundKg ?? ((kg: number) => kg);
+  const round = item.meta?.authoredLoadRoundingKg === 2.5
+    ? (kg: number) => Math.round(kg / 2.5) * 2.5
+    : ctx.roundKg ?? ((kg: number) => kg);
 
   const percentTm = num(item.percentTm);
   const tmKg = resolveLoadReference(item, ctx).kg;
@@ -112,7 +114,7 @@ export function resolveTargetLoadKg(
   if (isRehabItem(item) && absolute != null && absolute >= 0) return absolute;
   // A system-load engine already resolved its ramp to an ADDED load, so an
   // explicit 0 means "bodyweight" and is a prescription, not a missing value.
-  if (absolute != null && (absolute > 0 || (ctx.isSystemLoad && absolute === 0))) {
+  if (absolute != null && (absolute > 0 || ((ctx.isSystemLoad || typeof item.meta?.authoredPartId === "string") && absolute === 0))) {
     const roundAbsolute = ctx.roundAbsoluteKg ?? ((kg: number) => kg);
     // A system-load WARM-UP written without the `systemLoad` marker came from a
     // path that never subtracted bodyweight — the number is a total, and

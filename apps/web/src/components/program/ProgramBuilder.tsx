@@ -2,152 +2,243 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import {
-  authoredProgramDates, commitmentWeekday, formatAuthoredInterval,
-  type AuthoredCatalogMovement, type AuthoredMovement, type AuthoredProgramDefinition,
-  type AuthoredWorkout, type AuthoredWorkoutPart, type ProgramActivity, type TrainingCommitment,
+  authoredLoadDisplay, authoredWorkoutActivity, effectiveAuthoredMovement, formatAuthoredInterval, formatAuthoredLoad,
+  parseAuthoredLoad, upgradeAuthoredProgram,
+  type AuthoredCatalogMovement, type AuthoredMovement, type AuthoredMovementOverride, type AuthoredProgramDefinition,
+  type AuthoredProgramDefinitionV2, type AuthoredWeek, type AuthoredWorkout, type AuthoredWorkoutPart,
+  type ProgramActivity, type TrainingCommitment,
 } from "@hta/domain";
 import { previewAuthoredProgram, saveAuthoredProgram, reloadAuthoredProgram, type AuthoredPreview } from "@/lib/programs/authored/actions";
 import { ProgramConfirmation } from "./ProgramDialog";
 import { restSecondsForKind } from "@/lib/sessions/rest";
+import { formatProgramDate } from "@/lib/programs/presentation";
 import styles from "./ProgramBuilder.module.css";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const STEPS = ["Type", "Setup", "Week", "Workout", "Review"];
-const ACTIVITY_LABELS: Record<ProgramActivity, string> = { strength: "Strength", running: "Running", hybrid: "Hybrid" };
 const newId = () => crypto.randomUUID();
-function newMovement(movementId = ""): AuthoredMovement {
-  return { id: newId(), movementId, role: "main", sets: 3, dose: { kind: "reps", reps: 5 }, restSeconds: restSecondsForKind("main"), notes: "" };
-}
+const newWeek = (): AuthoredWeek => ({ type: "Build", sets: "3", reps: "5", pct: 75 });
+const newMovement = (role: AuthoredMovement["role"] = "accessory"): AuthoredMovement => ({
+  id: newId(), movementId: "", role, sets: "3", dose: { kind: "reps", reps: "8–12" },
+  load: null, restSeconds: restSecondsForKind(role), notes: "",
+});
+type RehabChoice = { id: string; name: string; summary: string };
+type Loads = { oneRmByMovementId?: Record<string, number>; bodyweightKg?: number };
 
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <label className={styles.field}><span>{label}</span>{children}</label>;
+}
 function LibraryPicker({ catalog, value, onChange }: {
   catalog: AuthoredCatalogMovement[]; value: string; onChange: (movement: AuthoredCatalogMovement) => void;
 }) {
   const [query, setQuery] = useState("");
   const selected = catalog.find((movement) => movement.id === value);
   const [open, setOpen] = useState(!selected);
-  const matches = catalog.filter((movement) =>
-    `${movement.displayName} ${movement.pattern}`.toLowerCase().includes(query.toLowerCase())).slice(0, 20);
-  return <div className={styles.library}>
-    <div className={styles.row}>
-      <strong>{selected?.displayName ?? "Choose an exercise"}</strong>
-      {selected && <button type="button" className={styles.button} onClick={() => setOpen(!open)}>{open ? "Close library" : "Swap"}</button>}
-    </div>
-    {open && <>
-      <label className={styles.field}>Search library<input className={styles.input} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or movement pattern" /></label>
+  const matches = catalog.filter((movement) => movement.displayName.toLowerCase().includes(query.toLowerCase())).slice(0, 30);
+  return <div className={styles.exercisePicker}>
+    <span className={styles.muted}>Exercise</span>
+    <button type="button" className={styles.pickerButton} aria-expanded={open} onClick={() => setOpen(!open)}>
+      {selected?.displayName ?? "Choose an exercise"}<span aria-hidden="true">⌄</span>
+    </button>
+    {open && <div className={styles.library}>
+      <Field label="Search library"><input className={styles.input} value={query} onChange={(event) => setQuery(event.target.value)} /></Field>
       <div className={styles.results}>
         {matches.map((movement) => <button type="button" className={styles.result} aria-pressed={movement.id === value} key={movement.id}
-          onClick={() => { onChange(movement); setOpen(false); }}>{movement.displayName}</button>)}
+          onClick={() => { onChange(movement); setOpen(false); setQuery(""); }}>{movement.displayName}</button>)}
         {matches.length === 0 && <p className={styles.muted}>No matching exercises.</p>}
       </div>
-    </>}
+    </div>}
   </div>;
 }
 
-function MovementEditor({ movement, catalog, onChange, inCircuit }: {
-  movement: AuthoredMovement; catalog: AuthoredCatalogMovement[]; onChange: (movement: AuthoredMovement) => void; inCircuit?: boolean;
-}) {
-  const update = (patch: Partial<AuthoredMovement>) => onChange({ ...movement, ...patch });
-  return <div className={styles.panel}>
-    <LibraryPicker catalog={catalog.filter((entry) => entry.pattern !== "cardio")} value={movement.movementId}
-      onChange={(selected) => update({ movementId: selected.id })} />
-    <div className={styles.fields}>
-      <label className={styles.field}>Role<select className={styles.select} value={movement.role} onChange={(event) => {
-        const role = event.target.value as AuthoredMovement["role"];
-        update({ role, restSeconds: restSecondsForKind(role) });
-      }}><option value="main">Main lift</option><option value="accessory">Accessory</option><option value="tendon">Rehab</option></select></label>
-      {!inCircuit && <label className={styles.field}>Sets<input className={styles.input} type="number" min={1} max={20} value={movement.sets} onChange={(event) => update({ sets: Number(event.target.value) })} /></label>}
-      <label className={styles.field}>Measure<select className={styles.select} value={movement.dose.kind} onChange={(event) => update({
-        dose: event.target.value === "hold" ? { kind: "hold", seconds: 30 }
-          : event.target.value === "distance" ? { kind: "distance", metres: 20 } : { kind: "reps", reps: 5 },
-      })}><option value="reps">Reps</option><option value="hold">Hold (seconds)</option><option value="distance">Distance (metres)</option></select></label>
-      <label className={styles.field}>{movement.dose.kind === "reps" ? "Reps" : movement.dose.kind === "hold" ? "Seconds" : "Metres"}
-        <input className={styles.input} type="number" min={1} value={movement.dose.kind === "reps" ? movement.dose.reps : movement.dose.kind === "hold" ? movement.dose.seconds : movement.dose.metres}
-          onChange={(event) => update({ dose: movement.dose.kind === "reps" ? { kind: "reps", reps: Number(event.target.value) }
-            : movement.dose.kind === "hold" ? { kind: "hold", seconds: Number(event.target.value) } : { kind: "distance", metres: Number(event.target.value) } })} /></label>
-      <label className={styles.field}>Load (kg)<input className={styles.input} type="number" min={0} step="0.5" value={movement.weightKg ?? ""} placeholder="Optional"
-        onChange={(event) => update({ weightKg: event.target.value === "" ? undefined : Number(event.target.value) })} /></label>
-      <label className={styles.field}>Rest (seconds)<input className={styles.input} type="number" min={0} max={1800} value={movement.restSeconds} onChange={(event) => update({ restSeconds: Number(event.target.value) })} /></label>
-    </div>
-    <label className={styles.field}>Notes<input className={styles.input} value={movement.notes} maxLength={500} onChange={(event) => update({ notes: event.target.value })} /></label>
-  </div>;
+function LoadField({ value, onChange }: { value: AuthoredMovement["load"]; onChange: (value: AuthoredMovement["load"]) => void }) {
+  const [text, setText] = useState(formatAuthoredLoad(value));
+  const formatted = formatAuthoredLoad(value);
+  const [previous, setPrevious] = useState(formatted);
+  if (previous !== formatted) {
+    setPrevious(formatted);
+    try { if (formatAuthoredLoad(parseAuthoredLoad(text)) !== formatted) setText(formatted); }
+    catch { setText(formatted); }
+  }
+  return <Field label="Load"><input className={styles.input} value={text} placeholder="75%, 80 kg or RIR 2"
+    ref={(input) => {
+      if (!input) return;
+      try { parseAuthoredLoad(text); input.setCustomValidity(""); }
+      catch (error) { input.setCustomValidity(error instanceof Error ? error.message : "Enter a valid load."); }
+    }}
+    onChange={(event) => {
+      setText(event.target.value);
+      try { const load = parseAuthoredLoad(event.target.value); event.target.setCustomValidity(""); onChange(load); }
+      catch (error) { event.target.setCustomValidity(error instanceof Error ? error.message : "Enter a valid load."); }
+    }} onBlur={(event) => event.target.reportValidity()} /></Field>;
 }
 
-type RehabChoice = { id: string; name: string; summary: string };
-
-function PartEditor({ part, catalog, rehabProtocols, onChange }: {
-  part: AuthoredWorkoutPart; catalog: AuthoredCatalogMovement[]; rehabProtocols: RehabChoice[];
-  onChange: (part: AuthoredWorkoutPart) => void;
+function MovementEditor({ movement, catalog, weeks, weekIndex, onChange, loads, inCircuit = false }: {
+  movement: AuthoredMovement; catalog: AuthoredCatalogMovement[]; weeks: AuthoredWeek[]; weekIndex: number;
+  onChange: (movement: AuthoredMovement) => void; loads: Loads; inCircuit?: boolean;
 }) {
-  if (part.kind === "rehab") return <div className={styles.panel}>
-    <label className={styles.field}>Rehab protocol<select className={styles.select} value={part.protocolId}
-      onChange={(event) => onChange({ ...part, protocolId: event.target.value })}>
-      <option value="">Choose a protocol</option>
-      {rehabProtocols.map((protocol) => <option key={protocol.id} value={protocol.id}>{protocol.name}</option>)}
-    </select></label>
-    {part.protocolId && <p className={styles.muted}>{rehabProtocols.find((protocol) => protocol.id === part.protocolId)?.summary}</p>}
-  </div>;
-  if (part.kind === "movement") return <MovementEditor movement={part.movement} catalog={catalog} onChange={(movement) => onChange({ ...part, movement })} />;
-  if (part.kind === "circuit") return <>
-    <div className={styles.fields}>
-      <label className={styles.field}>Circuit name<input className={styles.input} maxLength={100} value={part.name} onChange={(event) => onChange({ ...part, name: event.target.value })} /></label>
-      <label className={styles.field}>Rounds<input className={styles.input} type="number" min={1} max={20} value={part.rounds} onChange={(event) => onChange({ ...part, rounds: Number(event.target.value) })} /></label>
-    </div>
-    {part.movements.map((movement, index) => <div key={movement.id}>
-      <div className={styles.row}><h3>Station {index + 1}</h3><div className={styles.actions}>
-        <button type="button" className={styles.iconButton} disabled={index === 0} aria-label={`Move station ${index + 1} up`} onClick={() => {
-          const movements = [...part.movements]; [movements[index - 1], movements[index]] = [movements[index]!, movements[index - 1]!]; onChange({ ...part, movements });
-        }}>Up</button>
-        <button type="button" className={styles.button} disabled={part.movements.length <= 2} onClick={() => onChange({ ...part, movements: part.movements.filter((entry) => entry.id !== movement.id) })}>Remove</button>
-      </div></div>
-      <MovementEditor movement={movement} catalog={catalog} inCircuit onChange={(next) => onChange({ ...part, movements: part.movements.map((entry) => entry.id === movement.id ? next : entry) })} />
-    </div>)}
-    <button type="button" className={styles.button} disabled={part.movements.length >= 12} onClick={() => onChange({ ...part, movements: [...part.movements, newMovement()] })}>Add station</button>
+  const [scope, setScope] = useState<"all" | "week">(movement.role === "main" ? "week" : "all");
+  const effective = effectiveAuthoredMovement(movement, inCircuit ? undefined : weeks[weekIndex], weekIndex);
+  const shown = scope === "all" && movement.role !== "main"
+    ? { sets: String(movement.sets), reps: movement.dose.kind === "reps" ? String(movement.dose.reps) : "", load: movement.load }
+    : effective;
+  const selected = catalog.find((entry) => entry.id === movement.movementId);
+  const display = authoredLoadDisplay(shown.load, selected, loads.oneRmByMovementId?.[movement.movementId], loads.bodyweightKg);
+  const change = (patch: AuthoredMovementOverride) => {
+    const overrides = { ...movement.overrides };
+    if (!inCircuit && scope === "week") {
+      overrides[weekIndex] = { ...overrides[weekIndex], ...patch };
+      onChange({ ...movement, overrides }); return;
+    }
+    if (!inCircuit && movement.role === "main") {
+      weeks.forEach((_, index) => { overrides[index] = { ...overrides[index], ...patch }; });
+      onChange({ ...movement, overrides }); return;
+    }
+    for (const key of Object.keys(overrides)) {
+      const override = { ...overrides[key] };
+      if (patch.sets !== undefined) delete override.sets;
+      if (patch.reps !== undefined) delete override.reps;
+      if (patch.load !== undefined) delete override.load;
+      if (Object.keys(override).length) overrides[key] = override; else delete overrides[key];
+    }
+    onChange({ ...movement, overrides, ...(patch.sets === undefined ? {} : { sets: patch.sets }),
+      ...(patch.reps === undefined ? {} : { dose: { kind: "reps", reps: patch.reps } }),
+      ...(patch.load === undefined ? {} : { load: patch.load }) });
+  };
+  return <>
+    <LibraryPicker catalog={catalog.filter((entry) => inCircuit || entry.pattern !== "cardio")} value={movement.movementId}
+      onChange={(entry) => onChange({ ...movement, movementId: entry.id,
+        ...(entry.pattern === "cardio" ? { dose: { kind: "distance", metres: 500 } } : {}) })} />
+    {!inCircuit && <div className={styles.scopeField}><span className={styles.muted}>Role</span>
+      <div className={styles.segment} role="group" aria-label="Role">{(["main", "accessory"] as const).map((role) =>
+        <button type="button" key={role} aria-pressed={role === "main" ? movement.role === "main" : movement.role !== "main"}
+          onClick={() => onChange({ ...movement, role, restSeconds: restSecondsForKind(role) })}>{role === "main" ? "Main lift" : "Other"}</button>)}</div>
+    </div>}
+    {!inCircuit && <Field label="Sets"><input className={styles.input} value={shown.sets} onChange={(event) => change({ sets: event.target.value })} /></Field>}
+    {movement.dose.kind === "reps"
+      ? <Field label="Reps"><input className={styles.input} value={shown.reps} onChange={(event) => change({ reps: event.target.value })} /></Field>
+      : <Field label={movement.dose.kind === "hold" ? "Seconds" : "Metres"}><input className={styles.input} type="number" min={1}
+        value={movement.dose.kind === "hold" ? movement.dose.seconds : movement.dose.metres}
+        onChange={(event) => onChange({ ...movement, dose: movement.dose.kind === "hold"
+          ? { kind: "hold", seconds: Number(event.target.value) } : { kind: "distance", metres: Number(event.target.value) } })} /></Field>}
+    {selected?.pattern !== "cardio" && <LoadField key={`${scope}:${weekIndex}:${movement.id}`} value={shown.load} onChange={(load) => change({ load })} />}
+    {inCircuit && selected?.pattern !== "cardio" && <Field label="Measure"><select className={styles.select} value={movement.dose.kind}
+      onChange={(event) => onChange({ ...movement, dose: event.target.value === "distance" ? { kind: "distance", metres: 20 }
+        : event.target.value === "hold" ? { kind: "hold", seconds: 30 } : { kind: "reps", reps: "15" } })}>
+      <option value="reps">Reps</option><option value="distance">Metres</option><option value="hold">Seconds</option>
+    </select></Field>}
+    {!inCircuit && <div className={styles.scopeField}><span className={styles.muted}>Change</span>
+      <div className={styles.segment} role="group" aria-label="Apply changes to">
+        <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>All weeks</button>
+        <button type="button" aria-pressed={scope === "week"} onClick={() => setScope("week")}>Week {weekIndex + 1} only</button>
+      </div>
+    </div>}
+    {!inCircuit && effective.overridden && <div className={styles.editorNote}>Week {weekIndex + 1} changed · <button type="button" className={styles.inlineLink} onClick={() => {
+      const overrides = { ...movement.overrides }; delete overrides[weekIndex]; onChange({ ...movement, overrides });
+    }}>Reset</button></div>}
+    {!inCircuit && !effective.overridden && effective.deload && <div className={styles.editorNote}>
+      {scope === "all" ? `Week ${weekIndex + 1}: ${effective.sets} sets (deload)` : `Week ${weekIndex + 1} deload: one set fewer`}
+    </div>}
+    {(display.note || !inCircuit && !effective.overridden && movement.role === "main") && <div className={styles.editorNote}>
+      {[!inCircuit && !effective.overridden && movement.role === "main" ? `From week ${weekIndex + 1}` : null,
+        display.note || null, display.rounded ? "Rounded to 2.5 kg" : null].filter(Boolean).join(" · ")}
+    </div>}
+    {shown.load?.kind === "pct" && !display.note && <Link className={styles.inlineLink} href="/app/settings/training-maxes">Set 1RM</Link>}
   </>;
+}
+
+function PartEditor({ part, catalog, rehabProtocols, weeks, weekIndex, onChange, loads }: {
+  part: AuthoredWorkoutPart; catalog: AuthoredCatalogMovement[]; rehabProtocols: RehabChoice[];
+  weeks: AuthoredWeek[]; weekIndex: number; onChange: (part: AuthoredWorkoutPart) => void; loads: Loads;
+}) {
+  const [different, setDifferent] = useState(part.kind === "circuit" && !!part.weeks?.some((week) => JSON.stringify(week) !== JSON.stringify(part.weeks?.[0])));
+  if (part.kind === "rehab") return <>
+    <Field label="Protocol"><select className={styles.select} value={part.protocolId} onChange={(event) => onChange({ ...part, protocolId: event.target.value })}>
+      <option value="">Choose a protocol</option>{rehabProtocols.map((protocol) => <option key={protocol.id} value={protocol.id}>{protocol.name}</option>)}
+    </select></Field>
+    {part.protocolId && <><p className={styles.editorNote}>{rehabProtocols.find((protocol) => protocol.id === part.protocolId)?.summary}</p>
+      <Link className={styles.inlineLink} href="/app/settings/rehab-protocols" target="_blank">Edit protocol</Link></>}
+  </>;
+  if (part.kind === "movement") return <MovementEditor movement={part.movement} catalog={catalog} weeks={weeks} weekIndex={weekIndex}
+    loads={loads} onChange={(movement) => onChange({ ...part, movement })} />;
+  if (part.kind === "circuit") {
+    const plans: { rounds: number; runMetres?: number }[] = part.weeks ?? weeks.map(() => ({ rounds: part.rounds }));
+    const hasRun = plans.some((week) => week.runMetres !== undefined);
+    const updatePlan = (index: number, patch: Partial<(typeof plans)[number]>) => onChange({
+      ...part, weeks: plans.map((plan, i) => different && i !== index ? plan : { ...plan, ...patch }),
+    });
+    return <>
+      <div className={styles.wideField}><Field label="Name"><input className={styles.input} value={part.name} maxLength={100} onChange={(event) => onChange({ ...part, name: event.target.value })} /></Field></div>
+      <div className={styles.segment} role="group" aria-label="Circuit weeks">
+        <button type="button" aria-pressed={!different} onClick={() => {
+          setDifferent(false); onChange({ ...part, weeks: weeks.map(() => ({ ...plans[weekIndex]! })) });
+        }}>Same every week</button>
+        <button type="button" aria-pressed={different} onClick={() => setDifferent(true)}>Different each week</button>
+      </div>
+      <label className={styles.builderCheck}><input type="checkbox" checked={hasRun} onChange={(event) => onChange({
+        ...part, runMovementId: event.target.checked ? catalog.find((entry) => entry.modality === "run")?.id : undefined,
+        weeks: plans.map((plan) => event.target.checked ? { ...plan, runMetres: 800 } : { rounds: plan.rounds }),
+      })} />Run before each station</label>
+      <div className={`${styles.circuitWeeks} ${different ? styles.circuitDifferent : ""}`}>
+        {different && <div className={styles.circuitLabels} aria-hidden="true"><span /><span>Rounds</span>{hasRun && <span>Run (m)</span>}</div>}
+        {(different ? plans : [plans[weekIndex]!]).map((plan, index) => <div key={index} className={styles.circuitWeek} data-selected={different && weekIndex === index}>
+          {different && <strong>Week {index + 1}</strong>}
+          <Field label="Rounds"><input className={styles.input} aria-label={different ? `Week ${index + 1} rounds` : "Rounds"}
+            type="number" min={1} max={20} value={plan.rounds} onChange={(event) => updatePlan(index, { rounds: Number(event.target.value) })} /></Field>
+          {hasRun && <Field label="Run (m)"><input className={styles.input} aria-label={different ? `Week ${index + 1} run metres` : "Run (m)"}
+            type="number" min={1} value={plan.runMetres ?? ""} onChange={(event) => updatePlan(index, { runMetres: Number(event.target.value) })} /></Field>}
+        </div>)}
+      </div>
+      <div className={styles.circuitStations}><h3>Stations</h3>{part.movements.map((movement, index) => <details key={movement.id}>
+        <summary>{index + 1}. {catalog.find((entry) => entry.id === movement.movementId)?.displayName ?? "Choose an exercise"}</summary>
+        <div className={styles.inlineFields}><MovementEditor movement={movement} catalog={catalog} weeks={weeks} weekIndex={weekIndex} inCircuit loads={loads}
+          onChange={(next) => onChange({ ...part, movements: part.movements.map((entry) => entry.id === movement.id ? next : entry) })} />
+          <button type="button" className={styles.button} disabled={part.movements.length <= 2}
+            onClick={() => onChange({ ...part, movements: part.movements.filter((entry) => entry.id !== movement.id) })}>Remove station</button>
+        </div>
+      </details>)}<button type="button" className={styles.inlineLink} disabled={part.movements.length >= 12}
+        onClick={() => onChange({ ...part, movements: [...part.movements, newMovement()] })}>Add station</button></div>
+    </>;
+  }
   return <>
     <LibraryPicker catalog={catalog.filter((entry) => entry.pattern === "cardio" && ["run", "bike", "row", "ski"].includes(entry.modality ?? ""))}
-      value={part.movementId} onChange={(movement) => onChange({ ...part, movementId: movement.id, modality: movement.modality as typeof part.modality })} />
-    <div className={styles.fields}>
-      <label className={styles.field}>Session type<select className={styles.select} value={part.intensity} onChange={(event) => onChange({ ...part, intensity: event.target.value as typeof part.intensity })}>
-        <option value="z2">Easy aerobic</option><option value="threshold">Threshold</option><option value="vo2">VO2 intervals</option><option value="alactic">Short sprints</option>
-      </select></label>
-      <label className={styles.field}>Repeat sequence<input className={styles.input} type="number" min={1} max={50} value={part.repeats} onChange={(event) => onChange({ ...part, repeats: Number(event.target.value) })} /></label>
-    </div>
-    {part.intervals.map((interval, index) => <div className={styles.panel} key={interval.id}>
-      <div className={styles.row}><strong>Interval {index + 1}</strong><button type="button" className={styles.button} disabled={part.intervals.length === 1}
-        onClick={() => onChange({ ...part, intervals: part.intervals.filter((entry) => entry.id !== interval.id) })}>Remove</button></div>
-      <div className={styles.fields}>
-        <label className={styles.field}>Label<input className={styles.input} maxLength={60} value={interval.label} onChange={(event) => onChange({ ...part, intervals: part.intervals.map((entry) => entry.id === interval.id ? { ...entry, label: event.target.value } : entry) })} /></label>
-        <label className={styles.field}>Measure<select className={styles.select} value={interval.target.kind} onChange={(event) => onChange({ ...part, intervals: part.intervals.map((entry) => entry.id === interval.id ? { ...entry, target: event.target.value === "time" ? { kind: "time", seconds: 60 } : { kind: "distance", metres: 400 } } : entry) })}>
-          <option value="time">Seconds</option><option value="distance">Metres</option></select></label>
-        <label className={styles.field}>{interval.target.kind === "time" ? "Seconds" : "Metres"}<input className={styles.input} type="number" min={1}
-          value={interval.target.kind === "time" ? interval.target.seconds : interval.target.metres} onChange={(event) => onChange({ ...part, intervals: part.intervals.map((entry) => entry.id === interval.id ? { ...entry, target: entry.target.kind === "time" ? { kind: "time", seconds: Number(event.target.value) } : { kind: "distance", metres: Number(event.target.value) } } : entry) })} /></label>
-        <label className={styles.field}>Effort<select className={styles.select} value={interval.effort} onChange={(event) => onChange({ ...part, intervals: part.intervals.map((entry) => entry.id === interval.id ? { ...entry, effort: event.target.value as typeof entry.effort } : entry) })}>
-          <option value="easy">Easy</option><option value="steady">Steady</option><option value="hard">Hard</option><option value="recovery">Recovery</option></select></label>
-      </div>
-    </div>)}
-    <button type="button" className={styles.button} disabled={part.intervals.length >= 20} onClick={() => onChange({ ...part, intervals: [...part.intervals, {
-      id: newId(), label: "Recovery", effort: "recovery", target: { kind: "time", seconds: 60 },
-    }] })}>Add interval</button>
+      value={part.movementId} onChange={(entry) => onChange({ ...part, movementId: entry.id, modality: entry.modality as typeof part.modality })} />
+    {part.duration !== undefined ? <>
+      <Field label="Duration"><input className={styles.input} value={part.duration}
+        placeholder="40–60" onChange={(event) => onChange({ ...part, duration: event.target.value })} /></Field>
+      <Field label="Effort"><input className={styles.input} value={part.effort ?? ""} onChange={(event) => onChange({ ...part, effort: event.target.value })} /></Field>
+    </> : <>
+      <Field label="Repeat sequence"><input className={styles.input} type="number" min={1} max={50} value={part.repeats}
+        onChange={(event) => onChange({ ...part, repeats: Number(event.target.value) })} /></Field>
+      {part.intervals.map((interval) => <Field key={interval.id} label={interval.target.kind === "time" ? "Seconds" : "Metres"}>
+        <input className={styles.input} type="number" min={1} value={interval.target.kind === "time" ? interval.target.seconds : interval.target.metres}
+          onChange={(event) => onChange({ ...part, intervals: part.intervals.map((entry) => entry.id !== interval.id ? entry : { ...entry,
+            target: entry.target.kind === "time" ? { kind: "time", seconds: Number(event.target.value) } : { kind: "distance", metres: Number(event.target.value) } }) })} />
+      </Field>)}
+    </>}
   </>;
 }
 
-export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitments, initial, editBlockId, initialStartDate, initialRevision, activity = "hybrid", swimHref, workoutId, plannedSessionId, activitySelected = false, replacesName }: {
-  catalog: AuthoredCatalogMovement[]; today: string; commitments: TrainingCommitment[];
-  rehabProtocols?: RehabChoice[];
-  initial?: AuthoredProgramDefinition; editBlockId?: string; initialStartDate?: string; activity?: ProgramActivity; swimHref?: string | null;
-  workoutId?: string; plannedSessionId?: string;
-  initialRevision?: string;
-  activitySelected?: boolean; replacesName?: string;
-}) {
+export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, editBlockId, initialStartDate, initialRevision,
+  activity = "hybrid", workoutId, plannedSessionId, initialWeekIndex = 0, oneRmByMovementId, bodyweightKg, replacesName,
+}: {
+  catalog: AuthoredCatalogMovement[]; today: string; commitments: TrainingCommitment[]; rehabProtocols?: RehabChoice[];
+  initial?: AuthoredProgramDefinition; editBlockId?: string; initialStartDate?: string; initialRevision?: string;
+  activity?: ProgramActivity; swimHref?: string | null; workoutId?: string; plannedSessionId?: string;
+  initialWeekIndex?: number; activitySelected?: boolean; replacesName?: string;
+} & Loads) {
   const router = useRouter();
-  const [definition, setDefinition] = useState<AuthoredProgramDefinition>(initial ?? { version: 1, activity, name: "", weeks: 6, workouts: [] });
+  const [definition, setDefinition] = useState<AuthoredProgramDefinitionV2>(() => initial ? upgradeAuthoredProgram(initial)
+    : { version: 2, activity, name: "", weeks: Array.from({ length: 6 }, newWeek), workouts: [] });
+  const [weekIndex, setWeekIndex] = useState(initialWeekIndex);
+  const [editWeek, setEditWeek] = useState(false);
+  const [openDay, setOpenDay] = useState<number | null>(initial?.workouts.find((workout) => workout.id === workoutId)?.weekday ?? 0);
+  const [openPart, setOpenPart] = useState<string | null>(null);
+  const [menu, setMenu] = useState<"add" | "copy" | null>(null);
+  const [startedOn, setStartedOn] = useState(initialStartDate ?? today);
   const [editRevision, setEditRevision] = useState(initialRevision);
   const [current, setCurrent] = useState<Awaited<ReturnType<typeof reloadAuthoredProgram>> | null>(null);
-  const [startedOn, setStartedOn] = useState(initialStartDate ?? today);
-  const [step, setStep] = useState(workoutId ? 3 : initial ? 2 : activitySelected ? 1 : 0);
-  const [selectedId, setSelectedId] = useState<string | null>(workoutId ?? null);
   const [scope, setScope] = useState<"program" | "workout" | "future">(workoutId ? "workout" : "program");
   const [preview, setPreview] = useState<AuthoredPreview | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -155,173 +246,206 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
   const [confirmReplacement, setConfirmReplacement] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const selected = definition.workouts.find((workout) => workout.id === selectedId);
-  const input = { definition, startedOn, scope, ...(editBlockId ? { editBlockId, editRevision } : {}), ...(workoutId ? { workoutId, plannedSessionId } : {}) };
-  const update = (next: AuthoredProgramDefinition) => {
-    setDefinition(next); setPreview(null); setRequestId(null); setAcceptOverlap(false); setConfirmReplacement(false); setError(null);
+  const week = definition.weeks[weekIndex]!;
+  const loads = { oneRmByMovementId, bodyweightKg };
+  const input = { definition, startedOn, scope, ...(editBlockId ? { editBlockId, editRevision } : {}),
+    ...(workoutId ? { workoutId, plannedSessionId } : {}) };
+  const update = (next: AuthoredProgramDefinitionV2) => {
+    setDefinition(next); setPreview(null); setRequestId(null); setAcceptOverlap(false); setError(null);
   };
-  const setWorkout = (workout: AuthoredWorkout) => update({ ...definition, workouts: definition.workouts.map((entry) => entry.id === workout.id ? workout : entry) });
-  const addWorkout = (weekday: number) => {
-    const workout: AuthoredWorkout = { id: newId(), name: `${DAYS[weekday]} workout`, weekday, parts: [] };
-    update({ ...definition, workouts: [...definition.workouts, workout] }); setSelectedId(workout.id); setStep(3);
-  };
-  const addPart = (kind: AuthoredWorkoutPart["kind"]) => {
-    if (!selected) return;
-    const part: AuthoredWorkoutPart = kind === "movement" ? { id: newId(), kind, movement: newMovement() }
-      : kind === "rehab" ? { id: newId(), kind, protocolId: "" }
-      : kind === "circuit" ? { id: newId(), kind, name: "Circuit", rounds: 3, movements: [newMovement(), newMovement()] }
-        : { id: newId(), kind, movementId: "", modality: "run", intensity: "z2", repeats: 1, notes: "",
-          intervals: [{ id: newId(), label: "Run", effort: "easy", target: { kind: "time", seconds: 1200 } }] };
-    setWorkout({ ...selected, parts: [...selected.parts, part] });
+  const updateWeek = (patch: Partial<AuthoredWeek>) => update({ ...definition, weeks: definition.weeks.map((entry, index) => index === weekIndex ? { ...entry, ...patch } : entry) });
+  const setWorkout = (workout: AuthoredWorkout) => update({ ...definition, workouts: definition.workouts.some((entry) => entry.id === workout.id)
+    ? definition.workouts.map((entry) => entry.id === workout.id ? workout : entry) : [...definition.workouts, workout] });
+  const save = (checked: AuthoredPreview, id: string, replace = false) => {
+    if (checked.replaces && !replace) { setConfirmReplacement(true); return; }
+    startTransition(async () => {
+      try {
+        const result = await saveAuthoredProgram(input, checked.id, { revision: checked.revision, requestId: id, acceptOverlap,
+          ...(replace && checked.replacesBlockId ? { replaceBlockId: checked.replacesBlockId } : {}) });
+        if (!result.ok) {
+          setError(result.error);
+          if (!replace) { setPreview(null); setRequestId(null); }
+          return;
+        }
+        router.push(`/app/plan?block=${result.blockId}`); router.refresh();
+      } catch { setError("Couldn't confirm the save. Retry to check the same request."); }
+    });
   };
   const review = () => {
+    if (preview && requestId) { save(preview, requestId); return; }
     setError(null);
     startTransition(async () => {
       try {
         const result = await previewAuthoredProgram(input);
         if (!result.ok) { setError(result.error); return; }
-        setPreview(result.preview); setRequestId(newId()); setAcceptOverlap(false); setConfirmReplacement(false); setStep(4);
+        const id = newId(); setPreview(result.preview); setRequestId(id);
+        if (result.preview.overlaps.length === 0 && result.preview.plannedRest.length === 0) save(result.preview, id);
       } catch { setError("Couldn't review your program. Your changes are still here."); }
     });
   };
-  const save = (replace = false) => {
-    if (!preview || !requestId) return;
-    if (preview.replaces && !replace) { setConfirmReplacement(true); return; }
-    setError(null);
-    startTransition(async () => {
-      try {
-        const result = await saveAuthoredProgram(input, preview.id, {
-          revision: preview.revision, requestId, acceptOverlap,
-          ...(replace && preview.replacesBlockId ? { replaceBlockId: preview.replacesBlockId } : {}),
-        });
-        if (!result.ok) { setError(result.error); return; }
-        router.push(`/app/plan?block=${result.blockId}`); router.refresh();
-      } catch { setError("Couldn't confirm the save. Retry to check the same request."); }
-    });
+  const addPart = (weekday: number, kind: AuthoredWorkoutPart["kind"]) => {
+    const workout = definition.workouts.find((entry) => entry.weekday === weekday) ?? { id: newId(), weekday, name: `${DAYS[weekday]} workout`, parts: [] };
+    const part: AuthoredWorkoutPart = kind === "movement" ? { id: newId(), kind, movement: newMovement() }
+      : kind === "rehab" ? { id: newId(), kind, protocolId: "" }
+        : kind === "circuit" ? { id: newId(), kind, name: "Station circuit", rounds: 3, weeks: definition.weeks.map(() => ({ rounds: 3 })), movements: [newMovement(), newMovement()] }
+          : { id: newId(), kind, movementId: "", modality: "run", intensity: "z2", repeats: 1, notes: "", duration: "40–60", effort: "Zone 2",
+            intervals: [{ id: newId(), label: "Run", effort: "easy", target: { kind: "time", seconds: 2400 } }] };
+    setWorkout({ ...workout, parts: [...workout.parts, part] }); setOpenPart(part.id); setMenu(null);
   };
-  let dates: ReturnType<typeof authoredProgramDates> = [];
-  try { dates = authoredProgramDates(definition, startedOn); } catch { /* Date field may be temporarily incomplete. */ }
-  const endDate = dates.at(-1)?.date ?? startedOn;
-  const visibleCommitments = commitments.filter((entry) => entry.date >= startedOn && entry.date <= endDate &&
-    !(entry.source === "primary" && entry.programId === editBlockId));
-  return <div className={`${styles.builder} ${styles.programSetup}`}>
-    <header className={styles.header}><div>{(workoutId || editBlockId) && <div className={styles.eyebrow}>{workoutId ? "Edit workout" : "Edit program"}</div>}<h1>{workoutId ? selected?.name : editBlockId ? definition.name : `New ${ACTIVITY_LABELS[definition.activity].toLowerCase()} program`}</h1></div>
-      <Link className={styles.button} href={editBlockId ? `/app/plan?block=${editBlockId}` : "/app/programs"}>Cancel</Link></header>
-    {!editBlockId && replacesName && <p className={styles.replaces}>Replaces {replacesName}</p>}
-    <nav className={styles.steps} aria-label="Program setup">{STEPS.map((label, index) => (workoutId && index < 3) || (activitySelected && index === 0) ? null : <button type="button" key={label} className={styles.step}
-      aria-current={step === index ? "step" : undefined} disabled={pending || index === 4 || (index === 3 && !selected) || (!!editBlockId && index === 0)}
-      onClick={() => setStep(index)}>{index + (activitySelected ? 0 : 1)}. {label}</button>)}</nav>
+  const copyTo = (workout: AuthoredWorkout, weekday: number) => {
+    const existing = definition.workouts.find((entry) => entry.weekday === weekday);
+    if (existing?.parts.length && !window.confirm(`Replace ${DAYS[weekday]} exercises?`)) return;
+    const copy = structuredClone(workout);
+    copy.id = existing?.id ?? newId(); copy.weekday = weekday;
+    copy.parts = copy.parts.map((part) => part.kind === "movement" ? { ...part, id: newId(), movement: { ...part.movement, id: newId() } }
+      : part.kind === "rehab" ? { ...part, id: newId() }
+        : part.kind === "circuit" ? { ...part, id: newId(), movements: part.movements.map((entry) => ({ ...entry, id: newId() })) }
+          : { ...part, id: newId(), intervals: part.intervals.map((entry) => ({ ...entry, id: newId() })) });
+    setWorkout(copy); setMenu(null);
+  };
+  const partSummary = (part: AuthoredWorkoutPart) => {
+    if (part.kind === "rehab") return rehabProtocols.find((entry) => entry.id === part.protocolId)?.summary ?? "";
+    if (part.kind === "cardio") return part.duration ? `${part.duration} min${part.effort ? ` · ${part.effort}` : ""}` : part.intervals.map(formatAuthoredInterval).join(" / ");
+    if (part.kind === "circuit") {
+      const plan = part.weeks?.[weekIndex] ?? { rounds: part.rounds };
+      return plan.runMetres ? `${plan.rounds} × ${plan.runMetres} m run + station` : `${plan.rounds} rounds`;
+    }
+    const effective = effectiveAuthoredMovement(part.movement, week, weekIndex);
+    const dose = part.movement.dose.kind === "reps" ? effective.reps : part.movement.dose.kind === "hold" ? `${part.movement.dose.seconds} sec` : `${part.movement.dose.metres} m`;
+    const load = authoredLoadDisplay(effective.load, catalog.find((entry) => entry.id === part.movement.movementId),
+      oneRmByMovementId?.[part.movement.movementId], bodyweightKg).text;
+    return `${effective.sets} × ${dose}${load ? ` · ${load}` : ""}`;
+  };
+  return <form className={`${styles.singleBuilder} ${styles.programSetup}`} onSubmit={(event) => { event.preventDefault(); review(); }}>
+    <Link className={styles.inlineLink} href={editBlockId ? `/app/plan?block=${editBlockId}` : "/app/programs"}>{editBlockId ? "Cancel" : "‹ Programs"}</Link>
+    <h1 className={styles.srOnly}>{editBlockId ? "Edit program" : "New program"}</h1>
+    <div className={styles.titleRow}><input className={styles.titleInput} aria-label="Program name" placeholder="Program name" required maxLength={100}
+      value={definition.name} onChange={(event) => update({ ...definition, name: event.target.value })} />
+      <button className={`${styles.button} ${styles.primary}`} type="submit" disabled={pending || !definition.workouts.length || (!!preview?.overlaps.length && !acceptOverlap)}>
+        {pending ? "Saving..." : editBlockId ? "Save changes" : "Save"}
+      </button>
+    </div>
+    {!editBlockId && replacesName && <p className={styles.muted}>Replaces {replacesName}</p>}
+    <details className={styles.builderDetails}><summary>{definition.weeks.length} weeks{startedOn && <> · starts {formatProgramDate(startedOn, true)}</>}</summary>
+      <div className={styles.inlineFields}><Field label="Start date"><input className={styles.input} type="date" required min={editBlockId ? undefined : today}
+        disabled={!!editBlockId} value={startedOn} onChange={(event) => { setStartedOn(event.target.value); setPreview(null); setRequestId(null); }} /></Field>
+        <Field label="Weeks"><select className={styles.select} disabled={!!workoutId} value={definition.weeks.length} onChange={(event) => {
+          const count = Number(event.target.value);
+          const trim = (movement: AuthoredMovement) => ({ ...movement, overrides: Object.fromEntries(Object.entries(movement.overrides ?? {}).filter(([key]) => Number(key) < count)) });
+          update({ ...definition, weeks: Array.from({ length: count }, (_, index) => definition.weeks[index] ?? newWeek()),
+            workouts: definition.workouts.map((workout) => ({ ...workout, parts: workout.parts.map((part) => part.kind === "movement" ? { ...part, movement: trim(part.movement) }
+              : part.kind === "circuit" ? { ...part, movements: part.movements.map(trim), weeks: Array.from({ length: count }, (_, index) => part.weeks?.[index] ?? { rounds: part.rounds }) } : part) })) });
+          setWeekIndex(Math.min(weekIndex, count - 1));
+        }}>{Array.from({ length: 16 }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}</select></Field>
+      </div>
+    </details>
+    {workoutId && <Field label="Apply changes to"><select aria-label="Apply changes to" className={styles.select} value={scope} onChange={(event) => {
+      setScope(event.target.value as "workout" | "future"); setWeekIndex(initialWeekIndex); setPreview(null); setRequestId(null);
+    }}><option value="workout">This workout</option><option value="future">This and future matching workouts</option></select></Field>}
     {error && <p role="alert" className={styles.error}>{error}</p>}
-    {error && editBlockId && <button type="button" className={styles.button} disabled={pending}
-      onClick={() => startTransition(async () => {
-        try { setCurrent(await reloadAuthoredProgram(editBlockId)); }
-        catch { setError("Couldn't reload the program. Your changes are still here."); }
-      })}>Reload current version</button>}
-    {current && <section className={styles.panel} aria-label="Current program">
-      <h2>{current.definition.name}</h2>
-      {current.definition.workouts.map((workout) => <p key={workout.id}>{DAYS[workout.weekday]}: {workout.name}</p>)}
-      <Link className={styles.button} href={`/app/plan?block=${editBlockId}`} target="_blank">View current workouts</Link>
+    {error && editBlockId && <button type="button" className={styles.button} disabled={pending} onClick={() => startTransition(async () => {
+      try { setCurrent(await reloadAuthoredProgram(editBlockId)); }
+      catch { setError("Couldn't reload the program. Your changes are still here."); }
+    })}>Reload current version</button>}
+    {current && <section className={styles.panel} aria-label="Current program"><h2>{current.definition.name}</h2>
+      <Link className={styles.inlineLink} href={`/app/plan?block=${editBlockId}`} target="_blank">View current workouts</Link>
       <button type="button" className={styles.button} onClick={() => {
-        const draftWorkout = definition.workouts.find((entry) => entry.id === workoutId);
-        if (scope !== "program" && draftWorkout) {
-          setDefinition({ ...current.definition, workouts: current.definition.workouts.map((entry) => entry.id === workoutId ? draftWorkout : entry) });
-        }
+        const draft = definition.workouts.find((workout) => workout.id === workoutId);
+        if (scope !== "program" && draft) setDefinition({ ...current.definition, workouts: current.definition.workouts.map((workout) => workout.id === workoutId ? draft : workout) });
         setEditRevision(current.revision); setCurrent(null); setPreview(null); setRequestId(null); setError(null);
       }}>Reapply my changes</button>
     </section>}
-    {step === 0 && <section className={styles.cards}>
-      {(Object.keys(ACTIVITY_LABELS) as ProgramActivity[]).map((value) => <button key={value} type="button" className={styles.card} aria-pressed={definition.activity === value}
-        onClick={() => update({ ...definition, activity: value })}><strong>{ACTIVITY_LABELS[value]}</strong><span className={styles.muted}>
-          {value === "strength" ? "Lifts, accessories and rehab" : value === "running" ? "Runs, intervals and rehab" : "Strength, running, machines and rehab"}</span></button>)}
-      {swimHref && <Link className={styles.card} href={swimHref}><strong>Swimming</strong><span className={styles.muted}>Import a prepared course</span></Link>}
-    </section>}
-    {step === 1 && <section className={styles.panel}><h2>Program details</h2><div className={styles.fields}>
-      <label className={styles.field}>Program name<input className={styles.input} value={definition.name} maxLength={100} onChange={(event) => update({ ...definition, name: event.target.value })} /></label>
-      <label className={styles.field}>Start date<input className={styles.input} type="date" min={today} disabled={!!editBlockId} value={startedOn}
-        onChange={(event) => { setStartedOn(event.target.value); setPreview(null); setRequestId(null); }} /></label>
-      <label className={styles.field}>Weeks<input className={styles.input} type="number" min={1} max={16} value={definition.weeks} onChange={(event) => update({ ...definition, weeks: Number(event.target.value) })} /></label>
-    </div></section>}
-    {step === 2 && <section className={styles.week} aria-label="Training week">{DAYS.map((day, weekday) => {
+    <h2 className={styles.builderHeading}>Weeks</h2>
+    <div className={styles.weekStrip}>{definition.weeks.map((entry, index) => {
+      const changed = definition.workouts.some((workout) => workout.parts.some((part) => part.kind === "movement" && Object.keys(part.movement.overrides?.[index] ?? {}).length > 0));
+      return <button type="button" key={index} className={styles.weekCard} aria-pressed={index === weekIndex}
+        disabled={!!workoutId && (scope === "workout" ? index !== initialWeekIndex : index < initialWeekIndex)}
+        onClick={() => { setWeekIndex(index); }}>
+        <span data-type={entry.type}>{entry.type === "Build" ? `Week ${index + 1}` : `${index + 1} · ${entry.type}`}
+          {changed && <span className={styles.overrideDot} aria-label={`Week ${index + 1} changed`} />}</span>
+        <strong>{entry.sets}×{entry.reps} · {entry.pct}%</strong>
+      </button>;
+    })}</div>
+    {editWeek && !workoutId ? <section className={styles.weekEditor} aria-label={`Edit week ${weekIndex + 1}`}>
+      <h3>Week {weekIndex + 1}</h3>
+      <div className={styles.segment} role="group" aria-label="Week type">{(["Build", "Deload", "Test"] as const).map((type) =>
+        <button type="button" key={type} aria-pressed={week.type === type} onClick={() => updateWeek({ type, fewer: type === "Deload" })}>{type}</button>)}</div>
+      <Field label="Sets"><input className={styles.input} value={week.sets} onChange={(event) => updateWeek({ sets: event.target.value })} /></Field>
+      <Field label="Reps"><input className={styles.input} value={week.reps} onChange={(event) => updateWeek({ reps: event.target.value })} /></Field>
+      <Field label="% 1RM"><input className={styles.input} type="number" min={1} max={100} step="0.5" value={week.pct} onChange={(event) => updateWeek({ pct: Number(event.target.value) })} /></Field>
+      {week.type === "Deload" && <label className={styles.builderCheck}><input type="checkbox" checked={week.fewer ?? false} onChange={(event) => updateWeek({ fewer: event.target.checked })} />Other exercises: one set fewer</label>}
+      <button type="button" className={styles.inlineLink} onClick={() => setEditWeek(false)}>Done</button>
+    </section> : !workoutId && <button type="button" className={styles.inlineLink} onClick={() => setEditWeek(true)}>Edit week {weekIndex + 1}</button>}
+    <h2 className={styles.builderHeading}>Days · Week {weekIndex + 1}</h2>
+    <div className={styles.builderDays}>{DAYS.map((day, weekday) => {
       const workout = definition.workouts.find((entry) => entry.weekday === weekday);
-      const busy = visibleCommitments.filter((entry) => commitmentWeekday(entry.date) === weekday);
-      return <div key={day} className={styles.day}><strong>{day.slice(0, 3)}</strong><div>
-        <strong>{workout?.name ?? "Planned rest"}</strong>
-        {busy.length > 0 && <p className={styles.muted}>{[...new Set(busy.map((entry) => entry.title))].join(", ")} · {busy.length} {busy.length === 1 ? "date" : "dates"}</p>}
-      </div><div className={styles.dayActions}>
-        {workout ? <>
-          <button type="button" className={styles.button} onClick={() => { setSelectedId(workout.id); setStep(3); }}>Edit</button>
-          <button type="button" className={styles.button} onClick={() => update({ ...definition, workouts: definition.workouts.filter((entry) => entry.id !== workout.id) })}>Rest</button>
-        </> : <button type="button" className={styles.button} onClick={() => addWorkout(weekday)}>Add workout</button>}
-      </div></div>;
-    })}</section>}
-    {step === 3 && selected && <section className={styles.workout}>
-      <div className={styles.panel}><div className={styles.fields}>
-        <label className={styles.field}>Workout name<input className={styles.input} value={selected.name} maxLength={100} onChange={(event) => setWorkout({ ...selected, name: event.target.value })} /></label>
-        {!workoutId && <label className={styles.field}>Day<select className={styles.select} value={selected.weekday} onChange={(event) => setWorkout({ ...selected, weekday: Number(event.target.value) })}>
-          {DAYS.map((day, index) => <option key={day} value={index} disabled={definition.workouts.some((entry) => entry.id !== selected.id && entry.weekday === index)}>{day}</option>)}</select></label>}
-        {workoutId && <label className={styles.field}>Apply changes to<select className={styles.select} value={scope} onChange={(event) => {
-          setScope(event.target.value as "workout" | "future"); setPreview(null); setRequestId(null);
-        }}><option value="workout">This workout</option><option value="future">This and future matching workouts</option></select></label>}
-      </div><div className={styles.actions}>
-        <button type="button" className={styles.button} disabled={!!workoutId || definition.workouts.length >= 7} onClick={() => {
-          const weekday = DAYS.findIndex((_, index) => !definition.workouts.some((entry) => entry.weekday === index));
-          if (weekday < 0) return;
-          const copy = structuredClone(selected);
-          copy.id = newId(); copy.weekday = weekday; copy.name = `${selected.name} copy`;
-          copy.parts = copy.parts.map((part) => part.kind === "movement" ? { ...part, id: newId(), movement: { ...part.movement, id: newId() } }
-            : part.kind === "rehab" ? { ...part, id: newId() }
-            : part.kind === "circuit" ? { ...part, id: newId(), movements: part.movements.map((movement) => ({ ...movement, id: newId() })) }
-              : { ...part, id: newId(), intervals: part.intervals.map((interval) => ({ ...interval, id: newId() })) });
-          update({ ...definition, workouts: [...definition.workouts, copy] }); setSelectedId(copy.id);
-        }}>Copy workout</button>
-        <button type="button" className={styles.button} onClick={() => setStep(2)}>Back to week</button>
-      </div></div>
-      {selected.parts.map((part, index) => <article className={styles.part} key={part.id}>
-        <div className={styles.partHeader}><h3>{index + 1}. {part.kind === "movement" ? "Exercise" : part.kind === "circuit" ? "Circuit" : part.kind === "rehab" ? "Rehab" : "Cardio"}</h3><div className={styles.actions}>
-          <button type="button" className={styles.iconButton} disabled={index === 0} aria-label={`Move part ${index + 1} up`} onClick={() => {
-            const parts = [...selected.parts]; [parts[index - 1], parts[index]] = [parts[index]!, parts[index - 1]!]; setWorkout({ ...selected, parts });
-          }}>Up</button>
-          <button type="button" className={styles.button} onClick={() => setWorkout({ ...selected, parts: selected.parts.filter((entry) => entry.id !== part.id) })}>Remove</button>
-        </div></div>
-        <PartEditor part={part} catalog={definition.activity === "running" ? catalog.filter((entry) => entry.modality === "run") : catalog}
-          rehabProtocols={rehabProtocols} onChange={(next) => setWorkout({ ...selected, parts: selected.parts.map((entry) => entry.id === part.id ? next : entry) })} />
-      </article>)}
-      <div className={styles.actions}>{definition.activity !== "running" && <>
-        <button type="button" className={styles.button} onClick={() => addPart("movement")}>Add exercise</button>
-        <button type="button" className={styles.button} onClick={() => addPart("circuit")}>Add circuit</button>
-      </>}
-        <button type="button" className={styles.button} disabled={rehabProtocols.length === 0} onClick={() => addPart("rehab")}>Add rehab</button>
-        {rehabProtocols.length === 0 && <>
-          <Link className={styles.button} href="/app/settings/rehab-protocols" target="_blank" rel="noreferrer">Create a rehab protocol</Link>
-          <button type="button" className={styles.button} onClick={() => router.refresh()}>Refresh protocols</button>
-        </>}
-        {definition.activity !== "strength" && <button type="button" className={styles.button} onClick={() => addPart("cardio")}>Add {definition.activity === "running" ? "run" : "cardio"}</button>}
-      </div>
-    </section>}
-    {step === 4 && preview && <section className={styles.panel}>
-      <h2>{definition.name}</h2>
-      <p className={styles.muted}>{ACTIVITY_LABELS[definition.activity]} · {definition.weeks} weeks · {preview.dates.length} workouts{preview.preserved > 0 ? ` · ${preview.preserved} existing workouts kept` : ""}</p>
-      {definition.workouts.map((workout) => <details key={workout.id}><summary>{DAYS[workout.weekday]} · {workout.name}</summary>
-        {workout.parts.map((part) => <p key={part.id} className={styles.muted}>{part.kind === "cardio"
-          ? `${catalog.find((entry) => entry.id === part.movementId)?.displayName} · ${part.repeats} rounds · ${part.intervals.map(formatAuthoredInterval).join(" / ")}`
-          : part.kind === "circuit" ? `${part.name} · ${part.rounds} rounds · ${part.movements.map((movement) => catalog.find((entry) => entry.id === movement.movementId)?.displayName).join(", ")}`
-            : part.kind === "rehab" ? rehabProtocols.find((protocol) => protocol.id === part.protocolId)?.name
-            : `${catalog.find((entry) => entry.id === part.movement.movementId)?.displayName} · ${part.movement.sets} sets`}</p>)}
-      </details>)}
-      {preview.overlaps.length > 0 && <div className={styles.notice}><strong>Workouts on the same day</strong>
+      const open = openDay === weekday;
+      if (workoutId && workout?.id !== workoutId) return null;
+      return <section key={day} className={styles.builderDay} aria-label={day}>
+        <button type="button" className={styles.dayToggle} aria-expanded={open} onClick={() => { setOpenDay(open ? null : weekday); setOpenPart(null); setMenu(null); }}>
+          <span>{day.slice(0, 3)}</span><strong>{workout && <span className={styles.activityDot} data-kind={authoredWorkoutActivity(workout, catalog)} aria-hidden="true" />}{workout?.name ?? "Rest"}</strong>
+          {workout && <small>{workout.parts.length} {workout.parts.length === 1 ? "exercise" : "exercises"}</small>}
+        </button>
+        {open && <div className={styles.dayBody}>
+          {workout && <details className={styles.builderDetails}><summary>Edit day</summary><div className={styles.inlineFields}>
+            <Field label="Workout name"><input className={styles.input} value={workout.name} maxLength={100} onChange={(event) => setWorkout({ ...workout, name: event.target.value })} /></Field>
+            {!workoutId && <Field label="Day"><select className={styles.select} aria-label="Day" value={workout.weekday} onChange={(event) => {
+              const weekday = Number(event.target.value); setWorkout({ ...workout, weekday }); setOpenDay(weekday);
+            }}>{DAYS.map((name, index) => <option key={name} value={index}
+              disabled={index !== workout.weekday && definition.workouts.some((entry) => entry.weekday === index)}>{name}</option>)}</select></Field>}
+            {!workoutId && <button type="button" className={styles.button} onClick={() => update({ ...definition, workouts: definition.workouts.filter((entry) => entry.id !== workout.id) })}>Rest</button>}
+          </div></details>}
+          {workout?.parts.map((part, index) => {
+            const title = part.kind === "movement" ? catalog.find((entry) => entry.id === part.movement.movementId)?.displayName ?? "Choose an exercise"
+              : part.kind === "circuit" ? part.name : part.kind === "rehab" ? rehabProtocols.find((entry) => entry.id === part.protocolId)?.name ?? "Rehab"
+                : catalog.find((entry) => entry.id === part.movementId)?.displayName ?? "Cardio";
+            const changed = part.kind === "movement" && effectiveAuthoredMovement(part.movement, week, weekIndex).overridden;
+            return <div key={part.id} data-testid="builder-exercise">
+              <button type="button" className={styles.exerciseRow} aria-expanded={openPart === part.id} onClick={() => setOpenPart(openPart === part.id ? null : part.id)}>
+                <span>{part.kind === "movement" && part.movement.role === "main" && <em>Main</em>}{title}
+                  {changed && <small>Week {weekIndex + 1} changed</small>}</span>
+                <span>{partSummary(part)}</span>
+              </button>
+              {openPart === part.id && <div className={styles.exerciseEditor}>
+                <PartEditor key={`${part.id}:${weekIndex}`} part={part} catalog={definition.activity === "running" ? catalog.filter((entry) => entry.modality === "run") : catalog}
+                  rehabProtocols={rehabProtocols} weeks={definition.weeks} weekIndex={weekIndex} loads={loads}
+                  onChange={(next) => setWorkout({ ...workout, parts: workout.parts.map((entry) => entry.id === part.id ? next : entry) })} />
+                <div className={styles.editorTools}>{[-1, 1].map((delta) => <button type="button" className={styles.iconButton} key={delta}
+                  aria-label={delta < 0 ? "Move up" : "Move down"} disabled={index + delta < 0 || index + delta >= workout.parts.length} onClick={() => {
+                    const parts = [...workout.parts]; [parts[index], parts[index + delta]] = [parts[index + delta]!, parts[index]!]; setWorkout({ ...workout, parts });
+                  }}>{delta < 0 ? "↑" : "↓"}</button>)}
+                  <button type="button" className={styles.inlineLink} onClick={() => {
+                    setWorkout({ ...workout, parts: workout.parts.filter((entry) => entry.id !== part.id) }); setOpenPart(null);
+                  }}>Remove</button>
+                </div>
+              </div>}
+            </div>;
+          })}
+          <div className={styles.dayTools}>
+            <button type="button" className={styles.button} aria-expanded={menu === "add"} onClick={() => setMenu(menu === "add" ? null : "add")}>Add exercise</button>
+            {workout && !workoutId && <button type="button" className={styles.inlineLink} aria-expanded={menu === "copy"} onClick={() => setMenu(menu === "copy" ? null : "copy")}>Copy to…</button>}
+          </div>
+          {menu === "add" && <div className={styles.builderMenu} aria-label="Add exercise">
+            {definition.activity !== "running" && <><button type="button" onClick={() => addPart(weekday, "movement")}>Exercise</button>
+              <button type="button" onClick={() => addPart(weekday, "circuit")}>Circuit</button></>}
+            {definition.activity !== "strength" && <button type="button" onClick={() => addPart(weekday, "cardio")}>Cardio</button>}
+            <button type="button" disabled={!rehabProtocols.length} onClick={() => addPart(weekday, "rehab")}>Rehab</button>
+            {!rehabProtocols.length && <Link className={styles.inlineLink} href="/app/settings/rehab-protocols" target="_blank">Create a rehab protocol</Link>}
+          </div>}
+          {menu === "copy" && workout && <div className={styles.builderMenu} aria-label="Copy to another day">{DAYS.map((target, index) => index === weekday ? null
+            : <button type="button" key={target} onClick={() => copyTo(workout, index)}>{target}</button>)}</div>}
+        </div>}
+      </section>;
+    })}</div>
+    {preview && (preview.overlaps.length > 0 || preview.plannedRest.length > 0) && <section className={styles.notice}>
+      {preview.overlaps.length > 0 && <><strong>Workouts on the same day</strong>
         {preview.overlaps.map((entry) => <div key={`${entry.source}:${entry.id}`} className={styles.date}><time>{entry.date}</time><span>{entry.title}</span></div>)}
-        <label className={styles.check}><input type="checkbox" checked={acceptOverlap} onChange={(event) => setAcceptOverlap(event.target.checked)} />Keep both workouts on these dates.</label>
-      </div>}
-      {preview.plannedRest.length > 0 && <div className={styles.notice}>Includes {preview.plannedRest.length} dates marked as rest in another program.</div>}
-      <details><summary>All workout dates</summary><div className={styles.dates}>{preview.dates.map((entry) => <div key={`${entry.date}:${entry.title}`} className={styles.date}><time>{entry.date}</time><span>{entry.title}</span></div>)}</div></details>
+        <label className={styles.builderCheck}><input type="checkbox" checked={acceptOverlap} onChange={(event) => setAcceptOverlap(event.target.checked)} />Keep both workouts on these dates.</label></>}
+      {preview.plannedRest.length > 0 && <p>Includes {preview.plannedRest.length} dates marked as rest in another program.</p>}
+      <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={pending || (!!preview.overlaps.length && !acceptOverlap)}>Save</button>
     </section>}
-    <footer className={styles.footer}>
-      <button type="button" className={styles.button} disabled={pending || step === (activitySelected ? 1 : 0) || (!!workoutId && step === 3)} onClick={() => setStep(workoutId ? 3 : step === 4 ? 2 : Math.max(activitySelected ? 1 : 0, step - 1))}>Back</button>
-      {step < 2 ? <button type="button" className={`${styles.button} ${styles.primary}`} disabled={step === 1 && (!definition.name.trim() || !startedOn)} onClick={() => setStep(step + 1)}>Continue</button>
-        : step === 4 ? <button type="button" className={`${styles.button} ${styles.primary}`} disabled={pending || (!!preview?.overlaps.length && !acceptOverlap)} onClick={() => save()}>{pending ? "Saving..." : editBlockId ? "Save changes" : "Start program"}</button>
-          : <button type="button" className={`${styles.button} ${styles.primary}`} disabled={pending || definition.workouts.length === 0} onClick={review}>{pending ? "Reviewing..." : workoutId ? "Review changes" : "Review program"}</button>}
-    </footer>
-    {confirmReplacement && preview?.replaces && <ProgramConfirmation name={preview.replaces} pending={pending} error={error}
-      onCancel={() => setConfirmReplacement(false)} onConfirm={() => save(true)} />}
-  </div>;
+    {confirmReplacement && preview?.replaces && requestId && <ProgramConfirmation name={preview.replaces} pending={pending} error={error}
+      onCancel={() => { setConfirmReplacement(false); if (error) { setPreview(null); setRequestId(null); } }}
+      onConfirm={() => save(preview, requestId, true)} />}
+  </form>;
 }

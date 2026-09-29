@@ -77,7 +77,7 @@ export default async function TodayPage() {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_banner_dismissed_at, units, season_planning_enabled, intake",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_banner_dismissed_at, units, season_planning_enabled, intake, bodyweight_kg",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -528,6 +528,8 @@ export default async function TodayPage() {
     .filter((planned) => !planned.skippedAt && planned.role !== "rest")
     .map((planned) => {
       const workout = plannedTodayWorkout(planned, activeBlocks, plannedDaysAll);
+      workout.loadContext = { oneRmByMovementId: Object.fromEntries(tmRows.map((row) => [row.movementId, row.oneRmKg])),
+        bodyweightKg: profile?.bodyweight_kg == null ? undefined : Number(profile.bodyweight_kg) };
       const conflict = conflictsBySlot.get(planned.id);
       if (limitationAffected.has(planned.id) && limitationResponse && limitationData) {
         const offence = [...limitationResponse.warns, ...limitationResponse.swaps, ...limitationResponse.drops]

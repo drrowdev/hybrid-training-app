@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AuthoredProgramDefinition, AuthoredWorkoutPart } from "@hta/domain";
+import { upgradeAuthoredProgram, type AuthoredProgramDefinition, type AuthoredWorkoutPart } from "@hta/domain";
 import { authoredProgramSchema } from "./schema";
 
 const id = (n: number) => `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -28,5 +28,28 @@ describe("DC-R5 focused authored program contracts", () => {
     expect(authoredProgramSchema.safeParse(definition("strength", [movement, run])).success).toBe(false);
     expect(authoredProgramSchema.safeParse(definition("hybrid", [movement, run, rehab])).success).toBe(true);
     expect(authoredProgramSchema.safeParse(definition("running", [{ ...run, modality: "row" }])).success).toBe(false);
+  });
+  it("DC-A1: upgrades old definitions without replacing their prescriptions", () => {
+    const parsed = authoredProgramSchema.parse(definition("strength", [movement]));
+    expect(parsed.version).toBe(2);
+    expect(parsed.weeks).toHaveLength(2);
+    expect(parsed.workouts[0]?.parts[0]).toMatchObject({ movement: { overrides: {
+      0: { sets: "3", reps: "5", load: null }, 1: { sets: "3", reps: "5", load: null },
+    } } });
+  });
+  it.each(["invalid", "5-2", "0", "21", "1.5"])("DC-K4: invalid set range %s returns validation errors", (sets) => {
+    const input = upgradeAuthoredProgram(definition("strength", [movement]));
+    input.weeks[0]!.sets = sets;
+    expect(authoredProgramSchema.safeParse(input).success).toBe(false);
+  });
+  it("DC-K4: rejects overrides outside the program and incomplete circuit weeks", () => {
+    const input = upgradeAuthoredProgram(definition("strength", [movement]));
+    const part = input.workouts[0]!.parts[0]!;
+    if (part.kind !== "movement") throw new Error("Expected movement");
+    part.movement.overrides = { 2: { sets: "2" } };
+    expect(authoredProgramSchema.safeParse(input).success).toBe(false);
+    input.workouts[0]!.parts = [{ id: id(10), kind: "circuit", name: "Circuit", rounds: 2,
+      weeks: [{ rounds: 2 }], movements: [movement.movement, { ...movement.movement, id: id(11) }] }];
+    expect(authoredProgramSchema.safeParse(input).success).toBe(false);
   });
 });

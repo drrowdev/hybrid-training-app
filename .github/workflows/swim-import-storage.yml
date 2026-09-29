@@ -52,6 +52,12 @@ on:
       - "apps/web/src/components/swim/**"
       - "apps/web/src/lib/swim/**"
       - "apps/web/scripts/test-swim-pool-ui.mjs"
+      - "apps/web/scripts/test-program-builder-ui.mjs"
+      - "apps/web/src/components/program/ProgramBuilder*"
+      - "apps/web/src/components/today/WorkoutExercises.tsx"
+      - "apps/web/src/lib/programs/authored/**"
+      - "packages/domain/src/authored-program*"
+      - "packages/domain/src/target-load*"
 permissions:
   contents: read
 concurrency:
@@ -132,6 +138,17 @@ jobs:
         env:
           UI_REVIEW_DIR: ${{ runner.temp }}/swim-ui-review
         run: pnpm --filter @hta/web exec node scripts/test-swim-pool-ui.mjs
+      - name: Verify the complete authored program in the browser
+        env:
+          UI_REVIEW_DIR: ${{ runner.temp }}/builder-ui-review
+        run: pnpm --filter @hta/web exec node scripts/test-program-builder-ui.mjs
+      - name: Retain authored builder screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: authored-builder-ui
+          path: ${{ runner.temp }}/builder-ui-review/
+          if-no-files-found: error
+          retention-days: 7
       - name: Retain synthetic replacement screenshots
         uses: actions/upload-artifact@v4
         with:
