@@ -139,6 +139,7 @@ vi.mock("./prescription-mutations", () => ({
 
 const quickPlan = vi.hoisted(() => ({ mainId: "", seeds: [] as number[] }));
 vi.mock("@/lib/planner/quick-generate-resolve", () => ({
+  QUICK_SEED_SPACE: 1_000_000,
   resolveQuickStrengthPlan: async (_s: unknown, _u: unknown, opts: { seed: number }) => {
     quickPlan.seeds.push(opts.seed);
     return {

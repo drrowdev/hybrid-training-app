@@ -40,7 +40,8 @@ import { TM_RESOLUTION_SELECT } from "@/lib/training-maxes/columns";
 import type { FocusMuscle } from "./focus-muscles";
 import {
   assembleQuickStrengthItems,
-  pickFreshestStrengthRole,
+  pickQuickStrengthRole,
+  quickWorkoutOverlap,
   type QuickLength,
 } from "./quick-generate";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
@@ -70,6 +71,8 @@ export type QuickPlanResult =
       tmByMovementId: Map<string, number>;
       title: string;
       role: StrengthRole;
+      /** The variation seed that produced these items (undefined = deterministic). */
+      seed?: number;
     }
   | { ok: false; error: string };
 
@@ -83,6 +86,13 @@ export type BlockContext = {
 
 /** The Hybrid program's fixed archetype (its serialised instance carries it). */
 const HYBRID_QUICK_ARCHETYPE: Exclude<ArchetypeId, "custom"> = "concurrent_hybrid";
+
+/** Seeds tried when replacing a workout; each is a pure re-assembly (no I/O). */
+const QUICK_REGENERATE_ATTEMPTS = 8;
+/** Variation seeds live in [0, QUICK_SEED_SPACE). */
+export const QUICK_SEED_SPACE = 1_000_000;
+/** A prime stride so successive attempts land on unrelated seeds. */
+const QUICK_SEED_STRIDE = 104_729;
 
 /**
  * Derive quick-generate context from an ACTIVE program instance when the program
@@ -245,7 +255,13 @@ function resolveMainForDay(
 export async function resolveQuickStrengthPlan(
   supabase: SupabaseClient,
   userId: string,
-  opts: { length: QuickLength; tz?: string; seed?: number },
+  opts: {
+    length: QuickLength;
+    tz?: string;
+    seed?: number;
+    /** Movements of the workout being replaced; the least-overlapping seed wins. */
+    avoidMovementIds?: readonly string[];
+  },
 ): Promise<QuickPlanResult> {
   const ctx = await resolveBlockContext(supabase, userId);
   const archetype: Archetype = ARCHETYPES[ctx.archetypeId];
@@ -315,37 +331,33 @@ export async function resolveQuickStrengthPlan(
   }
 
   // Resolve a buildable main lift per strength role, in archetype day order.
-  const resolvableByRole = new Map<StrengthRole, ResolvedMain>();
-  for (const day of strengthDays) {
-    if (resolvableByRole.has(day.role)) continue;
-    const resolved = resolveMainForDay(
-      day,
-      movementBySlug,
-      tmByMovementId,
-      tier,
-      opts.seed,
-    );
-    if (resolved) resolvableByRole.set(day.role, resolved);
-  }
-  if (resolvableByRole.size === 0) {
+  // Seed-dependent (main-lift rotation), so it runs per candidate seed.
+  const resolveMains = (seed?: number) => {
+    const byRole = new Map<StrengthRole, ResolvedMain>();
+    for (const day of strengthDays) {
+      if (byRole.has(day.role)) continue;
+      const resolved = resolveMainForDay(
+        day,
+        movementBySlug,
+        tmByMovementId,
+        tier,
+        seed,
+      );
+      if (resolved) byRole.set(day.role, resolved);
+    }
+    return byRole;
+  };
+  if (resolveMains(opts.seed).size === 0) {
     return { ok: false, error: "No main lift could be resolved from the catalog." };
   }
 
-  // Freshness → pick the freshest resolvable pattern.
+  // Freshness → the main lands on a recovered pattern.
   const freshnessRows = await getMuscleFreshness(supabase, userId, {
     tz: opts.tz,
   });
   const freshnessByGroup = new Map<MuscleGroup, MuscleFreshnessBand>(
     freshnessRows.map((r) => [r.muscle, r.band]),
   );
-  const orderedRoles = strengthDays
-    .map((d) => d.role)
-    .filter((role) => resolvableByRole.has(role));
-  const role = pickFreshestStrengthRole(orderedRoles, freshnessByGroup);
-  if (!role) {
-    return { ok: false, error: "Could not select a training pattern." };
-  }
-  const chosen = resolvableByRole.get(role)!;
 
   // Accessory catalog + limitations.
   let catalog = undefined as Awaited<ReturnType<typeof loadPickerCatalog>> | undefined;
@@ -360,28 +372,61 @@ export async function resolveQuickStrengthPlan(
     userId,
   );
 
-  const items = assembleQuickStrengthItems({
-    archetype,
-    day: chosen.day,
-    movement: chosen.movement,
-    movementBySlug: movementBySlug as unknown as Map<
-      string,
-      { id: string; slug: string; display_name: string }
-    >,
-    catalog,
-    warmupScheme,
-    equipment,
-    omitMainStrength: chosen.omitMainStrength,
-    experience,
-    limitationsContext,
-    focusMuscles: ctx.focusMuscles,
-    effortPreference,
-    secondaryFocus: resolveSecondaryFocus(ctx.secondaryFocusRaw),
-    accessoryVolume: resolveAccessoryVolumeLevel(ctx.accessoryVolumeRaw),
-    freshnessByGroup,
-    length: opts.length,
-    variationSeed: opts.seed,
-  });
+  const assembleForSeed = (seed?: number) => {
+    const resolvableByRole = resolveMains(seed);
+    const orderedRoles = strengthDays
+      .map((d) => d.role)
+      .filter((role) => resolvableByRole.has(role));
+    const role = pickQuickStrengthRole(orderedRoles, freshnessByGroup, seed);
+    if (!role) return null;
+    const chosen = resolvableByRole.get(role)!;
+    const items = assembleQuickStrengthItems({
+      archetype,
+      day: chosen.day,
+      movement: chosen.movement,
+      movementBySlug: movementBySlug as unknown as Map<
+        string,
+        { id: string; slug: string; display_name: string }
+      >,
+      catalog,
+      warmupScheme,
+      equipment,
+      omitMainStrength: chosen.omitMainStrength,
+      experience,
+      limitationsContext,
+      focusMuscles: ctx.focusMuscles,
+      effortPreference,
+      secondaryFocus: resolveSecondaryFocus(ctx.secondaryFocusRaw),
+      accessoryVolume: resolveAccessoryVolumeLevel(ctx.accessoryVolumeRaw),
+      freshnessByGroup,
+      length: opts.length,
+      variationSeed: seed,
+    });
+    return { items, role, seed };
+  };
+
+  // Replacing a workout: try a few seeds (pure, no further I/O) and keep the
+  // one that repeats the previous workout least. The chosen seed is returned so
+  // starting it later reproduces exactly this workout.
+  let best = assembleForSeed(opts.seed);
+  if (best && opts.seed != null && opts.avoidMovementIds?.length) {
+    let bestOverlap = quickWorkoutOverlap(best.items, opts.avoidMovementIds);
+    for (let i = 1; i < QUICK_REGENERATE_ATTEMPTS && bestOverlap > 0; i += 1) {
+      const candidate = assembleForSeed(
+        (opts.seed + i * QUICK_SEED_STRIDE) % QUICK_SEED_SPACE,
+      );
+      if (!candidate || candidate.items.length === 0) continue;
+      const overlap = quickWorkoutOverlap(candidate.items, opts.avoidMovementIds);
+      if (overlap < bestOverlap) {
+        best = candidate;
+        bestOverlap = overlap;
+      }
+    }
+  }
+  if (!best) {
+    return { ok: false, error: "Could not select a training pattern." };
+  }
+  const { items, role } = best;
 
   if (items.length === 0) {
     return { ok: false, error: "Generated session was empty." };
@@ -393,5 +438,6 @@ export async function resolveQuickStrengthPlan(
     tmByMovementId,
     title: `Quick workout · ${STRENGTH_ROLE_LABELS[role]}`,
     role,
+    seed: best.seed,
   };
 }

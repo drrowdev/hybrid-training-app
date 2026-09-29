@@ -35,9 +35,13 @@
 .dose { font: inherit; font-variant-numeric: tabular-nums; text-align: right; margin-left: auto; max-width: 100%; }
 .dose [data-prescription-chunk] { display: inline-block; max-width: 100%; }
 .exercise [data-testid="prescription-name"] { display: inline-block; min-width: 120px; }
-.remove { flex: 0 0 auto; align-self: center; width: 32px; height: 32px; margin: -6px -10px -6px 0; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--cp-text-muted); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.remove { flex: 0 0 auto; width: 36px; height: 36px; margin: -4px -10px -4px 0; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--cp-text-muted); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
 .remove:hover { background: var(--cp-surface-soft); color: var(--cp-text); }
 .remove:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 1px; }
+.editable { flex-wrap: nowrap; align-items: center; }
+.editable > :first-child { display: grid; gap: 2px; }
+.editDose { color: var(--cp-text-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.editDose [data-prescription-chunk] { display: inline-block; }
 .superset { border-left: 2px solid var(--cp-border-strong); margin: 6px 20px; }
 .superset .exercise { padding-left: 12px; padding-right: 0; }
 .supersetLabel { color: var(--cp-text-muted); font-size: 12px; padding-left: 12px; }

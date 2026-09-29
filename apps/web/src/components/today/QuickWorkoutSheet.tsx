@@ -44,6 +44,7 @@ export type StartStrengthFn = () => Promise<string>;
 export type RepeatFn = (input: { sessionId: string }) => Promise<string>;
 export type PreviewStrengthFn = (input: {
   length: QuickLength;
+  replacingMovementIds?: string[];
 }) => Promise<QuickPreviewResult<QuickStrengthDraft>>;
 export type GenerateStrengthFn = (input: {
   length: QuickLength;
@@ -278,7 +279,11 @@ export function QuickWorkoutSheet({
             review.kind === "strength" &&
             openReview(
               "regenerate",
-              () => previewStrength({ length: review.draft.length }),
+              () =>
+                previewStrength({
+                  length: review.draft.length,
+                  replacingMovementIds: quickDraftMovementIds(review.draft.items),
+                }),
               "strength",
             )
           }
@@ -669,6 +674,7 @@ function ReviewPanel({
             type="button"
             className="cp-btn big"
             data-testid="quick-review-regenerate"
+            style={{ whiteSpace: "nowrap", paddingInline: 12 }}
             onClick={onRegenerate}
             disabled={disabled}
           >
@@ -679,6 +685,7 @@ function ReviewPanel({
           type="button"
           className="cp-btn primary big"
           data-testid="quick-review-start"
+          style={{ whiteSpace: "nowrap", paddingInline: 12 }}
           onClick={onStart}
           disabled={disabled}
         >
