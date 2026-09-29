@@ -6,6 +6,9 @@
  *   - repeatRecentSession      → clone strength shape (movements only);
  *     NEVER copies set_logs or cardio, NEVER links the new session to a
  *     planned_sessions row, and returns the new id
+ *   - previewQuickStrengthWorkout / generateQuickStrengthSession → a
+ *     generated workout is reviewed before anything is written, then started
+ *     from its seed minus removed movements
  *
  * Both RETURN the new session id (the Today sheet navigates client-side)
  * rather than calling redirect(); the `next/navigation` mock below still
@@ -132,6 +135,23 @@ vi.mock("@/lib/engine/overrides", () => ({
 }));
 vi.mock("./prescription-mutations", () => ({
   applyPrescriptionSwap: (p: unknown) => p,
+}));
+
+const quickPlan = vi.hoisted(() => ({ mainId: "", seeds: [] as number[] }));
+vi.mock("@/lib/planner/quick-generate-resolve", () => ({
+  resolveQuickStrengthPlan: async (_s: unknown, _u: unknown, opts: { seed: number }) => {
+    quickPlan.seeds.push(opts.seed);
+    return {
+      ok: true,
+      title: "Quick workout · Lower",
+      role: "lower",
+      tmByMovementId: new Map(),
+      items: [
+        { movementId: quickPlan.mainId, movementName: "Main", kind: "main", reps: 5, percentTm: 75 },
+        { movementId: MOVEMENT_B, movementName: "Accessory", kind: "accessory", sets: 3, reps: 10 },
+      ],
+    };
+  },
 }));
 
 vi.mock("@/lib/supabase/server", () => {
@@ -448,5 +468,61 @@ describe("repeatRecentSession", () => {
     await repeatRecentSession({ sessionId: SOURCE_SESSION });
     expect(store.updates.find((u) => u.table === "planned_sessions")).toBeUndefined();
     expect(store.plannedSessions[0]!.completed_session_id).toBeNull();
+  });
+});
+
+describe("generated quick strength: review before start", () => {
+  beforeEach(() => {
+    quickPlan.mainId = MOVEMENT_A;
+    quickPlan.seeds = [];
+  });
+
+  it("preview writes nothing", async () => {
+    const { previewQuickStrengthWorkout } = await import("../actions");
+    const result = await previewQuickStrengthWorkout({ length: "short" });
+    expect(result.ok).toBe(true);
+    expect(store.inserts).toHaveLength(0);
+  });
+
+  it("starts the reviewed draft from its seed, without removed movements", async () => {
+    const { generateQuickStrengthSession } = await import("../actions");
+    const result = await generateQuickStrengthSession({
+      length: "short",
+      seed: 7,
+      movementIds: [MOVEMENT_A, MOVEMENT_B],
+      removedMovementIds: [MOVEMENT_B],
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(quickPlan.seeds).toEqual([7]);
+    const insert = store.inserts.find((i) => i.table === "sessions")!;
+    const prescription = insert.row.prescription as { items: { movementId: string }[] };
+    expect(prescription.items.map((i) => i.movementId)).toEqual([MOVEMENT_A]);
+    expect(store.plannedSessions[0]!.completed_session_id).toBeNull();
+  });
+
+  it("returns the new draft instead of starting when the workout changed since review", async () => {
+    const { generateQuickStrengthSession } = await import("../actions");
+    quickPlan.mainId = "20000000-0000-4000-8000-0000000000a3";
+    const result = await generateQuickStrengthSession({
+      length: "short",
+      seed: 7,
+      movementIds: [MOVEMENT_A, MOVEMENT_B],
+      removedMovementIds: [],
+    });
+    expect(result.ok).not.toBe(true);
+    expect("draft" in result && result.draft?.items[0]?.movementId).toBe(quickPlan.mainId);
+    expect(store.inserts).toHaveLength(0);
+  });
+
+  it("refuses to start an empty workout", async () => {
+    const { generateQuickStrengthSession } = await import("../actions");
+    const result = await generateQuickStrengthSession({
+      length: "short",
+      seed: 7,
+      movementIds: [MOVEMENT_A, MOVEMENT_B],
+      removedMovementIds: [MOVEMENT_A, MOVEMENT_B],
+    });
+    expect(result).toEqual({ error: "A workout needs at least one movement." });
+    expect(store.inserts).toHaveLength(0);
   });
 });

@@ -5,7 +5,9 @@ import {
   QuickWorkoutSheet,
   type StartStrengthFn,
   type RepeatFn,
+  type PreviewStrengthFn,
   type GenerateStrengthFn,
+  type PreviewHyroxFn,
   type GenerateHyroxFn,
   type HyroxStation,
 } from "./QuickWorkoutSheet";
@@ -18,7 +20,9 @@ export function QuickWorkoutCard({
   recent,
   startStrength,
   repeatRecent,
+  previewStrength,
   generateStrength,
+  previewHyrox,
   generateHyrox,
   hyroxStationDefaults,
 }: {
@@ -26,7 +30,9 @@ export function QuickWorkoutCard({
   recent: QuickRepeatCandidate[];
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
+  previewStrength: PreviewStrengthFn;
   generateStrength: GenerateStrengthFn;
+  previewHyrox: PreviewHyroxFn;
   generateHyrox: GenerateHyroxFn;
   hyroxStationDefaults: HyroxStation[];
 }) {
@@ -96,7 +102,9 @@ export function QuickWorkoutCard({
         recent={recent}
         startStrength={startStrength}
         repeatRecent={repeatRecent}
+        previewStrength={previewStrength}
         generateStrength={generateStrength}
+        previewHyrox={previewHyrox}
         generateHyrox={generateHyrox}
         hyroxStationDefaults={hyroxStationDefaults}
       />

@@ -8,10 +8,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 const noop = async () => "00000000-0000-4000-8000-0000000000ff";
-const genNoop = async (_: { length: "short" | "normal" }) =>
-  "00000000-0000-4000-8000-0000000000fe";
-const genHyroxNoop = async (_: { length: "short" | "normal"; stations: string[] }) =>
-  "00000000-0000-4000-8000-0000000000fd";
+const genNoop = async () => {
+  throw new Error("not called");
+};
+const genHyroxNoop = genNoop;
 
 function candidate(over: Partial<QuickRepeatCandidate> = {}): QuickRepeatCandidate {
   return {
@@ -31,7 +31,9 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        previewStrength={genNoop}
         generateStrength={genNoop}
+        previewHyrox={genHyroxNoop}
         generateHyrox={genHyroxNoop}
         hyroxStationDefaults={[]}
       />,
@@ -47,7 +49,9 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        previewStrength={genNoop}
         generateStrength={genNoop}
+        previewHyrox={genHyroxNoop}
         generateHyrox={genHyroxNoop}
         hyroxStationDefaults={[]}
       />,
@@ -76,7 +80,9 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        previewStrength={genNoop}
         generateStrength={genNoop}
+        previewHyrox={genHyroxNoop}
         generateHyrox={genHyroxNoop}
         hyroxStationDefaults={[]}
       />,
@@ -93,7 +99,9 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        previewStrength={genNoop}
         generateStrength={genNoop}
+        previewHyrox={genHyroxNoop}
         generateHyrox={genHyroxNoop}
         hyroxStationDefaults={[]}
       />,
@@ -117,7 +125,9 @@ describe("QuickWorkoutSheet", () => {
         ]}
         startStrength={noop}
         repeatRecent={noop}
+        previewStrength={genNoop}
         generateStrength={genNoop}
+        previewHyrox={genHyroxNoop}
         generateHyrox={genHyroxNoop}
         hyroxStationDefaults={[]}
       />,
@@ -130,5 +140,62 @@ describe("QuickWorkoutSheet", () => {
     expect(html).toContain("Leg day");
     expect(html).toContain("5 movements · 15 sets");
     expect(html).toContain("Repeat");
+  });
+
+  describe("review step", () => {
+    const squat = "20000000-0000-4000-8000-000000000001";
+    const row = "20000000-0000-4000-8000-000000000002";
+    const draft = {
+      length: "short" as const,
+      seed: 42,
+      title: "Quick workout · Lower",
+      items: [
+        { movementId: squat, movementName: "Back Squat", kind: "main" as const, reps: 5, percentTm: 75 },
+        { movementId: squat, movementName: "Back Squat", kind: "main" as const, reps: 5, percentTm: 80 },
+        { movementId: row, movementName: "Seated Row", kind: "accessory" as const, sets: 3, reps: 10 },
+      ],
+    };
+    const render = (removed: string[] = []) =>
+      renderToStaticMarkup(
+        <QuickWorkoutSheet
+          open
+          onClose={() => {}}
+          recent={[]}
+          startStrength={noop}
+          repeatRecent={noop}
+          previewStrength={genNoop}
+          generateStrength={genNoop}
+          previewHyrox={genHyroxNoop}
+          generateHyrox={genHyroxNoop}
+          hyroxStationDefaults={[]}
+          initialReview={{ kind: "strength", draft, removed }}
+        />,
+      );
+
+    it("shows the generated workout with regenerate and start, instead of the picker", () => {
+      const html = render();
+      expect(html).toContain('data-testid="quick-review"');
+      expect(html).toContain("Quick workout · Lower");
+      expect(html).toContain("Back Squat");
+      expect(html).toContain("Seated Row");
+      expect(html).toContain('data-testid="quick-review-regenerate"');
+      expect(html).toContain('data-testid="quick-review-start"');
+      expect(html).toContain('data-testid="quick-review-back"');
+      expect(html).not.toContain('data-testid="quick-workout-generate"');
+      expect(html).toContain(`data-testid="remove-movement-${squat}"`);
+      expect(html).toContain(`data-testid="remove-movement-${row}"`);
+    });
+
+    it("drops removed movements and offers undo", () => {
+      const html = render([row]);
+      expect(html).toContain("Back Squat");
+      expect(html).not.toContain(`data-testid="remove-movement-${row}"`);
+      expect(html).toContain('data-testid="quick-review-undo"');
+    });
+
+    it("keeps the last movement", () => {
+      const html = render([row]);
+      expect(html).not.toContain(`data-testid="remove-movement-${squat}"`);
+    });
   });
 });

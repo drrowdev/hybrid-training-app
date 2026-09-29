@@ -126,6 +126,14 @@ try {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(() => document.fonts.ready);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${name}: horizontal overflow`);
+      if (width === 375) {
+        const small = await page.locator("main form").evaluateAll(forms => forms.flatMap(form =>
+          [...form.querySelectorAll("button, input:not([type=checkbox]), select, a, summary")].filter(element => {
+            const box = element.getBoundingClientRect();
+            return box.width > 0 && box.height > 0 && (box.width < 44 || box.height < 44);
+          }).map(element => element.getAttribute("aria-label") ?? element.textContent)));
+        assert.deepEqual(small, [], `${name}: controls need 44px targets`);
+      }
       strings[`${name}-${width}`] = await page.locator("main").innerText();
       if (directory) await page.screenshot({ path: path.join(directory, `builder-${name}-${width}.png`), fullPage: true });
     }

@@ -8,10 +8,10 @@ vi.mock("next/navigation", () => ({
 
 const noopStrength = async () => "00000000-0000-4000-8000-0000000000ff";
 const noopRepeat = async () => "00000000-0000-4000-8000-0000000000ff";
-const noopGenerate = async (_: { length: "short" | "normal" }) =>
-  "00000000-0000-4000-8000-0000000000fe";
-const noopHyrox = async (_: { length: "short" | "normal"; stations: string[] }) =>
-  "00000000-0000-4000-8000-0000000000fd";
+const noopGenerate = async () => {
+  throw new Error("not called");
+};
+const noopHyrox = noopGenerate;
 
 describe("QuickWorkoutCard", () => {
   it("renders the planned-day subtitle when variant is 'planned'", () => {
@@ -21,7 +21,9 @@ describe("QuickWorkoutCard", () => {
         recent={[]}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
+        previewStrength={noopGenerate}
         generateStrength={noopGenerate}
+        previewHyrox={noopHyrox}
         generateHyrox={noopHyrox}
         hyroxStationDefaults={[]}
       />,
@@ -38,15 +40,17 @@ describe("QuickWorkoutCard", () => {
         recent={[]}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
+        previewStrength={noopGenerate}
         generateStrength={noopGenerate}
+        previewHyrox={noopHyrox}
         generateHyrox={noopHyrox}
         hyroxStationDefaults={[]}
       />,
     );
     expect(html).toContain('data-variant="rest"');
     const planned = renderToStaticMarkup(<QuickWorkoutCard variant="planned" recent={[]}
-      startStrength={noopStrength} repeatRecent={noopRepeat} generateStrength={noopGenerate}
-      generateHyrox={noopHyrox} hyroxStationDefaults={[]} />);
+      startStrength={noopStrength} repeatRecent={noopRepeat} previewStrength={noopGenerate} generateStrength={noopGenerate}
+      previewHyrox={noopHyrox} generateHyrox={noopHyrox} hyroxStationDefaults={[]} />);
     expect(html.replace('data-variant="rest"', 'data-variant="planned"')).toBe(planned);
   });
 
@@ -57,7 +61,9 @@ describe("QuickWorkoutCard", () => {
         recent={[]}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
+        previewStrength={noopGenerate}
         generateStrength={noopGenerate}
+        previewHyrox={noopHyrox}
         generateHyrox={noopHyrox}
         hyroxStationDefaults={[]}
       />,
