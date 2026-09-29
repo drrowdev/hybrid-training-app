@@ -6055,3 +6055,30 @@ intact. The app fails closed before migration. The written down migration
 restores the prior function and refuses once resume history exists. SQL
 up/down/up and owner-boundary rehearsal plus a 375px end/resume browser case
 run only in disposable Linux CI. No merge or production operation is authorized.
+
+## [2026-09-29] decision | Per-week authored programs without a migration
+
+Authored definition v2 stores Build/Deload/Test weeks, movement ranges and
+per-week overrides in existing JSONB. The v1 reader upgrades in memory while
+retaining every legacy main lift's fixed prescription. Main lifts follow the
+week plan; accessory deloads remove one set unless overridden (DC-A1/DC-K4).
+Rehab remains linked to owned protocols (DC-R5/DC-R6).
+
+Percentage prescriptions retain their account-1RM basis, never a kg snapshot.
+The shared load resolver rounds authored loads to 2.5 kg after subtracting
+bodyweight for system-load movements. Settings continues to store a weighted
+pull-up's total-system 1RM. Account-max eligibility uses the existing percentage
+mechanism. Mixed circuits count total run/station pairs; circuits without runs
+count full station laps.
+
+The coordinator explicitly deferred the Test-week "Then" selector and its
+logged-set/fixed-increase actions: migration 0161 rejects derived suggestions
+from typed programs. A narrow authorized guard change is separate follow-up;
+this release introduces no migration or alternative 1RM writer. Existing
+future-only edits, revision checks and schedule consent remain authoritative.
+
+The single-page builder's document fixture is entered through the UI and
+checked against the real Today presentation for weeks 1, 4 and 6. Offline
+browser coverage runs automatically on Linux CI alongside existing regression
+acceptance. Screenshots at 375/1280 are reviewed before publication; native
+acceptance and database rehearsals run only in disposable CI, never locally.

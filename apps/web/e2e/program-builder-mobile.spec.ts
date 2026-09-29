@@ -279,10 +279,22 @@ function movement(catalog: Movement[], slug: string) {
 async function begin(page: Page, activity: string, name: string) {
   await page.goto(`/app/program/build?activity=${activity}`);
   await page.getByLabel("Program name", { exact: true }).fill(name);
-  await page.getByLabel("Weeks", { exact: true }).fill("2");
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Add workout", exact: true }).nth(weekday()).click();
-  await page.getByLabel("Workout name", { exact: true }).fill(`${name} workout`);
+  await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+  await page.getByRole("combobox", { name: /^Weeks/ }).selectOption("2");
+  await openBuilderDay(page, weekday());
+}
+const builderDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+async function openBuilderDay(page: Page, index: number) {
+  const day = page.getByRole("region", { name: builderDays[index]!, exact: true });
+  const toggle = day.getByRole("button").first();
+  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  return day;
+}
+async function openBuilderPart(page: Page, index = 0) {
+  const part = page.getByTestId("builder-exercise").nth(index);
+  const toggle = part.getByRole("button").first();
+  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  return part;
 }
 async function pick(scope: Page | Locator, selected: Movement) {
   await scope.getByLabel("Search library", { exact: true }).fill(selected.display_name);
@@ -290,30 +302,38 @@ async function pick(scope: Page | Locator, selected: Movement) {
 }
 async function lift(page: Page, selected: Movement) {
   await page.getByRole("button", { name: "Add exercise", exact: true }).click();
-  const part = page.locator("article").last();
+  await page.getByRole("button", { name: "Exercise", exact: true }).click();
+  const part = page.getByTestId("builder-exercise").last();
   await pick(part, selected);
   await part.getByLabel("Sets", { exact: true }).fill("1");
-  await part.getByLabel("Load (kg)", { exact: true }).fill("20");
-  await part.getByLabel("Rest (seconds)", { exact: true }).fill("0");
+  await part.getByLabel("Reps", { exact: true }).fill("5");
+  await part.getByLabel("Load", { exact: true }).fill("20 kg");
 }
-async function run(page: Page, selected: Movement, activity = "running") {
-  await page.getByRole("button", { name: activity === "running" ? "Add run" : "Add cardio", exact: true }).click();
-  const part = page.locator("article").last();
+async function run(page: Page, selected: Movement) {
+  await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+  await page.getByRole("button", { name: "Cardio", exact: true }).click();
+  const part = page.getByTestId("builder-exercise").last();
   await pick(part, selected);
-  await part.getByLabel("Seconds", { exact: true }).fill("60");
-  await part.getByLabel("Repeat sequence", { exact: true }).fill("2");
+  await part.getByLabel("Duration", { exact: true }).fill("2");
 }
 async function review(page: Page, timeout?: number) {
-  await page.getByRole("button", { name: "Review program", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeVisible({ timeout });
+  await page.getByRole("button", { name: /^(Save|Save changes)$/ }).first().click();
+  await expect(page.getByRole("button", { name: "Saving...", exact: true })).toHaveCount(0, { timeout });
+  await expect.poll(async () => /\/app\/plan\?block=/.test(page.url()) ||
+    await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).isVisible() ||
+    await page.getByRole("button", { name: /^(Save|Save changes)$/ }).nth(1).isVisible() ||
+    await page.getByRole("dialog").isVisible() || await page.getByRole("main").getByRole("alert").isVisible(),
+  { timeout }).toBe(true);
 }
 async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid", timeout?: number, replacement?: string) {
-  const submit = page.getByRole("button", { name: /^(Start program|Save changes)$/ });
-  await expect(submit).toBeVisible({ timeout });
-  expect(await submit.isEnabled(), "Program save is disabled; accept the required overlap or replacement consent before saving.").toBe(true);
-  await submit.click();
+  const confirmation = page.getByRole("dialog", { name: `Replace ${replacement}?`, exact: true });
+  if (!/\/app\/plan\?block=/.test(page.url()) && !(replacement && await confirmation.isVisible())) {
+    const submit = page.getByRole("button", { name: /^(Save|Save changes)$/ }).first();
+    await expect(submit).toBeVisible({ timeout });
+    expect(await submit.isEnabled(), "Program save is disabled; accept the required overlap or replacement consent before saving.").toBe(true);
+    await submit.click();
+  }
   if (replacement) {
-    const confirmation = page.getByRole("dialog", { name: `Replace ${replacement}?`, exact: true });
     await expect(confirmation).toBeVisible({ timeout });
     await confirmation.getByRole("button", { name: "Replace program", exact: true }).click();
   }
@@ -385,16 +405,17 @@ function clearNativeUiObservation() {
 
 async function draftPair(page: Page, catalog: Movement[], kind: "strength" | "running", name: string, offsets: [number, number]) {
   await begin(page, kind, name);
-  await page.getByRole("button", { name: "1. Setup", exact: true }).click();
-  await page.getByLabel("Weeks", { exact: true }).fill("1");
-  await page.getByRole("button", { name: "3. Workout", exact: true }).click();
-  await page.getByLabel("Workout name", { exact: true }).fill(`${name} A`);
-  await page.getByRole("combobox", { name: "Day", exact: true }).selectOption(String((weekday() + offsets[0]) % 7));
+  await page.getByRole("combobox", { name: /^Weeks/ }).selectOption("1");
+  const first = await openBuilderDay(page, (weekday() + offsets[0]) % 7);
   if (kind === "strength") await lift(page, movement(catalog, "bench-press-flat"));
   else await run(page, movement(catalog, "run-easy-z2"));
-  await page.getByRole("button", { name: "Copy workout", exact: true }).click();
+  await first.locator("summary").filter({ hasText: "Edit day" }).click();
+  await page.getByLabel("Workout name", { exact: true }).fill(`${name} A`);
+  await page.getByRole("button", { name: "Copy to…", exact: true }).click();
+  await first.getByRole("button", { name: builderDays[(weekday() + offsets[1]) % 7]!, exact: true }).click();
+  const second = await openBuilderDay(page, (weekday() + offsets[1]) % 7);
+  await second.locator("summary").filter({ hasText: "Edit day" }).click();
   await page.getByLabel("Workout name", { exact: true }).fill(`${name} B`);
-  await page.getByRole("combobox", { name: "Day", exact: true }).selectOption(String((weekday() + offsets[1]) % 7));
 }
 
 async function importOverlappingCourse(page: Page, actor: SupabaseClient) {
@@ -454,18 +475,20 @@ test.describe("Modular program builder", () => {
     const rows = await planned(actor);
     const original = rows[0]!.prescription;
     expect(original.items[0]).toMatchObject({ movementId: selected.id, durationMin: 2, meta: {
-      repeats: 2, intervals: [{ target: { kind: "time", seconds: 60 } }],
+      repeats: 1, intervals: [{ target: { kind: "time", seconds: 120 } }],
     } });
     await page.goto(`/app/program/build?edit=${rows[0]!.block_id}&workout=${rows[0]!.id}`);
-    await page.getByLabel("Repeat sequence", { exact: true }).fill("3");
+    await openBuilderPart(page);
+    await page.getByLabel("Duration", { exact: true }).fill("3");
     await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
-    await page.getByRole("button", { name: "Review changes", exact: true }).click();
+    await review(page);
     await save(page, actor, "running");
     const edited = await planned(actor);
     expect(edited.map((row) => row.id)).toEqual(rows.map((row) => row.id));
-    for (const row of edited) expect(row.prescription.items[0]).toMatchObject({ movementId: selected.id, durationMin: 3, meta: { repeats: 3 } });
+    for (const row of edited) expect(row.prescription.items[0]).toMatchObject({ movementId: selected.id, durationMin: 3, meta: { repeats: 1, intervals: [{ target: { kind: "time", seconds: 180 } }] } });
     await page.goto(`/app/program/build?edit=${rows[0]!.block_id}&workout=${rows[0]!.id}`);
-    await page.getByLabel("Repeat sequence", { exact: true }).fill("5");
+    await openBuilderPart(page);
+    await page.getByLabel("Duration", { exact: true }).fill("5");
     await page.getByRole("link", { name: "Cancel", exact: true }).click();
     expect((await planned(actor)).map((row) => row.prescription)).toEqual(edited.map((row) => row.prescription));
   });
@@ -475,18 +498,20 @@ test.describe("Modular program builder", () => {
     stage("m3-01");
     await begin(page, "hybrid", "Mixed acceptance");
     stage("m3-02");
-    await run(page, running, "hybrid");
+    await run(page, running);
     stage("m3-03");
-    await page.getByRole("button", { name: "Add circuit", exact: true }).click();
-    const circuit = page.locator("article").last();
+    await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+    await page.getByRole("button", { name: "Circuit", exact: true }).click();
+    const circuit = page.getByTestId("builder-exercise").last();
     stage("m3-04");
     await circuit.getByLabel("Rounds", { exact: true }).fill("2");
-    await circuit.getByLabel("Search library", { exact: true }).first().fill(first.display_name);
-    await circuit.getByRole("button", { name: first.display_name, exact: true }).first().click();
-    await circuit.getByLabel("Search library", { exact: true }).fill(second.display_name);
-    await circuit.getByRole("button", { name: second.display_name, exact: true }).click();
-    for (const input of await circuit.getByLabel("Load (kg)", { exact: true }).all()) await input.fill("20");
-    for (const input of await circuit.getByLabel("Rest (seconds)", { exact: true }).all()) await input.fill("0");
+    for (const [index, selected] of [first, second].entries()) {
+      const station = circuit.locator("details").nth(index);
+      await station.locator("summary").click();
+      await pick(station, selected);
+      await station.getByLabel("Load", { exact: true }).fill("20 kg");
+      await station.locator("summary").click();
+    }
     stage("m3-05");
     await review(page);
     stage("m3-06");
@@ -614,15 +639,25 @@ test.describe("Modular program builder", () => {
 
   test("M5 DC-K4: stale schedule review and retried saves preserve one accepted program", async ({ page, actor, catalog, freshUser }) => {
     await begin(page, "strength", "Freshness acceptance");
-    await lift(page, movement(catalog, "bench-press-flat")); await review(page);
-    const other = await actor.from("sessions").insert({ user_id: freshUser.userId, title: "Synthetic other work",
-      performed_at: `${addDaysToYmd(today(), 1)}T12:00:00Z` });
-    expect(other.error).toBeNull();
-    await page.getByRole("button", { name: "Start program", exact: true }).click();
+    await lift(page, movement(catalog, "bench-press-flat"));
+    let changedAfterPreview = false;
+    await page.route("**/app/program/build?**", async (route) => {
+      if (changedAfterPreview || route.request().method() !== "POST" || !route.request().headers()["next-action"]) {
+        await route.continue(); return;
+      }
+      const response = await route.fetch();
+      changedAfterPreview = true;
+      const other = await actor.from("sessions").insert({ user_id: freshUser.userId, title: "Synthetic other work",
+        performed_at: `${addDaysToYmd(today(), 1)}T12:00:00Z` });
+      expect(other.error).toBeNull();
+      await route.fulfill({ response });
+    });
+    await review(page);
     await expect(page.getByRole("main").getByRole("alert")).toContainText("changed");
+    expect(changedAfterPreview).toBe(true);
     expect((await actor.from("training_blocks").select("id")).data).toHaveLength(0);
-    await page.getByRole("button", { name: "Back", exact: true }).click(); await review(page);
-    const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"]);
+    await page.unroute("**/app/program/build?**");
+    const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"] && !!request.postData()?.includes('"requestId"'));
     await save(page, actor, "strength");
     const request = await posted, rows = await planned(actor);
     const replay = await page.request.post(request.url(), { headers: request.headers(), data: request.postDataBuffer()! });
@@ -634,19 +669,20 @@ test.describe("Modular program builder", () => {
     try {
       const editUrl = `/app/program/build?edit=${rows[0]!.block_id}&workout=${rows[0]!.id}`;
       await page.goto(editUrl); await otherTab.goto(editUrl);
+      await openBuilderPart(page); await openBuilderPart(otherTab);
       await page.getByLabel("Reps", { exact: true }).fill("8");
       await otherTab.getByLabel("Reps", { exact: true }).fill("12");
-      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      await review(page);
       await save(page, actor, "strength");
-      await otherTab.getByRole("button", { name: "Review changes", exact: true }).click();
-      await expect(otherTab.getByRole("alert")).toBeVisible();
+      await review(otherTab);
+      await expect(otherTab.getByRole("main").getByRole("alert")).toBeVisible();
       await expect(otherTab.getByLabel("Reps", { exact: true })).toHaveValue("12");
       expect((await planned(actor)).find((row) => row.id === rows[0]!.id)?.prescription.items[0]?.reps).toBe(8);
       await otherTab.getByRole("button", { name: "Reload current version", exact: true }).click();
       await expect(otherTab.getByRole("region", { name: "Current program" })).toBeVisible();
       await otherTab.screenshot({ path: test.info().outputPath("prescription-conflict.png"), fullPage: true });
       await otherTab.getByRole("button", { name: "Reapply my changes", exact: true }).click();
-      await otherTab.getByRole("button", { name: "Review changes", exact: true }).click();
+      await review(otherTab);
       await save(otherTab, actor, "strength");
       expect((await planned(actor)).find((row) => row.id === rows[0]!.id)?.prescription.items[0]?.reps).toBe(12);
     } finally { await otherTab.close(); }
@@ -881,7 +917,7 @@ test.describe("Modular program builder", () => {
       expect(older.error).toBeNull();
       expect(older.data).toEqual({ id: legacy.blockId, program_kind: null, status: "active" });
       stage("m8-02"); await draftPair(page, catalog, "strength", "Strength week", [0, 3]);
-      await page.getByRole("button", { name: "Review program", exact: true }).click();
+      await review(page);
       await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
       await expect(page.getByLabel("Workout name", { exact: true })).toHaveValue("Strength week B");
       expect((await actor.from("training_blocks").select("id").not("program_kind", "is", null)).data).toEqual([]);
@@ -922,7 +958,7 @@ test.describe("Modular program builder", () => {
       await expect(overlap.locator("../..").locator("time")).toHaveText([today()]);
       await expect(overlap.locator("../..").locator("span")).toHaveText(["Older strength workout"]);
       await expect(overlap).not.toBeChecked();
-      await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toBeDisabled();
       await overlap.check();
       const strengthId = await save(page, actor, "strength", test.info().timeout);
       stage("m8-08");
@@ -1026,7 +1062,7 @@ test.describe("Modular program builder", () => {
       };
       const beforeSwim = await swimSnapshot();
       await begin(page, "hybrid", "Fourth hybrid");
-      await run(page, movement(catalog, "run-easy-z2"), "hybrid");
+      await run(page, movement(catalog, "run-easy-z2"));
       await lift(page, movement(catalog, "bench-press-flat"));
       await review(page);
       await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
@@ -1036,8 +1072,9 @@ test.describe("Modular program builder", () => {
       const hybridRows = (await planned(actor)).filter((row) => row.block_id === hybridId);
       const runRow = original.find((row) => row.block_id === running.block_id)!;
       await page.goto(`/app/program/build?edit=${running.block_id}&workout=${runRow.id}`);
+      await openBuilderPart(page);
       await page.getByLabel("Seconds", { exact: true }).fill("90");
-      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      await review(page);
       await save(page, actor, "running");
       const afterEdit = await planned(actor);
       expect(afterEdit.find((row) => row.id === runRow.id)?.prescription.items[0]).toMatchObject({
@@ -1048,9 +1085,9 @@ test.describe("Modular program builder", () => {
       await begin(page, "strength", "Replacement strength");
       await lift(page, movement(catalog, "bench-press-flat"));
       await review(page);
-      await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toBeDisabled();
       await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
-      await page.getByRole("button", { name: "Start program", exact: true }).click();
+      await page.getByRole("button", { name: "Save", exact: true }).first().click();
       const replacement = page.getByRole("dialog", { name: "Replace Native strength?", exact: true });
       await expect(replacement).toBeVisible();
       await expect(page.getByRole("dialog", { name: /Replace (Native running|Fourth hybrid|Swimming)/ })).toHaveCount(0);
@@ -1424,15 +1461,19 @@ test.describe("Modular program builder", () => {
       const editRunning = `/app/program/build?edit=${graphs[1]!.block_id}&workout=${runRow.id}`;
       stage("m13-03"); await page.goto(editRunning);
       await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
-      await page.getByRole("button", { name: "Add rehab", exact: true }).click();
-      await page.getByRole("combobox", { name: "Rehab protocol", exact: true }).selectOption(protocolId);
-      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+      await page.getByRole("button", { name: "Rehab", exact: true }).click();
+      await page.getByRole("combobox", { name: /^Protocol/ }).selectOption(protocolId);
+      await review(page);
       await expect(page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true })).toHaveCount(0);
       await save(page, actor, "running", test.info().timeout);
       stage("m13-04"); await page.goto(editRunning);
       await page.reload();
-      await expect(page.getByRole("combobox", { name: "Rehab protocol", exact: true })).toHaveValue(protocolId);
-      await expect(page.getByRole("button", { name: "Add exercise", exact: true })).toHaveCount(0);
+      await openBuilderPart(page, 1);
+      await expect(page.getByRole("combobox", { name: /^Protocol/ })).toHaveValue(protocolId);
+      await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Exercise", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Circuit", exact: true })).toHaveCount(0);
       const original = await planned(actor);
       const bindings = await actor.from("program_rehab_bindings").select("program_instance_id,rehab_protocol_id")
         .eq("user_id", freshUser.userId);

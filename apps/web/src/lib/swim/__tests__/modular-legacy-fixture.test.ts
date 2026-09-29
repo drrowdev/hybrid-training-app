@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { authoredProgramDates } from "@hta/domain";
+import { authoredProgramDates, compileAuthoredWorkout } from "@hta/domain";
 import { authoredProgramSchema } from "../../programs/authored/schema";
 import {
   createLegacyUpgradeProof, createModularLegacyPreparation, legacyProgramInput,
@@ -143,12 +143,16 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
   it.each([21, 22, 23, 24, 25, 26, 27])("uses real authored compilation and calendar placement on September %i", (day) => {
     const today = `2026-09-${day}`;
     const input = legacyProgramInput(movement, today);
-    const definition = authoredProgramSchema.parse(input.p_program_instance.instance);
-    const dated = authoredProgramDates(definition, input.p_block.started_on);
+    const legacyDefinition = input.p_program_instance.instance;
+    const definition = authoredProgramSchema.parse(legacyDefinition);
+    const dated = authoredProgramDates(legacyDefinition, input.p_block.started_on);
+    expect(legacyDefinition.version).toBe(1);
+    expect(definition.version).toBe(2);
+    expect(authoredProgramSchema.parse(input.p_program_instance.setup_input.definition)).toEqual(definition);
     expect(input.p_block).not.toHaveProperty("program_kind");
     expect(input.p_block).toMatchObject({ program_id: "authored", days_per_week: 2 });
     expect(input.p_program_instance).toMatchObject({ program_id: "authored",
-      setup_input: { definition, startedOn: input.p_block.started_on } });
+      setup_input: { definition: legacyDefinition, startedOn: input.p_block.started_on } });
     expect(input.p_planned_sessions).toHaveLength(2);
     expect(new Set(input.p_planned_sessions.map((row) => `${row.week_index}:${row.day_index}`)).size).toBe(2);
     expect(input.p_block.weeks).toBe(Math.max(...dated.map((row) => row.weekIndex)) + 1);
@@ -158,6 +162,18 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
       expect(row).toMatchObject({ week_index: dated[index]!.weekIndex, day_index: dated[index]!.dayIndex,
         prescription: { programRef: dated[index]!.ref, meta: { authoredWorkout: dated[index]!.workout },
           items: [{ movementId: id, movementName: movement.displayName, reps: 5, targetWeightKg: 20 }] } });
+      const upgraded = definition.workouts.find((workout) => workout.id === dated[index]!.workout.id)!;
+      expect(upgraded).toMatchObject({
+        id: dated[index]!.workout.id, name: dated[index]!.workout.name, weekday: dated[index]!.workout.weekday,
+        parts: [{ id: dated[index]!.workout.parts[0]!.id, kind: "movement", movement: {
+          movementId: id, role: "main", sets: "1", dose: { kind: "reps", reps: 5 },
+          load: { kind: "kg", value: 20 },
+          overrides: { "0": { sets: "1", reps: "5", load: { kind: "kg", value: 20 } } },
+        } }],
+      });
+      const compiled = compileAuthoredWorkout(upgraded, [movement], undefined, definition.weeks[0], 0);
+      expect(compiled.items).toHaveLength(row.prescription.items.length);
+      expect(compiled.items).toMatchObject([{ movementId: id, movementName: movement.displayName, reps: 5, targetWeightKg: 20 }]);
       expect(dated[index]!.date < today).toBe(true);
     }
   });

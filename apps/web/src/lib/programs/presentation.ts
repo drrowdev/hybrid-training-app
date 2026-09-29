@@ -1,6 +1,6 @@
-export function formatProgramDate(date: string): string {
-  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
-    .format(new Date(`${date}T00:00:00Z`));
+export function formatProgramDate(date: string, includeWeekday = false): string {
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC", ...(includeWeekday ? { weekday: "short" } as const : {}) })
+    .format(new Date(`${date}T00:00:00Z`)).replace(",", "");
 }
 
 export function programWorkoutTitle(title: string, template: boolean): string {

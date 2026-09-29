@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium, expect } from "@playwright/test";
@@ -8,11 +9,15 @@ import { chromium, expect } from "@playwright/test";
 // Reuse Vitest's locked compiler; no app server, environment files or HTTP backend.
 const require = createRequire(import.meta.url);
 const viteRequire = createRequire(createRequire(require.resolve("vitest/package.json")).resolve("vite"));
-const { build } = viteRequire("esbuild");
+const { build, transform } = viteRequire("esbuild");
 const root = fileURLToPath(new URL("..", import.meta.url));
 const stages = [];
 let browser, stage = "bundle", status = "failed", code = "unexpected";
 try {
+  const builderSpec = await readFile(path.join(root, "e2e/program-builder-mobile.spec.ts"), "utf8");
+  const reviewSource = builderSpec.slice(builderSpec.indexOf("async function review("), builderSpec.indexOf("async function save("));
+  const reviewCode = await transform(reviewSource, { loader: "ts", target: "es2022" });
+  const reviewProgram = runInNewContext(`${reviewCode.code}\nreview;`, { expect });
   const output = await build({
     stdin: {
       contents: `
@@ -336,7 +341,8 @@ try {
         window.previewProgram = async input => {
           window.programCalls.push({ action: "preview", input });
           return { ok: true, preview: { id: "synthetic-review", revision: "a".repeat(32),
-            dates: [{ date: "2026-09-14", title: "Run", itemCount: 1 }], overlaps: [], plannedRest: [],
+            dates: [{ date: "2026-09-14", title: "Run", itemCount: 1 }], overlaps: [],
+            plannedRest: window.programMode === "rest" ? [{ date: "2026-09-14" }] : [],
             replaces: window.replaceProgram ? "10K base" : null, replacesBlockId: window.replaceProgram ? "replaced-running" : null, preserved: 0 } };
         };
         window.saveProgram = async (...args) => {
@@ -1366,30 +1372,38 @@ try {
 
     stage = `authored-scoped-edit-${width}`;
     await page.setViewportSize({ width, height: 900 });
-    await page.evaluate(() => { window.programCalls = []; window.programMode = "success"; window.showProgramEdit(); });
+    await page.evaluate(() => { window.programCalls = []; window.programMode = "stale"; window.showProgramEdit(); });
+    await page.getByTestId("builder-exercise").first().getByRole("button").first().click();
     await page.getByLabel("Repeat sequence", { exact: true }).fill("3");
     await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
-    await page.getByRole("button", { name: "Review changes", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
-    const previewInput = await page.evaluate(() => window.programCalls[0].input);
-    assert.equal(previewInput.scope, "future");
-    assert.equal(previewInput.definition.workouts[0].parts[0].repeats, 3);
     await page.evaluate(() => {
       window.programMode = "stale";
       const announcer = document.createElement("next-route-announcer");
       announcer.attachShadow({ mode: "open" }).innerHTML = '<div role="alert" aria-live="assertive">Running fixture</div>';
       document.body.append(announcer);
     });
-    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await reviewProgram(page);
     await expect(page.getByRole("alert")).toHaveCount(2);
+    const previewInput = await page.evaluate(() => window.programCalls[0].input);
+    assert.equal(previewInput.scope, "future");
+    assert.equal(previewInput.definition.workouts[0].parts[0].repeats, 3);
     await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
     await page.evaluate(() => document.querySelector("next-route-announcer").remove());
-    await page.getByRole("button", { name: "Back", exact: true }).click();
     await expect(page.getByLabel("Repeat sequence", { exact: true })).toHaveValue("3");
     assert.equal(await page.getByRole("combobox", { name: "Apply changes to", exact: true }).inputValue(), "future");
     assert.equal(await page.getByRole("link", { name: "Cancel", exact: true }).getAttribute("href"),
       "/app/plan?block=00000000-0000-4000-8000-000000000004");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    stages.push(stage);
+
+    stage = `authored-rest-date-review-${width}`;
+    await page.evaluate(() => { window.programCalls = []; window.programMode = "rest"; window.showProgramEdit(); });
+    await reviewProgram(page);
+    assert.deepEqual(await page.evaluate(() => window.programCalls.map(call => call.action)), ["preview"]);
+    const reviewedSave = page.getByRole("button", { name: /^(Save|Save changes)$/ });
+    await expect(reviewedSave).toHaveCount(2);
+    await reviewedSave.last().click();
+    await expect.poll(() => page.evaluate(() => window.programCalls.filter(call => call.action === "save").length)).toBe(1);
     stages.push(stage);
 
     stage = `explicit-recording-match-${width}`;
@@ -1746,19 +1760,17 @@ try {
     await expect(swimHistory.getByRole("link")).toHaveCount(3);
     await screenshot(`combined-history-${width}`);
     await page.evaluate(() => { window.programCalls = []; window.programMode = "success"; window.showProgramEdit(true); });
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
-    await page.getByRole("button", { name: "1. Setup", exact: true }).click();
-    await expect(page.getByLabel("Weeks", { exact: true })).toHaveValue("2");
-    await page.getByRole("button", { name: "3. Workout", exact: true }).click();
+    await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+    await expect(page.getByRole("combobox", { name: /^Weeks/ })).toHaveValue("2");
+    await page.locator("summary").filter({ hasText: "Edit day" }).click();
     await expect(page.getByLabel("Workout name", { exact: true })).toHaveValue("Run");
-    await page.getByRole("button", { name: "Review program", exact: true }).click();
-    await page.getByRole("button", { name: "Start program", exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(dialog).toBeVisible();
     await checkTextContrast(dialog, `replace-confirm-${width}`);
     await screenshot(`replace-confirm-${width}`);
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(await page.evaluate(() => window.programCalls.filter(call => call.action === "save").length), 0);
-    await page.getByRole("button", { name: "Start program", exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await page.evaluate(() => { window.programMode = "stale"; });
     await dialog.getByRole("button", { name: "Replace program", exact: true }).click();
     await expect(dialog.getByRole("alert")).toBeVisible();

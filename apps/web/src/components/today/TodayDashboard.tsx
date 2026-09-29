@@ -4,7 +4,7 @@ import type { PrescriptionItem } from "@hta/db";
 import type { SwimWorkoutView } from "@/lib/swim/view-types";
 import { addDaysToYmd, mondayOfYmd } from "@/lib/dates";
 import { WorkoutOptions, type WorkoutOptionsInput } from "./WorkoutOptions";
-import { SwimExercises, WorkoutExercises } from "./WorkoutExercises";
+import { SwimExercises, WorkoutExercises, type WorkoutLoadContext } from "./WorkoutExercises";
 import { ThisWeekRail, type ThisWeekRailProps } from "@/components/plan/ThisWeekRail";
 import styles from "./Today.module.css";
 
@@ -27,6 +27,7 @@ export type TodayWorkout = {
   state: string;
   note?: string;
   items?: PrescriptionItem[];
+  loadContext?: WorkoutLoadContext;
   swimSteps?: SwimWorkoutView["steps"];
   options?: WorkoutOptionsInput;
 };
@@ -81,7 +82,7 @@ function WorkoutCard({ workout, expanded, multiple, pinned }: {
     </div>}
     {workout.note && <p className={styles.note} role="note"><WarningIcon /><span>{workout.note}</span></p>}
     {expanded && <>
-      {workout.items && <WorkoutExercises items={workout.items} />}
+      {workout.items && <WorkoutExercises items={workout.items} loadContext={workout.loadContext} />}
       {workout.swimSteps && <SwimExercises steps={workout.swimSteps} />}
       <div className={`${styles.actions} ${pinned ? styles.pinned : ""}`}>
         <Link href={workout.href} className="cp-btn primary" data-testid="today-cta" data-session-state={workout.state}>{workout.action}</Link>

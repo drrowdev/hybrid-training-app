@@ -133,6 +133,18 @@ describe("Today presentation", () => {
     expect(html).toContain('aria-label="1 set of 5 reps, 80% TM"');
     expect(renderToStaticMarkup(<WorkoutExercises items={items} />)).toContain('aria-label="3 sets of 5 reps"');
   });
+  it("DC-A1 keeps live authored loads alongside quick-workout removal controls", () => {
+    const items = [{ movementId: "bench", movementSlug: "bench-press-flat", movementName: "Bench press",
+      kind: "main" as const, sets: 3, reps: 5, percentTm: 75, intensityLabel: "75% 1RM",
+      meta: { authoredLoadRoundingKg: 2.5, programLoadBasis: { version: 1, kind: "one-rm", percent: 100, roundingKg: null } } }];
+    const loadContext = { oneRmByMovementId: { bench: 102.5 } };
+    const summary = renderToStaticMarkup(<WorkoutExercises items={items} loadContext={loadContext} onRemove={() => {}} />);
+    expect(summary).toContain("77.5 kg");
+    expect(summary).toContain('aria-label="Remove Bench press"');
+    const detailed = renderToStaticMarkup(<WorkoutExercises items={items} loadContext={loadContext} onRemove={() => {}} detailed />);
+    expect(detailed).toContain("77.5 kg");
+    expect(detailed).not.toContain('aria-label="Remove Bench press"');
+  });
   it("keeps every rehab variant and its cue, alongside labelled supersets", () => {
     const circuit = { id: "pair", name: "Superset", size: 2, rounds: 3, position: 0 };
     const html = renderToStaticMarkup(<WorkoutExercises items={[

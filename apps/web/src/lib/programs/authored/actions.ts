@@ -90,6 +90,10 @@ async function prepare(raw: AuthoredSaveInput) {
   const catalog: AuthoredCatalogMovement[] = catalogRows.map((row) => ({
     id: row.id, slug: row.slug, displayName: row.display_name, pattern: row.pattern, modality: modality(row.metadata?.modality),
   }));
+  if (input.definition.activity === "strength" && input.definition.workouts.some((workout) => workout.parts.some((part) =>
+    part.kind === "circuit" && part.movements.some((movement) => catalog.find((entry) => entry.id === movement.movementId)?.pattern === "cardio")))) {
+    throw new Error("Choose Hybrid to include cardio in this program.");
+  }
   const limits = deriveLimitationsContext(limitationsResult.data ?? []);
   for (const row of catalogResult.data ?? []) {
     assertCatalogMovementAllowed(toCatalogMovement(row as DbMovement), limits);
@@ -120,8 +124,9 @@ async function prepare(raw: AuthoredSaveInput) {
   if (input.editBlockId && input.startedOn !== active?.started_on) throw new Error("Keep the original start date when editing a program.");
   if (!input.editBlockId && input.startedOn < today) throw new Error("Choose today or a future start date.");
   const dated = authoredProgramDates(input.definition, input.startedOn);
-  const rows = dated.map(({ date, workout, weekIndex, dayIndex, ref }) => {
-    const prescription: Prescription = { ...compileAuthoredWorkout(workout, catalog, compileRehab), programRef: ref };
+  const rows = dated.map(({ date, workout, weekIndex, dayIndex, ref, authoredWeekIndex }) => {
+    const compiled = compileAuthoredWorkout(workout, catalog, compileRehab, input.definition.weeks[authoredWeekIndex], authoredWeekIndex);
+    const prescription: Prescription = { ...compiled, meta: { ...compiled.meta, authoredVersion: 2, authoredWeekIndex }, programRef: ref };
     if (prescription.items.length > 500) throw new Error("Keep each workout to 500 sets and cardio parts or fewer.");
     return {
       date, workoutId: workout.id, ref,
@@ -157,18 +162,18 @@ async function prepare(raw: AuthoredSaveInput) {
     const eligible = input.scope === "workout" ? [selected] : existing.filter((row) =>
       row.prescription.programRef?.startsWith(`authored:${workout.id}:`) && dateOf(row) >= dateOf(selected) &&
       !row.completed_session_id && !row.skipped_at);
-    const compiled = compileAuthoredWorkout(workout, catalog, compileRehab);
-    if (compiled.items.length > 500) throw new Error("Keep each workout to 500 sets and cardio parts or fewer.");
-    scoped = {
-      updates: eligible.map((row) => ({ id: row.id, title: workout.name, ...workoutClassification(compiled), prescription: {
+    const updates = eligible.map((row) => {
+      const compiled = rows.find((candidate) => candidate.ref === row.prescription.programRef)?.prescription;
+      if (!compiled) throw new Error("This workout is no longer in the program. Reload before editing.");
+      return { id: row.id, title: workout.name, ...workoutClassification(compiled), prescription: {
         ...row.prescription, ...compiled, programRef: row.prescription.programRef,
         meta: { ...row.prescription.meta, ...compiled.meta },
-      } })),
-      definition: input.scope === "future" ? input.definition : null,
-    };
+      } };
+    });
+    scoped = { updates, definition: input.scope === "future" ? input.definition : null };
     const preview: AuthoredPreview = {
       id: scheduleInputHash({ input, scoped, revision: snapshot.revision }), revision: snapshot.revision,
-      dates: eligible.map((row) => ({ date: dateOf(row), title: workout.name, itemCount: compiled.items.length })),
+      dates: eligible.map((row, index) => ({ date: dateOf(row), title: workout.name, itemCount: updates[index]!.prescription.items.length })),
       overlaps: [], plannedRest: [], replaces: null, replacesBlockId: null, preserved: existing.length - eligible.length,
     };
     return { input, user, client, preview, rows, weeks, existing, rewrite: null, scoped };

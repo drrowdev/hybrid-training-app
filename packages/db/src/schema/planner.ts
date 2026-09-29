@@ -472,6 +472,8 @@ export type Prescription = {
   meta?: {
     editRevision?: string;
     authoredWorkout?: AuthoredWorkout;
+    authoredVersion?: 2;
+    authoredWeekIndex?: number;
     swimRehab?: {
       version: 1;
       planId: string;
