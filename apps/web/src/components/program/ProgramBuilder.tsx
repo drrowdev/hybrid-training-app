@@ -390,7 +390,7 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
       <Field label="Reps"><input className={styles.input} value={week.reps} onChange={(event) => updateWeek({ reps: event.target.value })} /></Field>
       <Field label="% 1RM"><input className={styles.input} type="number" min={1} max={100} step="0.5" value={week.pct} onChange={(event) => updateWeek({ pct: Number(event.target.value) })} /></Field>
       {week.type === "Test" && <>
-        <Field label="Then"><select className={styles.select} value={week.after ?? "keep"} onChange={(event) => {
+        <Field label="Then"><select className={`${styles.select} ${styles.thenSelect}`} value={week.after ?? "keep"} onChange={(event) => {
           const after = event.target.value as NonNullable<AuthoredWeek["after"]>;
           const { stepKg: _stepKg, ...rest } = week;
           update({ ...definition, weeks: definition.weeks.map((entry, index) => index === weekIndex

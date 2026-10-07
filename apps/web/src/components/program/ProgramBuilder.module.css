@@ -24,6 +24,7 @@
 .weekEditor { margin-top: 10px; padding: 14px; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface); }
 .weekEditor h3 { flex-basis: 100%; margin: 0; font-size: 15px; font-weight: 600; }
 .weekEditor > .field { width: 76px; }
+.weekEditor > .field:has(.thenSelect) { width: auto; flex: 1 1 220px; }
 .segment { display: inline-flex; border: 1px solid var(--cp-border-strong); border-radius: 10px; overflow: hidden; max-width: 100%; }
 .segment button { min-height: 44px; border: 0; padding: 8px 12px; background: transparent; color: var(--cp-text-soft); font-size: 14px; }
 .segment button + button { border-left: 1px solid var(--cp-border-strong); }
