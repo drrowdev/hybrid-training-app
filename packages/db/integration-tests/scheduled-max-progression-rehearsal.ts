@@ -193,7 +193,7 @@ export async function rehearseScheduledMaxProgression(database: postgres.Sql, st
     assert.equal(await maxOf(), 102.5);
     assert.equal(await decisions([authoredPending], true), 1);
     assert.equal(await maxOf(), 105);
-    await assert.rejects(decisions([authoredPending], true));
+    assert.equal(await decisions([authoredPending], true), 0);
     assert.equal(await maxOf(), 105);
     return ["0165-authored-test-up-down-up-owner-isolation-and-replay", "0161-up-down-up-and-unchanged-RLS", "0161-DC-R6-concurrent-generation-and-absolute-max-exclusion",
       "0161-single-accept-decline-replay-and-21-day-clock", "0161-atomic-bulk-decline-and-bulk-accept", "0161-stale-max-and-atomic-preference",
