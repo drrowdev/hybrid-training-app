@@ -21,6 +21,18 @@ export type MovementInstructionSeed = {
 };
 
 export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
+  {
+    slug: "band-triceps-pressdown",
+    summary: "Standing triceps pressdown with a resistance band.",
+    setup: "Secure an undamaged band to a sturdy overhead anchor. Hold the ends with elbows bent and tucked beside your ribs.",
+    steps: [
+      "Stand tall with soft knees and the band lightly tensioned.",
+      "Keep your upper arms still and straighten your elbows to press the band down.",
+      "Pause, then bend your elbows slowly to return.",
+    ],
+    cues: ["Keep your shoulders relaxed.", "Use a pain-free range without snapping your elbows straight."],
+    commonMistakes: ["Leaning over the band or swinging your upper arms to move it."],
+  },
   // ── Calibration batch (tone + length reference) ──────────────────────────
   {
     slug: "spanish-squat",

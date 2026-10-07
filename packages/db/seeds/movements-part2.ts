@@ -71,7 +71,7 @@ const BICEPS: NewMovement[] = [
   biceps("concentration-curl", "Concentration Curl", { equipment: "dumbbell", bilateral: false, stability: "supported" }),
 ];
 
-// ─── triceps (12) ───
+// ─── triceps (13) ───
 const triceps = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "isolation",
@@ -84,6 +84,7 @@ const triceps = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =
   });
 
 const TRICEPS: NewMovement[] = [
+  triceps("band-triceps-pressdown", "Band Triceps Pressdown", { equipment: "band" }),
   triceps("pushdown-rope", "Tricep Pushdown (rope)", { equipment: "cable-rope" }),
   triceps("pushdown-bar", "Tricep Pushdown (bar)", { equipment: "cable-bar" }),
   triceps("pushdown-v-handle", "Tricep Pushdown (V-handle)", { equipment: "cable-v" }),

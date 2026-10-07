@@ -12,7 +12,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const names = [
   ["Bench press", "bench-press-flat"], ["Weighted pull-up", "weighted-pull-up"],
   ["Seated overhead press", "overhead-press-seated"], ["Chest-supported DB row", "chest-supported-db-row"],
-  ["Hammer curl", "hammer-curl"], ["Band triceps pressdown", "band-triceps-pressdown"],
+  ["Hammer curl", "hammer-curl"], ["Band Triceps Pressdown", "band-triceps-pressdown"],
   ["Wrist curl", "wrist-curl"], ["Reverse wrist curl", "reverse-wrist-curl"],
   ["Elevated Cossack squat", "elevated-cossack-squat"], ["SkiErg", "ski-erg", "ski"],
   ["Sled push", "sled-push"], ["Sled pull", "sled-pull"], ["Row", "row", "row"],
@@ -39,8 +39,15 @@ const output = await build({
     import { TodayDashboard } from "./src/components/today/TodayDashboard";
     import { authoredProgramSchema } from "./src/lib/programs/authored/schema";
     import { compileAuthoredWorkout } from "@hta/domain";
+    import { SEED_MOVEMENTS } from "../../packages/db/seeds/movements";
+    import { MovementFocusView } from "./src/components/session/MovementFocusView";
+    import { isBodyweightCapableEquipment } from "./src/lib/sessions/bodyweight-equipment";
     import "./src/app/globals.css";
-    const catalog = ${JSON.stringify(catalog)}, protocols = ${JSON.stringify(protocols)};
+    const band = SEED_MOVEMENTS.find(m => m.slug === "band-triceps-pressdown");
+    if (!band) throw new Error("Band pressdown missing from shared catalog");
+    const catalog = ${JSON.stringify(catalog)}.map(m => m.slug === band.slug
+      ? { ...m, displayName: band.displayName, pattern: band.pattern, equipment: band.equipment } : m);
+    const protocols = ${JSON.stringify(protocols)};
     const root = createRoot(document.getElementById("root"));
     let key = 0;
     window.maxes = { [catalog[0].id]: 100, [catalog[1].id]: 132, [catalog[2].id]: 60, [catalog[16].id]: 100 };
@@ -78,6 +85,20 @@ const output = await build({
       </main>);
     };
     window.showBuilder();
+    window.showBandLogger = () => {
+      const movement = catalog.find(m => m.slug === band.slug);
+      const items = window.compiled(0, 0).filter(item => item.movementId === movement.id);
+      const group = { movementId: movement.id, movementName: movement.displayName,
+        movementSlug: movement.slug, items, itemIndices: items.map((_, i) => i),
+        slotBuckets: { warmup: [], working: [], accessory: items.map((_, i) => i) } };
+      root.render(<main style={{maxWidth:600, margin:"0 auto", padding:20}}>
+        <MovementFocusView sessionId="${id(98)}" group={group} tmKg={undefined} oneRmKg={undefined}
+          loggedItemIndices={new Set()} loggedSetIdByItemIndex={{}} loggedSets={[]} priorBest={undefined}
+          addStrengthSet={async fd => { window.bandSet = Object.fromEntries(fd); return { ok: true }; }}
+          hapticsEnabled={false} timerSoundEnabled={false} restTimerEnabled={false}
+          equipmentTag={movement.equipment} bodyweightCapable={isBodyweightCapableEquipment(movement.equipment)} />
+      </main>);
+    };
   `, loader: "tsx", resolveDir: root },
   bundle: true, write: false, outdir: "in-memory-builder-ui", format: "iife", platform: "browser",
   jsx: "automatic", logLevel: "warning", conditions: ["style"],
@@ -85,7 +106,7 @@ const output = await build({
   plugins: [{
     name: "isolated-actions",
     setup(build) {
-      build.onResolve({ filter: /^(?:@\/lib\/(?:programs\/authored\/actions|planner\/actions|swim\/actions)|@\/components\/plan\/ThisWeekRail|next\/(?:navigation|link))$/ },
+      build.onResolve({ filter: /^(?:@\/lib\/(?:programs\/authored\/actions|planner\/actions|swim\/actions|sessions\/actions)|@\/components\/plan\/ThisWeekRail|next\/(?:navigation|link))$/ },
         args => ({ path: args.path, namespace: "fixture" }));
       build.onLoad({ filter: /.*/, namespace: "fixture" }, args => ({
         contents: args.path === "next/navigation"
@@ -96,6 +117,8 @@ const output = await build({
           ? "export function ThisWeekRail() { throw new Error('Unexpected schedule drawer'); }"
           : args.path === "@/lib/programs/authored/actions"
           ? "export const previewAuthoredProgram = input => window.preview(input); export const saveAuthoredProgram = input => window.save(input); export const reloadAuthoredProgram = () => { throw new Error('Unexpected reload'); };"
+          : args.path === "@/lib/sessions/actions"
+          ? "export const deleteSet = () => { throw new Error('Unexpected delete'); };"
           : "const unexpected = () => { throw new Error('Unexpected mutation'); }; export const movePlannedSession = unexpected, previewPlannedMove = unexpected, skipPlannedSession = unexpected, applySwimDateEdit = unexpected, previewSwimDateEdit = unexpected, skipSwimWorkout = unexpected;",
         loader: "js", resolveDir: root,
       }));
@@ -217,7 +240,7 @@ try {
   for (const spec of [
     ["Bench press", "", "", "", true], ["Weighted pull-up", "", "", "", true],
     ["Seated overhead press", "2–3", "6–10", "RIR 2–3"], ["Chest-supported DB row", "3", "8–12", "RIR 2"],
-    ["Hammer curl", "2", "8–15", "RIR 1–3"], ["Band triceps pressdown", "2", "10–20"],
+    ["Hammer curl", "2", "8–15", "RIR 1–3"], ["Band Triceps Pressdown", "2", "10–20", "RIR 2"],
     ["Wrist curl", "2", "12–20"], ["Reverse wrist curl", "2", "15–25"],
   ]) await exercise(0, spec);
   await rehab(0, protocols[0].name);
@@ -244,7 +267,7 @@ try {
     ["Bench press", "3", "6–8", "70%"], ["Pull-up / chin-up", "3", "6–10", "RIR 2–3"],
     ["Chest-supported DB row", "3", "8–12", "RIR 2"], ["Seated overhead press", "2", "8–12", "65%"],
     ["Lateral / rear delt raise", "2", "12–20"], ["Reverse curl", "2", "8–15", "RIR 1–3"],
-    ["Band triceps pressdown", "2", "10–20"], ["Wrist curl", "2", "12–20"], ["Reverse wrist curl", "2", "15–25"],
+    ["Band Triceps Pressdown", "2", "10–20"], ["Wrist curl", "2", "12–20"], ["Reverse wrist curl", "2", "15–25"],
   ]) await exercise(4, spec);
   await circuit(5, "Run + station", [["SkiErg", 500, true], ["Row", 500, true], ["Farmer carry", 80, true], ["Wall balls", 20, false]],
     [4, 4, 4, 3, 5, 3], [700, 800, 1000, 700, 900, 800]);
@@ -313,6 +336,20 @@ try {
   await main.getByRole("button", { name: "Reset", exact: true }).click();
   await expect(main.getByLabel("Load", { exact: true })).toHaveValue("75%");
   assert.equal(await main.getByLabel("Load", { exact: true }).evaluate(input => input.validity.valid), true);
+  await page.evaluate(() => window.showBandLogger());
+  await expect(page.getByTestId("movement-focus-view")).toContainText("RIR 2");
+  await page.getByRole("textbox", { name: "Reps", exact: true }).fill("15");
+  await page.getByTestId("rpe-zone-hard").click();
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  }
+  await page.getByTestId("movement-focus-log-button").click();
+  await expect.poll(() => page.evaluate(() => window.bandSet?.reps)).toBe("15");
+  const bandSet = await page.evaluate(() => window.bandSet);
+  assert.equal(bandSet.movementId, catalog[5].id);
+  assert.equal(Number(bandSet.weightKg), 0, "Band logging must not require a kg estimate");
+  assert.equal(Number(bandSet.rpe), 8.75);
   assert.deepEqual(errors, []);
   if (directory) await writeFile(path.join(directory, "builder-visible-strings.json"), JSON.stringify(strings, null, 2));
   console.log("DC-A1 / DC-K4 / DC-R5: full six-day program authored through UI; weeks 1/4/6, live maxes, pull-up, circuits and responsive layouts passed.");

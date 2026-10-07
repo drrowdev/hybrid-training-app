@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Band triceps pressdown
+- Added **Band Triceps Pressdown** to the shared movement library with setup
+  instructions. It uses existing band equipment and weight-optional reps/RIR logging.
+- Requires additive catalog migration **0163_seed_band_triceps_pressdown** after
+  the app deploy and separate production authorization; not live merely by merging.
+  Its unused-only down refuses UUID/slug references, including saved workouts and
+  history, and briefly locks public tables. After use, repair forward.
+
 ### Scheduled 1RM increases
 - Today offers **Increase 1RMs** below the workouts after 21 days without a
   max change or decision: +1.5 kg for confidently classified upper-body lifts,
