@@ -1,4 +1,4 @@
-import { preferredMaxSuggestions, selectTodayPrompt, suggestedAccountOneRm } from "@hta/domain";
+import { preferredMaxSuggestions, readAuthoredTestRule, selectTodayPrompt, suggestedAccountOneRm } from "@hta/domain";
 import { TodayDashboard, type TodayWorkout } from "@/components/today/TodayDashboard";
 import { loadTodaySwims, loadTodaySessionSummaries, loadTodayWeek, plannedTodayWorkout, plannedWeekSession } from "@/lib/today/workouts";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -173,8 +173,8 @@ export default async function TodayPage() {
       const [{ data: movRows }, { data: setRows }, { data: sessRows, error: sessionsError }] = await Promise.all([
         supabase.from("movements").select("id, display_name").in("id", movIds),
         setIds.length > 0
-          ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
-          : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
+          ? supabase.from("set_logs").select("id, weight_kg, reps, prescribed").in("id", setIds)
+          : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown; prescribed?: unknown }[] }),
         sessIds.length > 0
           ? supabase.from("sessions").select("id, performed_at").eq("user_id", userId).in("id", sessIds)
           : Promise.resolve({ data: [] as { id: string; performed_at: string }[], error: null }),
@@ -188,18 +188,20 @@ export default async function TodayPage() {
           {
             weightKg: s.weight_kg == null ? null : Number(s.weight_kg),
             reps: s.reps == null ? null : Number(s.reps),
+            authoredTest: readAuthoredTestRule((s.prescribed as { authoredTest?: unknown } | null)?.authoredTest) !== null,
           },
         ]),
       );
       const sessMap = new Map((sessRows ?? []).map((s) => [s.id as string, s.performed_at as string]));
       const available = pendingSuggestionsRaw.filter((s) => {
-        if (typedSessions.has(s.derived_from_session_id)) return false;
+        if (typedSessions.has(s.derived_from_session_id) &&
+          !(s.derived_from_set_log_id && setMap.get(s.derived_from_set_log_id)?.authoredTest)) return false;
         if (s.source !== "scheduled_progression") return true;
         const max = tmRows.find((row) => row.movementId === s.movement_id);
         return progression.available && progression.activeMovementIds.has(s.movement_id) && max &&
           max.oneRmKg === Number(s.current_tm_kg) && Date.parse(max.updatedAt) <= Date.parse(s.created_at);
       });
-      const oneRm = available.some((s) => s.source === "scheduled_progression");
+      const oneRm = available.some((s) => s.source === "scheduled_progression" || typedSessions.has(s.derived_from_session_id));
       const preferred = preferredMaxSuggestions(available.filter((s) => {
         if (!oneRm) return true;
         const max = tmRows.find((row) => row.movementId === s.movement_id);

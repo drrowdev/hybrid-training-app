@@ -6117,3 +6117,7 @@ The unused down restores exact function baselines and refuses accepted date
 history. Focused source tests and synthetic responsive UI are local checks;
 database races, ownership, rollback and authenticated save/reopen acceptance
 run only in guarded Linux CI. The coordinator owns merge and release.
+
+## [2026-10-07] decision | Test week sets propose a new 1RM
+
+The owner approved making the builder's Test week 'Then' option work. A logged, marked authored test set proposes a 1RM through the scheduled-max suggestion flow (DC-K4: the user accepts or dismisses; no silent overwrite). Reuses the existing suggestion table and RPC; migration 0165 only widens the typed-session guard in decide_max_suggestions to marked test sets. The marker is stored in the immutable set snapshot. Estimator is conservativeEstimate in apps/web. Production application only via guarded migrate_production after deploy; the owner holds release authority.

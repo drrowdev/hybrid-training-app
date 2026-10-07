@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authoredExecutionParts, authoredPartComplete, authoredProgramDates, authoredWorkoutActivities, compileAuthoredWorkout, type AuthoredProgramDefinition, type AuthoredWorkout } from "./authored-program";
+import { authoredTestRule, authoredExecutionParts, authoredPartComplete, authoredProgramDates, authoredWorkoutActivities, compileAuthoredWorkout, type AuthoredProgramDefinition, type AuthoredWorkout } from "./authored-program";
 import { trainingScheduleAdvice } from "./training-schedule";
 
 const lift = { id: "squat", slug: "back-squat", displayName: "Back squat", pattern: "squat" };
@@ -97,5 +97,34 @@ describe("DC-K4/DC-SW7 independent schedule advice", () => {
     ], ["2026-09-23", "2026-09-24"], { source: "primary", programId: "p" })).toMatchObject({
       overlaps: [{ id: "b" }, { id: "c" }], plannedRest: [{ id: "d" }],
     });
+  });
+});
+
+describe("DC-K4 authored test-week rule", () => {
+  const test = (extra: Record<string, unknown> = {}) => ({ type: "Test" as const, sets: "1", reps: "3", pct: 95, ...extra });
+  const main = (load?: { kind: "pct"; value: number }): AuthoredWorkout => ({
+    id: "t", name: "Test day", weekday: 0, parts: [{ id: "p", kind: "movement", movement: {
+      id: "m", movementId: lift.id, role: "main", sets: 1, dose: { kind: "reps", reps: 3 }, weightKg: 0, restSeconds: 180, notes: "",
+      ...(load ? { load } : {}),
+    } }],
+  });
+  it("DC-K4: only a Test week with a usable rule yields one", () => {
+    expect(authoredTestRule(test({ after: "updateFromLoggedSet" }))).toEqual({ after: "updateFromLoggedSet" });
+    expect(authoredTestRule(test({ after: "fixedIncrease", stepKg: 5 }))).toEqual({ after: "fixedIncrease", stepKg: 5 });
+    expect(authoredTestRule(test({ after: "fixedIncrease" }))).toBeNull();
+    expect(authoredTestRule(test({ after: "keep" }))).toBeNull();
+    expect(authoredTestRule(test())).toBeNull();
+    expect(authoredTestRule({ ...test({ after: "updateFromLoggedSet" }), type: "Build" })).toBeNull();
+    expect(authoredTestRule(undefined)).toBeNull();
+  });
+  it("DC-K4: marks percentage-loaded main sets of a Test week and nothing else", () => {
+    const marked = compileAuthoredWorkout(main({ kind: "pct", value: 95 }), [lift], undefined, test({ after: "updateFromLoggedSet" }));
+    expect(marked.items[0]?.meta).toMatchObject({ authoredTest: { after: "updateFromLoggedSet" } });
+    expect(compileAuthoredWorkout(main({ kind: "pct", value: 95 }), [lift], undefined, test({ after: "keep" })).items[0]?.meta).not.toHaveProperty("authoredTest");
+    expect(compileAuthoredWorkout(main({ kind: "pct", value: 95 }), [lift], undefined, { ...test({ after: "updateFromLoggedSet" }), type: "Build" }).items[0]?.meta).not.toHaveProperty("authoredTest");
+    const accessory = main(); const part = accessory.parts[0];
+    if (part?.kind !== "movement") throw new Error("fixture");
+    part.movement.role = "accessory";
+    expect(compileAuthoredWorkout(accessory, [lift], undefined, test({ after: "updateFromLoggedSet" })).items[0]?.meta).not.toHaveProperty("authoredTest");
   });
 });

@@ -16,6 +16,7 @@
  * must never be recorded as one: doing so would manufacture a fake "on target"
  * result for every unanchored movement.
  */
+import type { AuthoredTestRule } from "./authored-program";
 import { resolvePrescriptionSetWork } from "./prescription-set-work";
 import { resolveLoadReference, resolveTargetLoadKg } from "./target-load";
 
@@ -78,6 +79,8 @@ export type PrescribedSnapshot = {
   basis?: "TM" | "1RM";
   movementSlug?: string;
   setKind?: string;
+  /** Set by an authored Test week; the logged set may propose a new 1RM. */
+  authoredTest?: AuthoredTestRule;
 };
 
 export type ResolvedPrescribed = {
@@ -99,6 +102,15 @@ function num(v: number | null | undefined): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+export function readAuthoredTestRule(value: unknown): AuthoredTestRule | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { after, stepKg } = value as { after?: unknown; stepKg?: unknown };
+  if (after === "updateFromLoggedSet") return { after };
+  if (after === "fixedIncrease" && typeof stepKg === "number" && Number.isFinite(stepKg) && stepKg > 0) {
+    return { after, stepKg };
+  }
+  return null;
+}
 /**
  * Resolve the prescribed snapshot for one set.
  *
@@ -153,6 +165,8 @@ export function resolvePrescribedSnapshot(
     }
   }
   if (item.movementSlug) prescribed.movementSlug = item.movementSlug;
+  const testRule = readAuthoredTestRule(item.meta?.authoredTest);
+  if (testRule) prescribed.authoredTest = testRule;
   const setKind = ctx.setKind ?? item.kind;
   if (setKind) prescribed.setKind = setKind;
 

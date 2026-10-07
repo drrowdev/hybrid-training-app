@@ -13,8 +13,11 @@ import {
   pickAmrapTopSetsByMovement,
   planTmSuggestionReconcile,
   type AmrapSetCandidateInput,
+  type AmrapTopSet,
   type DesiredTmSuggestion,
 } from "./suggestions";
+import { evaluateAuthoredTest, pickAuthoredTestSetsByMovement } from "./authored-test";
+import type { AuthoredTestRule } from "@hta/domain";
 
 type SetLogRow = {
   id: string;
@@ -25,7 +28,7 @@ type SetLogRow = {
   set_kind: string | null;
   notes: string | null;
   skipped: boolean | null;
-  prescribed: { isAmrap?: boolean } | null;
+  prescribed: { isAmrap?: boolean; authoredTest?: unknown } | null;
 };
 
 type SuggestionRow = {
@@ -39,7 +42,7 @@ type SuggestionRow = {
   source: string;
 };
 
-function toCandidate(row: SetLogRow): AmrapSetCandidateInput {
+function toCandidate(row: SetLogRow): AmrapSetCandidateInput & { prescribed: SetLogRow["prescribed"] } {
   return {
     id: row.id,
     movementId: row.movement_id,
@@ -68,9 +71,7 @@ export async function syncTmSuggestionsForSession(
   if (!session || session.user_id !== userId || !session.completed_at) {
     return [];
   }
-  if ((await loadTypedProgramSessionIds(supabase, userId, [sessionId])).has(sessionId)) {
-    return [];
-  }
+  const typed = (await loadTypedProgramSessionIds(supabase, userId, [sessionId])).has(sessionId);
 
   const [{ data: setLogs }, { data: existingRows }] = await Promise.all([
     supabase
@@ -88,9 +89,12 @@ export async function syncTmSuggestionsForSession(
       .eq("derived_from_session_id", sessionId),
   ]);
 
-  const topByMovement = pickAmrapTopSetsByMovement(
-    ((setLogs ?? []) as SetLogRow[]).map(toCandidate),
-  );
+  const rows = (setLogs ?? []) as SetLogRow[];
+  const topByMovement: Map<string, AmrapTopSet & { rule?: AuthoredTestRule }> = typed
+    ? new Map<string, AmrapTopSet & { rule?: AuthoredTestRule }>(
+        pickAuthoredTestSetsByMovement(rows.map(toCandidate)),
+      )
+    : pickAmrapTopSetsByMovement(rows.map(toCandidate));
 
   const desired: DesiredTmSuggestion[] = [];
   if (topByMovement.size > 0) {
@@ -123,6 +127,26 @@ export async function syncTmSuggestionsForSession(
       if (!current) continue;
       const effectivePct = current.tmPercent ?? defaultPct;
       const currentTmKg = roundToPlate((current.oneRmKg * effectivePct) / 100);
+      if (typed) {
+        if (!top.rule) continue;
+        const test = evaluateAuthoredTest({
+          currentOneRmKg: current.oneRmKg,
+          weightKg: top.weightKg,
+          reps: top.reps,
+          rpe: top.rpe,
+          rule: top.rule,
+        });
+        if (!test.suggest) continue;
+        desired.push({
+          movementId,
+          setLogId: top.id,
+          currentTmKg,
+          suggestedTmKg: Math.round(((test.oneRmKg * effectivePct) / 100) * 100) / 100,
+          source: test.formula === "rpe_zourdos" ? "derived_rpe" : "derived_amrap",
+          derivedFormula: test.formula,
+        });
+        continue;
+      }
       const result = evaluateTmSuggestion({
         currentTmKg,
         amrapWeightKg: top.weightKg,

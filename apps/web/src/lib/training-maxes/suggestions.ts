@@ -113,7 +113,7 @@ export type DesiredTmSuggestion = {
   currentTmKg: number;
   suggestedTmKg: number;
   source: string;
-  derivedFormula: string;
+  derivedFormula: string | null;
 };
 
 export type ExistingTmSuggestion = {

@@ -101,6 +101,7 @@ const authoredProgramV2Schema = authoredProgramV1Schema.extend({
     type: z.enum(["Build", "Deload", "Test"]), sets: range(20).transform(String), reps: range(500).transform(String),
     pct: z.number().positive().max(100), fewer: z.boolean().optional(),
     after: z.enum(["updateFromLoggedSet", "fixedIncrease", "keep"]).optional(),
+    stepKg: z.number().positive().max(50).optional(),
   }).strict()).min(1).max(16),
   workouts: z.array(authoredWorkoutV2Schema).min(1).max(7),
 }).strict();

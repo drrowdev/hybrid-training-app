@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Test week updates 1RM
+- A logged test set in a program week set to update from the logged set proposes a new 1RM on Today. Accepting or dismissing works as for scheduled increases; nothing changes until accepted. Editing or deleting the set withdraws an unaccepted proposal.
+- Test weeks can add a fixed amount instead (stepKg) or keep the 1RM.
+- Function-only migration **0165_authored_test_max_suggestions** lets decide_max_suggestions accept proposals from marked test sets. Deploy the app first, then apply 0165 through the guarded `ci.yml` `migrate_production` run. The down restores the 0161 body.
+
 ### Saved program start date
 - An unused authored program's start date can be changed in the full program
   editor. Dates remain fixed after the first workout starts.
