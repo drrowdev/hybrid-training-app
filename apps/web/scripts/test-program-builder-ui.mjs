@@ -60,13 +60,15 @@ const output = await build({
     };
     window.save = async input => {
       window.saved = authoredProgramSchema.parse(input.definition);
+      window.savedStartedOn = input.startedOn;
       window.calls.push({ action: "save", input });
       return { ok: true, blockId: "${id(99)}" };
     };
-    window.showBuilder = (edit = false) => root.render(<main style={{maxWidth: 1000, margin: "0 auto", padding: 20}}>
+    window.showBuilder = (edit = false, options = {}) => root.render(<main style={{maxWidth: 1000, margin: "0 auto", padding: 20}}>
       <ProgramBuilder key={++key} catalog={catalog} rehabProtocols={protocols} today="2026-10-05" commitments={[]}
         activity="hybrid" oneRmByMovementId={window.maxes} bodyweightKg={87}
-        {...(edit ? { initial: window.saved, editBlockId: "${id(99)}", initialRevision: "revision", initialStartDate: "2026-10-05" } : {})} />
+        {...(edit ? { initial: window.saved, editBlockId: "${id(99)}", initialRevision: "revision",
+          initialStartDate: window.savedStartedOn ?? "2026-10-05", canChangeStartDate: true, ...options } : {})} />
     </main>);
     window.compiled = (week, weekday) => compileAuthoredWorkout(
       window.saved.workouts.find(x => x.weekday === weekday), catalog,
@@ -319,6 +321,26 @@ try {
   }
   await page.evaluate(id => { window.maxes[id] = 110; window.showToday(0); }, catalog[0].id);
   await expect(page.getByTestId("today-hero-preview").locator("li").filter({ hasText: "Bench press" })).toContainText("82.5 kg");
+  await page.evaluate(() => window.showBuilder(true));
+  const savedDefinition = await page.evaluate(() => JSON.stringify(window.saved));
+  await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+  await expect(page.getByLabel("Start date", { exact: true })).toBeEnabled();
+  await page.getByLabel("Start date", { exact: true }).fill("2026-10-14");
+  await capture("start-date-edit");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.savedStartedOn)).toBe("2026-10-14");
+  assert.equal(await page.evaluate(() => JSON.stringify(window.saved)), savedDefinition);
+  await page.evaluate(() => window.showBuilder(true));
+  await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+  await expect(page.getByLabel("Start date", { exact: true })).toHaveValue("2026-10-14");
+  await page.evaluate(() => window.showBuilder(true, { canChangeStartDate: false }));
+  await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+  await expect(page.getByLabel("Start date", { exact: true })).toBeDisabled();
+  await page.evaluate(() => window.showBuilder(true, { workoutId: window.saved.workouts[0].id }));
+  await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+  await expect(page.getByLabel("Start date", { exact: true })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
+  await expect(page.getByLabel("Start date", { exact: true })).toBeDisabled();
   await page.evaluate(() => window.showBuilder(true));
   await capture("edit");
   const monday = await day(0);

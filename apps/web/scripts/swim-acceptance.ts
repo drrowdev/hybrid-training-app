@@ -33,7 +33,7 @@ import {
 import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
 import { isModularBrowserProfile, MODULAR_BROWSER_CASES } from "./modular-browser-profile";
-import { hasModularSchema, hasOwnershipSchema, hasResumeSchema, requireAcceptanceMigrationFiles } from "./acceptance-migrations";
+import { hasModularSchema, hasOwnershipSchema, hasResumeSchema, hasAuthoredStartDateSchema, requireAcceptanceMigrationFiles } from "./acceptance-migrations";
 import { createModularRoundTripProof, modularSchemaRoundTrip } from "./modular-schema-roundtrip";
 import { createLegacyUpgradeProof, createModularLegacyPreparation } from "./modular-legacy-fixture";
 import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
@@ -514,9 +514,10 @@ async function main(cleanupOnly: boolean) {
     const modularProof = createModularRoundTripProof();
     const ownershipProof = createModularRoundTripProof();
     const resumeProof = createModularRoundTripProof();
-    const modularDdl = (phase: "down" | "up", layer: "modular" | "ownership" | "resume" = "modular") => modularSchemaRoundTrip({
+    const startDateProof = createModularRoundTripProof();
+    const modularDdl = (phase: "down" | "up", layer: "modular" | "ownership" | "resume" | "authored-start-date" = "modular") => modularSchemaRoundTrip({
       phase, command, dbId: target.dbId,
-      proof: layer === "resume" ? resumeProof : layer === "ownership" ? ownershipProof : modularProof, layer,
+      proof: layer === "authored-start-date" ? startDateProof : layer === "resume" ? resumeProof : layer === "ownership" ? ownershipProof : modularProof, layer,
       verifiedSql: (file) => {
         requireUnchanged();
         const bytes = readFileSync(join(root, file));
@@ -526,6 +527,10 @@ async function main(cleanupOnly: boolean) {
         return sql;
       },
     });
+    if (hasAuthoredStartDateSchema) {
+      manifest.authoredStartDateSchemaProof = startDateProof;
+      await stage("unused authored start-date schema down before historical proofs", () => modularDdl("down", "authored-start-date"));
+    }
     if (hasResumeSchema) {
       manifest.resumeSchemaProof = resumeProof;
       await stage("unused resume schema down before historical proofs", () => modularDdl("down", "resume"));
@@ -611,6 +616,7 @@ async function main(cleanupOnly: boolean) {
       });
     }
     if (hasResumeSchema) await stage("exact resume schema restoration", () => modularDdl("up", "resume"));
+    if (hasAuthoredStartDateSchema) await stage("exact authored start-date schema restoration", () => modularDdl("up", "authored-start-date"));
     await stage("movement reference down-up and necessity proof", () => runMovementReferenceRoundTrip({
       command, dbId: target.dbId,
       verifiedSql: (file) => {

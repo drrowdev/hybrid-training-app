@@ -3,15 +3,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   createModularRoundTripProof, modularSchemaRoundTrip, MODULAR_CATALOG_SQL, MODULAR_SCHEMA_FILES,
-  OWNERSHIP_CATALOG_SQL, OWNERSHIP_SCHEMA_FILES, RESUME_SCHEMA_FILES,
+  OWNERSHIP_CATALOG_SQL, OWNERSHIP_SCHEMA_FILES, RESUME_SCHEMA_FILES, AUTHORED_START_DATE_SCHEMA_FILES,
 } from "../../../../scripts/modular-schema-roundtrip";
 import type { ProcessResult } from "../../../../scripts/swim-acceptance-guards";
 
 const passed: ProcessResult = { code: 0, signal: null, timedOut: false };
 const catalogue = { functions: 200, triggers: 30, sha256: "a".repeat(64) };
-function setup(layer: "modular" | "ownership" | "resume" = "modular") {
+function setup(layer: "modular" | "ownership" | "resume" | "authored-start-date" = "modular") {
   const sql = layer === "modular" ? MODULAR_CATALOG_SQL : OWNERSHIP_CATALOG_SQL;
-  const files = layer === "resume" ? RESUME_SCHEMA_FILES : layer === "ownership" ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
+  const files = layer === "authored-start-date" ? AUTHORED_START_DATE_SCHEMA_FILES :
+    layer === "resume" ? RESUME_SCHEMA_FILES : layer === "ownership" ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
   const command = vi.fn(async (_executable: string, args: string[], options: unknown) => {
     expect(options).toMatchObject({ capture: true, allowFailure: true });
     return { text: args.at(-1) === sql ? JSON.stringify(catalogue) : "", result: passed };
@@ -66,6 +67,13 @@ describe("DC-SW8 modular native schema round trip retains role and routine defin
     expect(options.verifiedSql.mock.calls).toEqual([[RESUME_SCHEMA_FILES.down], [RESUME_SCHEMA_FILES.up]]);
     expect(options.command.mock.calls.map(([, args]) => args.at(-1)))
       .toEqual([OWNERSHIP_CATALOG_SQL, "SYNTHETIC_DOWN", "SYNTHETIC_UP", OWNERSHIP_CATALOG_SQL]);
+  });
+  it("DC-R5 restores the date-change functions and ACLs before native acceptance", async () => {
+    const options = setup("authored-start-date");
+    await modularSchemaRoundTrip({ ...options, phase: "down" });
+    await modularSchemaRoundTrip({ ...options, phase: "up" });
+    expect(options.proof.restored).toBe(true);
+    expect(options.verifiedSql.mock.calls).toEqual([[AUTHORED_START_DATE_SCHEMA_FILES.down], [AUTHORED_START_DATE_SCHEMA_FILES.up]]);
   });
 
   it("DC-K4: final recovery/session lock inventory matches both migration guard lists", () => {

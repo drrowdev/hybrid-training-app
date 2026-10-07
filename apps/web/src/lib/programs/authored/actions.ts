@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
   authoredMovementIds, authoredRehabProtocolIds, authoredProgramDates, compileAuthoredWorkout, trainingScheduleAdvice,
+  canChangeAuthoredStartDate, reconcileAuthoredStartDate,
   type AuthoredCatalogMovement, type AuthoredPrescriptionItem, type AuthoredProgramDefinition, type TrainingCommitment,
 } from "@hta/domain";
 import type { Prescription } from "@hta/db";
@@ -19,6 +20,7 @@ import { authoredProgramSchema, authoredSaveSchema, type AuthoredSaveInput } fro
 import { loadOwnedActivePrograms, requireIndependentPrograms, selectProgramTarget } from "@/lib/programs/ownership";
 import { loadOwnedRehabProtocols } from "@/lib/rehab-protocols/owned";
 import { compileLibraryRehab } from "@/lib/rehab-protocols/prescription";
+import { loadAuthoredStartDateState } from "./edit-state";
 
 const catalogRowSchema = z.object({
   id: z.string(), slug: z.string(), display_name: z.string(), pattern: z.string(),
@@ -121,8 +123,11 @@ async function prepare(raw: AuthoredSaveInput) {
   if (input.editBlockId && (active?.id !== input.editBlockId || active.program_id !== "authored")) {
     throw new Error("This program is no longer active.");
   }
-  if (input.editBlockId && input.startedOn !== active?.started_on) throw new Error("Keep the original start date when editing a program.");
-  if (!input.editBlockId && input.startedOn < today) throw new Error("Choose today or a future start date.");
+  const startDateChanged = !!input.editBlockId && input.startedOn !== active?.started_on;
+  if (startDateChanged && (input.scope !== "program" || snapshot.authoredStartDateChanges !== true)) {
+    throw new Error(input.scope !== "program" ? "Edit the full program to change its start date." : "Changing the start date is temporarily unavailable. Try again shortly.");
+  }
+  if ((!input.editBlockId || startDateChanged) && input.startedOn < today) throw new Error("Choose today or a future start date.");
   const dated = authoredProgramDates(input.definition, input.startedOn);
   const rows = dated.map(({ date, workout, weekIndex, dayIndex, ref, authoredWeekIndex }) => {
     const compiled = compileAuthoredWorkout(workout, catalog, compileRehab, input.definition.weeks[authoredWeekIndex], authoredWeekIndex);
@@ -142,6 +147,10 @@ async function prepare(raw: AuthoredSaveInput) {
     if (result.error) throw new Error("Could not load the workouts to edit. Try again.");
     existing = z.array(storedRowSchema).parse(result.data);
   }
+  if (startDateChanged && !canChangeAuthoredStartDate({
+    available: snapshot.authoredStartDateChanges === true, scope: input.scope,
+    hasBegunWorkout: existing.some((row) => row.completed_session_id !== null),
+  })) throw new Error("The start date cannot change after a workout has started.");
   let scoped: { updates: ({ id: string; title: string; prescription: Prescription } & ReturnType<typeof workoutClassification>)[];
     definition: AuthoredProgramDefinition | null } | undefined;
   if (input.scope !== "program") {
@@ -177,6 +186,59 @@ async function prepare(raw: AuthoredSaveInput) {
       overlaps: [], plannedRest: [], replaces: null, replacesBlockId: null, preserved: existing.length - eligible.length,
     };
     return { input, user, client, preview, rows, weeks, existing, rewrite: null, scoped };
+  }
+  if (startDateChanged && active) {
+    const original = await loadAuthoredProgram(active.id);
+    const originalDates = new Map(authoredProgramDates(original, active.started_on).map((row) => [row.ref, row.date]));
+    const oldMonday = mondayOfYmd(active.started_on);
+    const preserved = existing.map((row) => {
+      const date = addDaysToYmd(oldMonday, row.week_index * 7 + row.day_index);
+      const originalDate = row.prescription.programRef ? originalDates.get(row.prescription.programRef) : undefined;
+      const preserveDate = !!(row.skipped_at || row.planned_at || row.prescription.meta?.userRescheduled ||
+        (originalDate && date !== originalDate));
+      return {
+        id: row.id, programRef: row.prescription.programRef, date, slot: row.slot, preserveDate,
+        preserveContent: preserveDate || !!row.notes?.trim() || prescriptionCarriesUserState(row.prescription),
+      };
+    });
+    const reconciliation = reconcileAuthoredStartDate({
+      startedOn: input.startedOn, proposed: rows.map((row) => ({
+        ref: row.ref, date: row.date, weekIndex: row.week_index, dayIndex: row.day_index,
+      })), existing: preserved,
+    });
+    const dateUpdates = reconciliation.retained.map(({ existingIndex, proposedIndex, weekIndex, dayIndex }) => {
+      const row = existing[existingIndex]!;
+      const replacement = proposedIndex === undefined || preserved[existingIndex]!.preserveContent ? undefined : rows[proposedIndex];
+      return {
+        id: row.id, week_index: weekIndex, day_index: dayIndex,
+        ...(replacement ? { title: replacement.title, prescription: replacement.prescription,
+          role: replacement.role, session_modality: replacement.session_modality,
+          effective_stress_load: replacement.effective_stress_load } : {}),
+      };
+    });
+    const dates = [
+      ...reconciliation.retained.filter(({ existingIndex }) => !existing[existingIndex]!.skipped_at).map((entry) => {
+        const old = existing[entry.existingIndex]!;
+        const replacement = entry.proposedIndex === undefined || preserved[entry.existingIndex]!.preserveContent ? undefined : rows[entry.proposedIndex];
+        return { date: entry.date, title: replacement?.title ?? old.title ?? input.definition.name,
+          itemCount: (replacement?.prescription ?? old.prescription).items.length };
+      }),
+      ...reconciliation.insertIndices.map((index) => ({ date: rows[index]!.date, title: rows[index]!.title, itemCount: rows[index]!.prescription.items.length })),
+    ].sort((a, b) => a.date.localeCompare(b.date));
+    const advice = trainingScheduleAdvice(snapshot.entries, dates.map((row) => row.date), {
+      source: "primary", programId: active.id, retainExistingOverlaps: true,
+    });
+    const rewrite = {
+      deleteIds: reconciliation.deleteIndices.map((index) => existing[index]!.id),
+      insertIndices: reconciliation.insertIndices, newWeeks: reconciliation.weeks,
+    };
+    const startDateChange = { expected_started_on: active.started_on, updates: dateUpdates };
+    const preview: AuthoredPreview = {
+      id: scheduleInputHash({ input, rows, startDateChange, snapshot: snapshot.revision }), revision: snapshot.revision,
+      dates, overlaps: advice.overlaps, plannedRest: advice.plannedRest, replaces: null, replacesBlockId: null,
+      preserved: reconciliation.retained.length,
+    };
+    return { input, user, client, preview, rows, weeks, existing, rewrite, scoped, startDateChange };
   }
   const days = daysBetweenYmd(mondayOfYmd(input.startedOn), today);
   const rewrite = planForwardOnlyRewrite({
@@ -219,7 +281,7 @@ export async function saveAuthoredProgram(
     const client = await createClient();
     const { data: { user } } = await getAuthUser();
     if (!user) return { ok: false, error: "Sign in to save a program." };
-    const operation = input.scope !== "program" ? "authored-workout" : input.editBlockId ? "primary-update" : "primary-create";
+    let operation = input.scope !== "program" ? "authored-workout" : input.editBlockId ? "primary-update" : "primary-create";
     const inputHash = scheduleInputHash(input);
     const replay = await client.from("engine_override_events").select("context").eq("id", review.requestId).eq("user_id", user.id).maybeSingle();
     if (replay.error) throw new Error("Could not check this save. Try again.");
@@ -227,14 +289,18 @@ export async function saveAuthoredProgram(
       const context = z.object({ kind: z.literal("training-schedule-v1"), operation: z.string(), inputHash: z.string(), result: z.unknown(),
         programOwnershipVersion: z.number().optional(), replacedBlockId: z.string().nullable().optional(),
       }).parse(replay.data.context);
-      if (context.operation !== operation || context.inputHash !== inputHash) throw new Error("This save request was already used for a different change.");
+      const sameOperation = context.operation === operation ||
+        (operation === "primary-update" && context.operation === "authored-start-date");
+      if (!sameOperation || context.inputHash !== inputHash) throw new Error("This save request was already used for a different change.");
       if (operation === "primary-create" && context.programOwnershipVersion &&
           (context.replacedBlockId ?? null) !== (review.replaceBlockId ?? null)) throw new Error("This save request belongs to a different program target.");
       const blockId = input.editBlockId ?? z.object({ block_id: z.string().uuid() }).parse(context.result).block_id;
       return { ok: true, blockId };
     }
     const prepared = await prepare(input);
-    const { preview, rows, weeks, existing, rewrite, scoped } = prepared;
+    const { preview, rows, weeks, existing, rewrite, scoped, startDateChange } = prepared;
+    // An older database must reject this operation, never ignore the date payload.
+    if (startDateChange) operation = "authored-start-date";
     if (preview.id !== expectedPreview || preview.revision !== review.revision) throw new Error("Your program or schedule changed. Review it again.");
     if (preview.overlaps.length > 0 && !review.acceptOverlap) throw new Error("Accept the overlapping workouts before saving.");
     if (preview.replacesBlockId && review.replaceBlockId !== preview.replacesBlockId) throw new Error("Confirm which program to replace.");
@@ -253,6 +319,7 @@ export async function saveAuthoredProgram(
       days_per_week: input.definition.workouts.length,
       day_index_overrides: { days: input.definition.workouts.map((workout) => workout.weekday).sort(), twoADay: false },
       cardio_source: "internal", notes: input.definition.name,
+      ...(startDateChange ? { started_on: input.startedOn, authored_start_date_change: startDateChange } : {}),
     };
     const instance = {
       program_id: "authored", program_family: input.definition.activity,
@@ -299,7 +366,12 @@ export async function loadAuthoredProgram(blockId: string) {
 
 export async function reloadAuthoredProgram(blockId: string) {
   const client = await createClient();
+  const { data: { user } } = await getAuthUser();
+  if (!user) throw new Error("Sign in to edit your program.");
+  const id = z.string().uuid().parse(blockId);
   const snapshot = await loadTrainingSchedule(client);
-  const definition = await loadAuthoredProgram(blockId);
-  return { revision: snapshot.revision, definition };
+  const [definition, startDate] = await Promise.all([
+    loadAuthoredProgram(id), loadAuthoredStartDateState(client, user.id, id, snapshot),
+  ]);
+  return { revision: snapshot.revision, definition, ...startDate };
 }

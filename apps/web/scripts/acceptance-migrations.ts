@@ -5,6 +5,7 @@ export const ACCEPTANCE_MIGRATIONS = journal.entries.map(({ tag }) => tag);
 export const hasModularSchema = ACCEPTANCE_MIGRATIONS.includes("0156_modular_training_schedule");
 export const hasOwnershipSchema = ACCEPTANCE_MIGRATIONS.includes("0158_independent_program_ownership");
 export const hasResumeSchema = ACCEPTANCE_MIGRATIONS.includes("0162_resume_ended_program");
+export const hasAuthoredStartDateSchema = ACCEPTANCE_MIGRATIONS.includes("0164_authored_program_start_date");
 
 export function requireAcceptanceMigrationFiles(sourceFiles: readonly string[]) {
   const expected = ACCEPTANCE_MIGRATIONS.map((tag) => `packages/db/drizzle/${tag}.sql`).sort();
