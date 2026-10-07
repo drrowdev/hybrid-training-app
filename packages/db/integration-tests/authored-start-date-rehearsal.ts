@@ -187,7 +187,8 @@ export async function rehearseAuthoredStartDate(database: postgres.Sql, stage: (
     await asUser(owner, (tx) => tx`UPDATE public.sessions SET completed_at=now() WHERE id=${sessionId}::uuid`);
     await assertOwnershipRefusal(() => commit("authored-start-date", staleChange, { accept: true }), "40001");
     await asUser(owner, (tx) => tx`UPDATE public.sessions SET deleted_at=now() WHERE id=${sessionId}::uuid`);
-    await asUser(owner, (tx) => tx`UPDATE public.planned_sessions SET skipped_at=now() WHERE id=${retained[0]!.id}::uuid`);
+    await assertOwnershipRefusal(() => asUser(owner, (tx) =>
+      tx`UPDATE public.planned_sessions SET skipped_at=now() WHERE id=${retained[0]!.id}::uuid`), "23514");
     await assertOwnershipRefusal(() => commit("authored-start-date", staleChange, { accept: true }), "40001");
     assert.equal((await database`SELECT completed_session_id FROM public.planned_sessions WHERE id=${retained[0]!.id}::uuid`)[0]!.completed_session_id, sessionId);
 
