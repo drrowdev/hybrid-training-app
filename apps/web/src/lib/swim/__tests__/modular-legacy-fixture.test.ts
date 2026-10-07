@@ -19,12 +19,12 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(
 
 function mockedPreparation(failure?: "deploy" | "upgrade" | "delete" | "remaining") {
   const root = resolve(__dirname, "synthetic-native-run");
-  const directory = resolve(root, "swim-acceptance-pr802-123-1");
+  const directory = resolve(root, "swim-acceptance-pr802-123-2");
   vi.stubGlobal("process", { ...process, platform: "linux", getuid: () => 1000 });
   vi.stubEnv("RUNNER_TEMP", root); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", "modular");
   vi.stubEnv("GITHUB_REF", "refs/heads/drrowdev-modular-programs-implementation");
-  vi.stubEnv("GITHUB_RUN_ATTEMPT", "1");
-  vi.spyOn(guards, "requireManualContext").mockReturnValue("pr802-123-1");
+  vi.stubEnv("GITHUB_RUN_ATTEMPT", "2");
+  vi.spyOn(guards, "requireManualContext").mockReturnValue("pr802-123-2");
   vi.spyOn(fs, "realpathSync").mockImplementation((path) => String(path));
   const stat = fs.lstatSync(__dirname);
   vi.spyOn(fs, "lstatSync").mockReturnValue(Object.assign(stat, { uid: 1000, mode: 0o40700 }));
@@ -94,6 +94,8 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     expect(proof).toMatchObject({ prepared: true, unchanged: false, cleanup: "pending" });
     expect(write).toHaveBeenCalledWith(expect.stringContaining("modular-legacy.json"),
       expect.any(String), { flag: "wx", mode: 0o600 });
+    expect(modularLegacySchema.parse(JSON.parse(String(write.mock.calls[0]![1]))).run)
+      .toBe("swim-acceptance-pr802-123-2");
     expect(secrets.has("synthetic-access")).toBe(true); expect(secrets.has("synthetic-refresh")).toBe(true);
     await expect(preparation.prepare()).rejects.toThrow();
     await preparation.verifyUpgrade();
@@ -110,6 +112,15 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     const { preparation, proof, calls, write } = mockedPreparation();
     vi.mocked(guards.requireManualContext).mockImplementation(() => { throw new Error("Invalid acceptance context"); });
     await expect(preparation.prepare()).rejects.toThrow();
+    expect(calls).toEqual([]);
+    expect(write).not.toHaveBeenCalled();
+    expect(proof).toEqual(createLegacyUpgradeProof());
+  });
+
+  it("rejects another attempt's directory before allocating legacy data", async () => {
+    const { preparation, proof, calls, write } = mockedPreparation();
+    vi.mocked(guards.requireManualContext).mockReturnValue("pr802-123-1");
+    await expect(preparation.prepare()).rejects.toThrow("Owned legacy directory required");
     expect(calls).toEqual([]);
     expect(write).not.toHaveBeenCalled();
     expect(proof).toEqual(createLegacyUpgradeProof());
@@ -193,13 +204,15 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     expect(proof).toEqual(createLegacyUpgradeProof());
   });
 
-  it("requires an exact run-bound graph and never accepts an empty legacy identifier", () => {
-    const fixture = { version: 1, run: "swim-acceptance-pr802-123-1", email: `e2e+${id}@hta-e2e.com`,
+  it.each(["1", "2", "12"])("accepts run attempt %s and rejects malformed graph identifiers", (attempt) => {
+    const fixture = { version: 1, run: `swim-acceptance-pr802-123-${attempt}`, email: `e2e+${id}@hta-e2e.com`,
       password: id, userId: id, blockId: id, instanceId: id,
       plannedIds: [id, "00000000-0000-4000-8000-000000000002"], sessionId: id, setId: id,
       beforeSha256: "a".repeat(64) };
     expect(modularLegacySchema.safeParse(fixture).success).toBe(true);
-    for (const change of [{ run: "swim-acceptance-pr802-123-2" }, { userId: "" }, { sessionId: "" },
+    for (const change of [{ run: "swim-acceptance-pr802-123-0" }, { run: "swim-acceptance-pr802-123-02" },
+      { run: "swim-acceptance-pr802-0-1" }, { run: "swim-acceptance-pr802-123-2/extra" },
+      { userId: "" }, { sessionId: "" },
       { plannedIds: [] }, { plannedIds: [id, id] }, { beforeSha256: "" }, { serviceRoleKey: "forbidden" }]) {
       expect(modularLegacySchema.safeParse({ ...fixture, ...change }).success).toBe(false);
     }
