@@ -6082,3 +6082,17 @@ checked against the real Today presentation for weeks 1, 4 and 6. Offline
 browser coverage runs automatically on Linux CI alongside existing regression
 acceptance. Screenshots at 375/1280 are reviewed before publication; native
 acceptance and database rehearsals run only in disposable CI, never locally.
+
+## [2026-10-07] repair | Shared band triceps pressdown
+
+Added Band Triceps Pressdown to the shared seed and additive migration 0163,
+using the existing triceps helper, `band` equipment and concise how-to content
+(DC-A1, DC-A6, DC-T1). No new load conversion, taxonomy coefficients, schema
+columns or permission changes. Existing weight-optional band logging remains
+authoritative. The guarded disposable CI catalog stage checks migration/seed
+parity, replay, unused down/up and refusal for UUID/slug workout and set-history
+references; SQL output stays suppressed. The manual down locks public tables
+and refuses any references rather than deleting user history. A catalog-backed
+browser fixture selects it in the program editor and logs reps/effort without
+kg. Publication is not live availability: production application requires
+separate authorization after deployment.

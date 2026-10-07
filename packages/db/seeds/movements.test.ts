@@ -12,6 +12,32 @@ import { MOVEMENT_INSTRUCTIONS } from "./movement-instructions";
 const SEED = SEED_MOVEMENTS;
 
 describe("movement catalog seed", () => {
+  it("seeds one band triceps pressdown using the established triceps taxonomy (DC-A6, DC-T1)", () => {
+    const entries = SEED.filter((m) => m.slug === "band-triceps-pressdown");
+    expect(entries).toHaveLength(1);
+    const cable = SEED.find((m) => m.slug === "pushdown-rope")!;
+    expect(entries[0]).toEqual({
+      ...cable,
+      slug: "band-triceps-pressdown",
+      displayName: "Band Triceps Pressdown",
+      equipment: "band",
+    });
+    expect(entries[0]).toMatchObject({
+      primaryMuscles: ["triceps"],
+      primaryRegion: "elbow_forearm",
+      secondaryRegions: ["shoulder_scapular"],
+      functionalRoles: [],
+      bulletproofRoles: [],
+      bodyWeightLoaded: false,
+      highStrainTendon: false,
+    });
+    const instructions = MOVEMENT_INSTRUCTIONS.filter((m) => m.slug === entries[0]!.slug);
+    expect(instructions).toHaveLength(1);
+    expect(instructions[0]!.setup).toBeTruthy();
+    expect(instructions[0]!.steps.length).toBeGreaterThanOrEqual(3);
+    expect(instructions[0]!.cues.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("contains ≥ 250 movements (Phase 1 target)", () => {
     expect(SEED.length).toBeGreaterThanOrEqual(250);
   });

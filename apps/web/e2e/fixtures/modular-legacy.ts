@@ -9,7 +9,7 @@ import { requireBrowserEnvironment } from "../../scripts/swim-browser-acceptance
 export const MODULAR_LEGACY_FILE = "modular-legacy.json";
 export const modularLegacySchema = z.object({
   version: z.literal(1),
-  run: z.string().regex(/^swim-acceptance-pr802-[1-9][0-9]*-1$/),
+  run: z.string().regex(/^swim-acceptance-pr802-[1-9][0-9]*-[1-9][0-9]*$/),
   email: z.string().regex(/^e2e\+[a-f0-9-]{36}@hta-e2e\.com$/),
   password: z.string().uuid(),
   userId: z.string().uuid(),

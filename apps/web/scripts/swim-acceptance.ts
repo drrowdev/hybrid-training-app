@@ -37,6 +37,7 @@ import { hasModularSchema, hasOwnershipSchema, hasResumeSchema, requireAcceptanc
 import { createModularRoundTripProof, modularSchemaRoundTrip } from "./modular-schema-roundtrip";
 import { createLegacyUpgradeProof, createModularLegacyPreparation } from "./modular-legacy-fixture";
 import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
+import { BAND_PRESSDOWN_FILES, bandPressdownRehearsalSql } from "./band-pressdown-rehearsal";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -481,6 +482,21 @@ async function main(cleanupOnly: boolean) {
       requireProcess(result);
       requireUnchanged();
     });
+    const rehearseBandPressdown = async () => {
+      const verified = (file: string) => {
+        requireUnchanged();
+        const bytes = readFileSync(join(root, file));
+        assert(hash(bytes) === sourceHashes[file], "Tracked catalog SQL changed");
+        return bytes.toString("utf8").replaceAll("\r\n", "\n");
+      };
+      const sql = bandPressdownRehearsalSql(verified(BAND_PRESSDOWN_FILES.up), verified(BAND_PRESSDOWN_FILES.down));
+      // Only exit status leaves psql; no SQL results, rows or errors enter command logs.
+      await command("docker", ["exec", target.dbId, "sh", "-c",
+        'psql -Xq --no-password -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c "$1" >/dev/null 2>&1',
+        "band-catalog-rehearsal", sql], { timeout: 60_000 });
+      requireUnchanged();
+    };
+    await stage("band pressdown migrated catalog and unused/used down", rehearseBandPressdown);
     await stage("global catalog and migration consistency", async () => {
       await command("pnpm", ["--filter", "@hta/db", "db:seed"], { env: target.dbEnv, timeout: 120_000 });
       await command("pnpm", ["--filter", "@hta/db", "db:check"], { env: target.dbEnv, timeout: 60_000 });
@@ -494,6 +510,7 @@ async function main(cleanupOnly: boolean) {
       manifest.catalog = { seedCount: SEED_MOVEMENTS.length, globalCount: slugs.length, slugsSha256: hash(text) };
       requireUnchanged();
     });
+    await stage("band pressdown fresh seed parity", rehearseBandPressdown);
     const modularProof = createModularRoundTripProof();
     const ownershipProof = createModularRoundTripProof();
     const resumeProof = createModularRoundTripProof();
