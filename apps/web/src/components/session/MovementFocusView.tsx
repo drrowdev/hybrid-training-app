@@ -230,6 +230,10 @@ export type FocusViewProps = {
    * `focusStrip` is set — the inline card layout has no dock.
    */
   dockAccessory?: React.ReactNode;
+  dockPrimary?: React.ReactNode;
+  active?: boolean;
+  preserveDrafts?: boolean;
+  waitForSave?: boolean;
   /** Superset A1 advances immediately; its A2 partner owns the shared rest. */
   /**
    * Decides whether saving a given prescription item should SKIP the rest
@@ -292,6 +296,10 @@ export function MovementFocusView({
   focusStrip = false,
   resumeReady = true,
   dockAccessory = null,
+  dockPrimary,
+  active = true,
+  preserveDrafts = false,
+  waitForSave = false,
   suppressRestForItemIndex,
   onExitEdit,
 }: FocusViewProps) {
@@ -698,6 +706,11 @@ export function MovementFocusView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeReady]);
 
+  const cursorKey = `${group.groupKey ?? group.movementId}:${cursor}:${
+    isActiveLogged && !submitting ? "done" : "open"
+  }`;
+  const lastCursorKey = useRef(cursorKey);
+
   // Persist the working state. Cheap (one small localStorage write) and
   // throttled by React's render cadence rather than a timer.
   //
@@ -709,19 +722,20 @@ export function MovementFocusView({
   // with `firstOpenId`'s blank/default draft before it can ever be restored.
   useEffect(() => {
     if (!focusStrip || !resumeReady) return;
+    if (preserveDrafts && lastCursorKey.current !== cursorKey) return;
+    const draft = { weightKg: weight, reps, rpe, distanceM, durationSec, externalLoadKg };
+    const saved = preserveDrafts ? readResume(sessionId) : null;
     writeResume({
+      ...(preserveDrafts ? {
+        drafts: { ...saved?.drafts, [`${groupKey}:${cursor}`]: draft },
+        cardioDrafts: saved?.cardioDrafts,
+        declinedOptionalKeys: saved?.declinedOptionalKeys,
+      } : {}),
       sessionId,
       activeKey: groupKey,
       cursor,
       draftKey: groupKey,
-      draft: {
-        weightKg: weight,
-        reps,
-        rpe,
-        distanceM,
-        durationSec,
-        externalLoadKg,
-      },
+      draft,
       // Never persist a deadline the lifter has opted out of — a resume
       // snapshot outlives the preference, and restoring one would put a
       // countdown back on screen that they turned off.
@@ -745,51 +759,51 @@ export function MovementFocusView({
     group.movementName,
     restSeconds,
     restTimerEnabled,
+    preserveDrafts,
+    cursorKey,
   ]);
 
   // Snap weight/reps to the target whenever the active slot changes.
   // Also reset RPE + close the skip menu so each set starts clean.
   // Pending circuit coverage must not reset the draft or clear a rejected save.
-  const cursorKey = `${group.groupKey ?? group.movementId}:${cursor}:${
-    isActiveLogged && !submitting ? "done" : "open"
-  }`;
-  const lastCursorKey = useRef(cursorKey);
   useEffect(() => {
     if (lastCursorKey.current === cursorKey) return;
     lastCursorKey.current = cursorKey;
     // Pre-select RPE from an already-logged set when re-opening it,
     // otherwise clear so the picker is the empty "no zone" state.
     const existing = activeLoggedSet;
+    const draft = preserveDrafts && !isActiveLogged
+      ? readResume(sessionId)?.drafts?.[`${groupKey}:${cursor}`] : undefined;
     setWeight(
       existing && !existing.skipped && existing.weightKg != null
         ? existing.weightKg
-        : targetWeight,
+        : draft?.weightKg ?? targetWeight,
     );
     setReps(
       existing && !existing.skipped && existing.reps != null && existing.reps > 0
         ? existing.reps
-        : targetReps,
+        : draft?.reps ?? targetReps,
     );
     setDistanceM(
       existing && !existing.skipped && existing.distanceM != null
         ? existing.distanceM
-        : targetDistance,
+        : draft?.distanceM ?? targetDistance,
     );
     setDurationSec(
       existing && !existing.skipped && existing.durationSec != null
         ? existing.durationSec
-        : targetDuration,
+        : draft?.durationSec ?? targetDuration,
     );
     setExternalLoadKg(
       existing && !existing.skipped && existing.externalLoadKg != null
         ? existing.externalLoadKg
-        : targetExternalLoad,
+        : draft?.externalLoadKg ?? targetExternalLoad,
     );
-    setRpe(existing?.rpe ?? null);
+    setRpe(existing?.rpe ?? draft?.rpe ?? null);
     setError(null);
     setSkipMenuOpen(false);
     setSkipError(null);
-  }, [cursorKey, targetWeight, targetReps, targetDistance, targetDuration, targetExternalLoad, activeLoggedSet]);
+  }, [cursorKey, targetWeight, targetReps, targetDistance, targetDuration, targetExternalLoad, activeLoggedSet, preserveDrafts, isActiveLogged, sessionId, groupKey, cursor]);
 
   // Auto-clear PR flash after 4.5s.
   useEffect(() => {
@@ -1000,9 +1014,9 @@ export function MovementFocusView({
     // unaffected), it just doesn't yank the lifter back to wherever this
     // stale write thinks they should go next.
     const submittedGroupKey = groupKey;
-    // Circuit rotation waits for durable acceptance; don't expose the next
-    // round of this station while its optimistic overlay is already visible.
-    const awaitsCircuitRotation = activeItem.circuit != null && onSaved != null;
+    // Keep authored slots, like circuit rotations, pinned until acceptance.
+    // An optimistic cursor change otherwise resets drafts/errors on rollback.
+    const awaitsCircuitRotation = (activeItem.circuit != null || waitForSave) && onSaved != null;
     if (awaitsCircuitRotation) {
       setPendingCircuitSlots((previous) => new Map(previous).set(groupKey, cursor));
     }
@@ -1012,6 +1026,10 @@ export function MovementFocusView({
           firedIndicesRef.current.delete(activeItemIndex);
           setError(result.error);
           setUndo(null);
+          if (waitForSave) {
+            setRestSeconds(0);
+            restDeadlineRef.current = null;
+          }
           return;
         }
         if (shouldFireOnSaved(submittedGroupKey, currentGroupKeyRef.current)) {
@@ -1032,6 +1050,10 @@ export function MovementFocusView({
         firedIndicesRef.current.delete(activeItemIndex);
         setError("Couldn't save that set — check your connection and retry.");
         setUndo(null);
+        if (waitForSave) {
+          setRestSeconds(0);
+          restDeadlineRef.current = null;
+        }
       })
       .finally(() => {
         if (awaitsCircuitRotation) {
@@ -1050,6 +1072,7 @@ export function MovementFocusView({
     if (skipPending) return;
     setSkipPending(true);
     setSkipError(null);
+    if (waitForSave) setPendingCircuitSlots((previous) => new Map(previous).set(groupKey, cursor));
     const fd = new FormData();
     fd.set("sessionId", sessionId);
     fd.set("movementId", group.movementId);
@@ -1081,9 +1104,18 @@ export function MovementFocusView({
       setManualPin(null);
       // Skipped sets must not trigger PR/e1RM toasts or the rest timer
       // — they are intentionally "no work".
-      onSaved?.({ coveredIndices: [activeItemIndex] });
+      if (shouldFireOnSaved(groupKey, currentGroupKeyRef.current)) {
+        onSaved?.({ coveredIndices: [activeItemIndex] });
+      }
+    } catch {
+      setSkipError("Couldn't skip that set. Try again.");
     } finally {
       setSkipPending(false);
+      if (waitForSave) setPendingCircuitSlots((previous) => {
+        const next = new Map(previous);
+        next.delete(groupKey);
+        return next;
+      });
     }
   };
 
@@ -1100,6 +1132,7 @@ export function MovementFocusView({
     if (skipPending) return;
     setSkipPending(true);
     setSkipError(null);
+    if (waitForSave) setPendingCircuitSlots((previous) => new Map(previous).set(groupKey, cursor));
     const covered: number[] = [];
     let failed = false;
     try {
@@ -1144,13 +1177,20 @@ export function MovementFocusView({
       // the message for a success buzz on a movement with slots still unwritten.
       if (covered.length > 0) {
         setManualPin(null);
-        onSaved?.({ coveredIndices: covered });
+        if (shouldFireOnSaved(groupKey, currentGroupKeyRef.current)) onSaved?.({ coveredIndices: covered });
       }
       if (failed) return;
       hapticTick(hapticsEnabled);
       setSkipMenuOpen(false);
+    } catch {
+      setSkipError("Couldn't skip the remaining sets. Try again.");
     } finally {
       setSkipPending(false);
+      if (waitForSave) setPendingCircuitSlots((previous) => {
+        const next = new Map(previous);
+        next.delete(groupKey);
+        return next;
+      });
     }
   };
 
@@ -1913,8 +1953,9 @@ export function MovementFocusView({
 
       {focusStrip && (
         <SessionDock
+          active={active}
           rest={restTimerNode}
-          primary={logButton}
+          primary={isEditing || submitting || skipPending ? logButton : dockPrimary ?? logButton}
           accessory={isEditing ? dockCancelButton : dockAccessory}
           editing={isEditing}
           undo={

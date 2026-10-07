@@ -49,6 +49,12 @@ export type ResumeState = {
   /** Movement the draft belongs to — a draft must never leak across lifts. */
   draftKey?: string;
   draft?: ResumeDraft;
+  drafts?: Record<string, ResumeDraft>;
+  declinedOptionalKeys?: string[];
+  cardioDrafts?: Record<string, {
+    completed: boolean; duration: string; rpe: string; notes: string;
+    avgHr: string; distance: string; showMore: boolean;
+  }>;
   /** Absolute epoch ms the rest countdown ends at. */
   restDeadlineMs?: number;
   /** Movement name shown in the rest row, so the label survives too. */

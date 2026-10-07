@@ -29,10 +29,15 @@ import { formDataToPayload } from "@/lib/offline/outbox-core";
 import { listForSession as listOutboxForSession } from "@/lib/offline/outbox";
 import type { OutboxEntry } from "@/lib/offline/outbox-core";
 import { useSessionLoggingState } from "./SessionLoggingState";
+import { SessionDock } from "./SessionDock";
+import { readResume, writeResume } from "@/lib/sessions/session-resume";
 
 type LogAction = typeof logCardioSessionAction;
 
 export type CardioLogFormProps = {
+  dockAccessory?: React.ReactNode;
+  onSaved?: () => void;
+  resumeKey?: string;
   prescriptionItemIndex?: number;
   sessionId: string;
   /** Prescribed duration in minutes — pre-fills the input. */
@@ -96,6 +101,9 @@ export function CardioLogForm({
   initialDurationMin,
   initialDistanceKm,
   prescriptionItemIndex,
+  dockAccessory,
+  onSaved,
+  resumeKey,
 }: CardioLogFormProps) {
   const router = useRouter();
   const loggingState = useSessionLoggingState();
@@ -155,6 +163,26 @@ export function CardioLogForm({
   const [showMore, setShowMore] = useState(initialDistanceDisplay !== "");
   const [avgHr, setAvgHr] = useState<string>("");
   const [distance, setDistance] = useState<string>(initialDistanceDisplay);
+  const [draftReady, setDraftReady] = useState(false);
+  useEffect(() => {
+    if (!resumeKey) return;
+    const draft = readResume(sessionId)?.cardioDrafts?.[resumeKey];
+    if (draft) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the selected cardio occurrence after hydration
+      setCompleted(draft.completed);
+      setDuration(draft.duration); setRpe(draft.rpe); setNotes(draft.notes);
+      setAvgHr(draft.avgHr); setDistance(draft.distance); setShowMore(draft.showMore);
+    }
+    setDraftReady(true);
+  }, [sessionId, resumeKey]);
+  useEffect(() => {
+    if (!resumeKey || !draftReady) return;
+    const saved = readResume(sessionId);
+    writeResume({
+      ...saved, sessionId, activeKey: resumeKey, cursor: 0,
+      cardioDrafts: { ...saved?.cardioDrafts, [resumeKey]: { completed, duration, rpe, notes, avgHr, distance, showMore } },
+    });
+  }, [sessionId, resumeKey, draftReady, completed, duration, rpe, notes, avgHr, distance, showMore]);
 
   const distanceUnit = units === "imperial" ? "mi" : "km";
 
@@ -197,6 +225,7 @@ export function CardioLogForm({
         setProgressMessage(durable.result?.workoutSaved ? durable.result.error ?? null : null);
         setSavedOffline(true);
         if (prescriptionItemIndex !== undefined) loggingState?.registerCardioLog(clientLogId, prescriptionItemIndex);
+        onSaved?.();
         return;
       }
       if (durable.status === "failed") {
@@ -208,6 +237,7 @@ export function CardioLogForm({
         return;
       }
       if (prescriptionItemIndex !== undefined) loggingState?.registerCardioLog(clientLogId, prescriptionItemIndex);
+      onSaved?.();
       router.refresh();
     });
   };
@@ -224,6 +254,13 @@ export function CardioLogForm({
     );
   }
 
+  const submitButton = (
+    <button type="submit" disabled={pending || !outboxHydrated} data-testid="cardio-log-submit"
+      className={`cp-btn primary big${dockAccessory ? " cp-dock-cta" : ""}`} style={{ minHeight: 52, textAlign: "center", justifyContent: "center",
+        opacity: pending || !outboxHydrated ? 0.7 : 1, cursor: pending || !outboxHydrated ? "not-allowed" : "pointer" }}>
+      {pending ? "Saving…" : completed ? prescriptionItemIndex === undefined ? "Finish workout" : "Save cardio" : "Save skip"}
+    </button>
+  );
   return (
     <form
       data-testid="cardio-log-form"
@@ -253,9 +290,9 @@ export function CardioLogForm({
           gap: 12,
         }}
       >
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
+        {!dockAccessory && <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
           Log your cardio
-        </h3>
+        </h3>}
         {/* Fix 5 — completion defaults to "yes". The skip path is the
             edge case (most cardio gets done), so the big yes/no radio
             block becomes a tiny inline link. */}
@@ -445,25 +482,7 @@ export function CardioLogForm({
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={pending || !outboxHydrated}
-        data-testid="cardio-log-submit"
-        className="cp-btn primary big"
-        style={{
-          minHeight: 52,
-          textAlign: "center",
-          justifyContent: "center",
-          opacity: pending || !outboxHydrated ? 0.7 : 1,
-          cursor: pending || !outboxHydrated ? "not-allowed" : "pointer",
-        }}
-      >
-        {pending
-          ? "Saving…"
-          : completed
-            ? prescriptionItemIndex === undefined ? "Finish workout" : "Save cardio"
-            : "Save skip"}
-      </button>
+      {dockAccessory ? <SessionDock primary={submitButton} accessory={dockAccessory} /> : submitButton}
     </form>
   );
 }

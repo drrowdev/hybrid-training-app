@@ -30,6 +30,7 @@ export function SessionDock({
   editing = false,
   undo,
   testId = "session-dock",
+  active = true,
 }: {
   /** Rest countdown row. Rendered above the action row when present. */
   rest?: React.ReactNode;
@@ -46,6 +47,7 @@ export function SessionDock({
    */
   undo?: React.ReactNode;
   testId?: string;
+  active?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -60,6 +62,7 @@ export function SessionDock({
   // `--cp-bottomnav-h` is zeroed rather than the tab bar merely being hidden,
   // because the dock and the rest timer both offset themselves by it.
   useEffect(() => {
+    if (!active) return;
     const el = ref.current;
     if (!el) return;
     const root = document.documentElement;
@@ -77,8 +80,9 @@ export function SessionDock({
       root.style.removeProperty("--cp-bottomnav-h");
       root.style.removeProperty("--cp-session-dock-h");
     };
-  }, []);
+  }, [active]);
 
+  if (!active) return null;
   return (
     <div
       ref={ref}

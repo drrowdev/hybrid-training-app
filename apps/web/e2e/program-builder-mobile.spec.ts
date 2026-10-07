@@ -374,6 +374,21 @@ async function loggedSets(actor: SupabaseClient, sessionId: string) {
   return result.data ?? [];
 }
 
+async function logNativeMainWithWarmups(page: Page, actor: SupabaseClient, sessionId: string, main: Prescription["items"][number]) {
+  const issued = await actor.from("sessions").select("prescription").eq("id", sessionId).single();
+  expect(issued.error).toBeNull();
+  const items = z.object({ items: z.array(z.object({ kind: z.string() }).passthrough()) })
+    .parse(issued.data?.prescription).items;
+  expect(items.map((item) => item.kind)).toEqual(["warmup", "warmup", "warmup", "main"]);
+  expect(items[3]).toEqual(main);
+  for (let index = 0; index < items.length; index++) {
+    await page.locator('[data-testid="movement-focus-log-button"]:visible').click();
+    await expect.poll(async () => (await loggedSets(actor, sessionId)).length).toBe(index + 1);
+  }
+  expect((await loggedSets(actor, sessionId)).map((set) => set.prescription_item_index)).toEqual([0, 1, 2, 3]);
+  await expect(page.getByTestId("finish-stickybar")).toHaveAttribute("data-armed", "true");
+}
+
 async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient, timeout?: number, caseId: "m13" | "m14" = "m13") {
   const observation = actor ? observeNativeUi(page, caseId, "", async () => {
     const read = await actor.from("rehab_protocols").select("id").eq("name", name)
@@ -582,7 +597,12 @@ test.describe("Modular program builder", () => {
     for (const path of ["/app/programs", "/app/programs?activity=hybrid"]) {
       await page.goto(path);
       await page.getByRole("link", { name: "Schedule", exact: true }).click();
-      await expect(page.locator(`a[href="/app/sessions/start/${row.id}"]`)).toBeVisible();
+      const scheduled = page.locator(`a[href="/app/sessions/start/${row.id}"], a[href="#session=${row.id}"]`);
+      await expect(scheduled).toBeVisible();
+      if (await scheduled.getAttribute("href") === `#session=${row.id}`) {
+        await scheduled.click();
+        await expect(page.getByTestId("plan-drawer")).toBeVisible();
+      }
     }
     for (const activity of ["strength", "running"]) {
       await page.goto(`/app/programs?activity=${activity}`);
@@ -590,7 +610,11 @@ test.describe("Modular program builder", () => {
     }
     stage("m3-09");
     const sessionId = await start(page, row.id);
-    await expect(page.getByRole("navigation", { name: "Workout parts", exact: true }).getByRole("button")).toHaveCount(2);
+    await page.getByTestId("movement-navigator-open").click();
+    const moves = page.getByTestId("movement-navigator").locator('button[data-testid^="movement-navigator-item-"]');
+    await expect(moves).toHaveCount(3);
+    await expect(moves).toContainText([running.display_name, first.display_name, second.display_name]);
+    await page.getByTestId("movement-navigator-close").click();
     stage("m3-10");
     await page.getByTestId("cardio-log-submit").click();
     stage("m3-11");
@@ -1684,8 +1708,7 @@ test.describe("Modular program builder", () => {
       try {
         const oldRow = original.find((row) => row.block_id === strength.block_id)!;
         const oldSession = await start(page, oldRow.id);
-        await page.getByTestId("movement-focus-log-button").click();
-        await expect.poll(async () => (await loggedSets(actor, oldSession)).length).toBe(1);
+        await logNativeMainWithWarmups(page, actor, oldSession, oldRow.prescription.items[0]!);
         await context.setOffline(true);
         await page.getByRole("button", { name: /^Finish session/ }).click();
         await expect(page.getByTestId("finish-saved-offline")).toBeVisible();
@@ -1775,8 +1798,7 @@ test.describe("Modular program builder", () => {
       const swimming = await prepareNativeCourse(actor, today()), original = await planned(actor);
       const oldRow = original.find((row) => row.block_id === strength.block_id)!;
       const oldSession = await start(page, oldRow.id);
-      await page.getByTestId("movement-focus-log-button").click();
-      await expect.poll(async () => (await loggedSets(actor, oldSession)).length).toBe(1);
+      await logNativeMainWithWarmups(page, actor, oldSession, oldRow.prescription.items[0]!);
       const replacement = await prepareNativeProgram(actor,
         nativeProgramDefinition("strength", "Export replacement", weekday(), liftId, runId), today(), strength.block_id);
       await page.getByRole("button", { name: /^Finish session/ }).click();
@@ -1813,7 +1835,8 @@ test.describe("Modular program builder", () => {
           program_instances: z.array(z.object({ id: z.string().uuid(), block_id: z.string().uuid(), status: z.string() })),
           planned_sessions: z.array(z.object({ id: z.string().uuid(), block_id: z.string().uuid(), completed_session_id: z.string().uuid().nullable() })),
           sessions: z.array(z.object({ id: z.string().uuid(), completed_at: z.string(), completion_outbox_entry_id: z.string().uuid() })),
-          set_logs: z.array(z.object({ session_id: z.string().uuid(), movement_id: z.string().uuid() })),
+          set_logs: z.array(z.object({ session_id: z.string().uuid(), movement_id: z.string().uuid(),
+            set_kind: z.string(), prescription_item_index: z.number() })),
           cardio_logs: z.array(z.object({ session_id: z.string().uuid(), swim_result: z.unknown().nullable() })),
           swim_plans: z.array(z.object({ id: z.string().uuid(), status: z.string() })),
           swim_workouts: z.array(z.object({ id: z.string().uuid(), session_id: z.null(), status: z.literal("scheduled") })),
@@ -1832,7 +1855,10 @@ test.describe("Modular program builder", () => {
         expect(history.planned_sessions.find((row) => row.id === oldRow.id)?.completed_session_id).toBe(oldSession);
         expect(history.sessions).toHaveLength(2);
         expect(history.sessions.find((row) => row.id === oldSession)?.completion_outbox_entry_id).toBe(completionId);
-        expect(history.set_logs).toEqual([{ session_id: oldSession, movement_id: liftId }]);
+        expect([...history.set_logs].sort((a, b) => a.prescription_item_index - b.prescription_item_index))
+          .toEqual(["warmup", "warmup", "warmup", "main"].map((set_kind, prescription_item_index) => ({
+            session_id: oldSession, movement_id: liftId, set_kind, prescription_item_index,
+          })));
         expect(history.cardio_logs).toEqual([{ session_id: runSession, swim_result: null }]);
         expect(history.swim_plans).toEqual([{ id: swimming.plan.id, status: "active" }]);
         expect(history.swim_workouts.map((row) => row.id).sort()).toEqual(swimming.workouts.map((row) => row.id).sort());

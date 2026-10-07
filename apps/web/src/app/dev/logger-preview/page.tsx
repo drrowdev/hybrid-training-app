@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { LoggerPreview } from "./preview";
+import { AuthoredLoggerPreview } from "./authored-preview";
 
 /**
  * Dev-only visual harness for the session logger.
@@ -44,5 +45,8 @@ export default async function LoggerPreviewPage({
 }) {
   if (!fixturesEnabled()) notFound();
   const { variant } = await searchParams;
+  if (variant === "authored" || variant === "authored-reject" || variant === "authored-reject-final") {
+    return <AuthoredLoggerPreview rejectFirst={variant === "authored-reject"} rejectFinal={variant === "authored-reject-final"} />;
+  }
   return <LoggerPreview variant={variant ?? "rehab"} />;
 }

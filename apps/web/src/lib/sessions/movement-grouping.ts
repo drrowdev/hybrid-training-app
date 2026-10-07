@@ -108,11 +108,12 @@ export function bucketForKind(kind: PrescriptionItem["kind"]): MovementSlotBucke
  */
 export function groupPrescriptionByMovement(
   prescription: Prescription | null,
+  includeCardio = false,
 ): MovementGroup[] {
   if (!prescription?.items?.length) return [];
   const byKey = new Map<string, MovementGroup>();
   prescription.items.forEach((item, idx) => {
-    if (!PRESCRIPTION_STRENGTH_KINDS.has(item.kind)) return;
+    if (!PRESCRIPTION_STRENGTH_KINDS.has(item.kind) && !(includeCardio && item.kind.startsWith("cardio_"))) return;
     if (!item.movementId) return;
     const groupKey = movementIdentityKey(item);
     const existing = byKey.get(groupKey);

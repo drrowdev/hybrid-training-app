@@ -250,10 +250,12 @@ vi.mock("@/lib/supabase/server", () => ({
 
 // Import AFTER mocks so the action picks up the stubbed supabase.
 import { startSessionDirect } from "../actions";
+import * as warmupIssuance from "../issue-authored-warmups";
 
 const VALID_UUID = "11111111-1111-1111-1111-111111111111";
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   rpc.mockReset().mockResolvedValue({ data: null, error: { code: "PGRST202", message: "Could not find start_planned_session_atomically" } });
   state.planned = null;
   state.sessionInsertCalls = [];
@@ -276,6 +278,20 @@ beforeEach(() => {
 });
 
 describe("startSessionDirect — no pre-workout check-in", () => {
+  it("DC-R6 prepares the persisted prescription before atomic start and stops if issuance fails", async () => {
+    state.planned = { id: VALID_UUID, title: "Authored", slot: "single", planned_at: null, prescription: { items: [] }, completed_session_id: null, user_id: "user-1" };
+    const issue = vi.spyOn(warmupIssuance, "issueAuthoredWarmups").mockResolvedValueOnce();
+    rpc.mockImplementation(async () => {
+      expect(issue).toHaveBeenCalledWith(expect.anything(), "user-1", state.planned);
+      return { data: NEW_SESSION, error: null };
+    });
+    await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(RedirectError);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    rpc.mockClear();
+    issue.mockRejectedValueOnce(new Error("Workout changed"));
+    await expect(startSessionDirect(VALID_UUID)).rejects.toThrow("Workout changed");
+    expect(rpc).not.toHaveBeenCalled();
+  });
   it("DC-K4 starts through one RPC when available, without a client-side insert/link window", async () => {
     state.planned = { id: VALID_UUID, title: "Mixed", slot: "single", planned_at: null, prescription: { items: [] }, completed_session_id: null, user_id: "user-1" };
     rpc.mockResolvedValue({ data: NEW_SESSION, error: null });

@@ -92,6 +92,7 @@ export function MovementNavigatorSheet({
   onPick,
   doneCount,
   totalCount,
+  preserveOrder = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -100,6 +101,7 @@ export function MovementNavigatorSheet({
   onPick: (key: string) => void;
   doneCount: number;
   totalCount: number;
+  preserveOrder?: boolean;
 }) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
@@ -114,7 +116,7 @@ export function MovementNavigatorSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const sections = SECTION_ORDER.map((key) => ({
+  const sections = preserveOrder ? [{ key: "workout", label: "", items: entries }] : SECTION_ORDER.map((key) => ({
     key,
     label: key === "rehab" && entries.some((e) => e.section !== "rehab")
       ? "Rehab · during warm-up"
@@ -161,7 +163,7 @@ export function MovementNavigatorSheet({
             const drawn = new Set<string>();
             return (
               <div key={section.key}>
-                <div className="cp-nav-section">{section.label}</div>
+                {section.label && <div className="cp-nav-section">{section.label}</div>}
                 {section.items.map((entry) => {
                   if (drawn.has(entry.key)) return null;
                   const partners = entry.link
