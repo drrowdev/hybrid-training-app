@@ -25,6 +25,7 @@ on:
       - "packages/db/drizzle/0164_authored_program_start_date.sql"
       - "packages/db/rollbacks/0164_authored_program_start_date.down.sql"
       - "packages/db/integration-tests/authored-start-date-rehearsal.ts"
+      - "packages/db/rollbacks/0165_authored_test_max_suggestions.down.sql"
       - "packages/db/rollbacks/0161_scheduled_max_progression.down.sql"
       - "apps/web/scripts/test-max-progression-ui.mjs"
       - "apps/web/src/components/today/TmSuggestionBanner.tsx"

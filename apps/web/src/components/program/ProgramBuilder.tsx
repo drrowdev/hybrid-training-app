@@ -258,6 +258,11 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
     setDefinition(next); setPreview(null); setRequestId(null); setAcceptOverlap(false); setError(null);
   };
   const updateWeek = (patch: Partial<AuthoredWeek>) => update({ ...definition, weeks: definition.weeks.map((entry, index) => index === weekIndex ? { ...entry, ...patch } : entry) });
+  const setWeekType = (type: AuthoredWeek["type"]) => update({ ...definition, weeks: definition.weeks.map((entry, index) => {
+    if (index !== weekIndex) return entry;
+    const { after: _after, stepKg: _stepKg, ...rest } = entry;
+    return { ...rest, type, fewer: type === "Deload", ...(type === "Test" ? { after: "updateFromLoggedSet" as const } : {}) };
+  }) });
   const setWorkout = (workout: AuthoredWorkout) => update({ ...definition, workouts: definition.workouts.some((entry) => entry.id === workout.id)
     ? definition.workouts.map((entry) => entry.id === workout.id ? workout : entry) : [...definition.workouts, workout] });
   const save = (checked: AuthoredPreview, id: string, replace = false) => {
@@ -380,10 +385,24 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
     {editWeek && !workoutId ? <section className={styles.weekEditor} aria-label={`Edit week ${weekIndex + 1}`}>
       <h3>Week {weekIndex + 1}</h3>
       <div className={styles.segment} role="group" aria-label="Week type">{(["Build", "Deload", "Test"] as const).map((type) =>
-        <button type="button" key={type} aria-pressed={week.type === type} onClick={() => updateWeek({ type, fewer: type === "Deload" })}>{type}</button>)}</div>
+        <button type="button" key={type} aria-pressed={week.type === type} onClick={() => setWeekType(type)}>{type}</button>)}</div>
       <Field label="Sets"><input className={styles.input} value={week.sets} onChange={(event) => updateWeek({ sets: event.target.value })} /></Field>
       <Field label="Reps"><input className={styles.input} value={week.reps} onChange={(event) => updateWeek({ reps: event.target.value })} /></Field>
       <Field label="% 1RM"><input className={styles.input} type="number" min={1} max={100} step="0.5" value={week.pct} onChange={(event) => updateWeek({ pct: Number(event.target.value) })} /></Field>
+      {week.type === "Test" && <>
+        <Field label="Then"><select className={`${styles.select} ${styles.thenSelect}`} value={week.after ?? "keep"} onChange={(event) => {
+          const after = event.target.value as NonNullable<AuthoredWeek["after"]>;
+          const { stepKg: _stepKg, ...rest } = week;
+          update({ ...definition, weeks: definition.weeks.map((entry, index) => index === weekIndex
+            ? { ...rest, after, ...(after === "fixedIncrease" ? { stepKg: week.stepKg ?? 2.5 } : {}) } : entry) });
+        }}>
+          <option value="updateFromLoggedSet">Update 1RM from logged set</option>
+          <option value="fixedIncrease">Increase 1RM by a set amount</option>
+          <option value="keep">Keep 1RM</option>
+        </select></Field>
+        {week.after === "fixedIncrease" && <Field label="Increase (kg)"><input className={styles.input} type="number" inputMode="decimal" min={0.5} max={50} step="0.5"
+          value={week.stepKg ?? ""} onChange={(event) => updateWeek({ stepKg: Number(event.target.value) })} /></Field>}
+      </>}
       {week.type === "Deload" && <label className={styles.builderCheck}><input type="checkbox" checked={week.fewer ?? false} onChange={(event) => updateWeek({ fewer: event.target.checked })} />Other exercises: one set fewer</label>}
       <button type="button" className={styles.inlineLink} onClick={() => setEditWeek(false)}>Done</button>
     </section> : !workoutId && <button type="button" className={styles.inlineLink} onClick={() => setEditWeek(true)}>Edit week {weekIndex + 1}</button>}

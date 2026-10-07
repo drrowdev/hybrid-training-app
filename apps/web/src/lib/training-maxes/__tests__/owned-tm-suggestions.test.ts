@@ -26,7 +26,8 @@ let failBlockRead: boolean;
 let linked: boolean;
 let failLinkRead: boolean;
 let reads: string[];
-let writes: { table: string; body: Record<string, unknown> }[];
+let sets: unknown[];
+let writes: { table: string; method: string; body: Record<string, unknown> | null }[];
 
 beforeEach(() => {
   kind = "strength";
@@ -34,6 +35,7 @@ beforeEach(() => {
   linked = true;
   failLinkRead = false;
   reads = [];
+  sets = [];
   writes = [];
   mock.edit.mockResolvedValue(null);
   mock.client.mockResolvedValue(createClient("https://synthetic.invalid", "synthetic-key", {
@@ -43,7 +45,7 @@ beforeEach(() => {
       const table = url.pathname.split("/").at(-1)!;
       const method = init?.method ?? "GET";
       if (method !== "GET") {
-        writes.push({ table, body: JSON.parse(String(init?.body)) });
+        writes.push({ table, method, body: init?.body ? JSON.parse(String(init.body)) : null });
         return new Response(null, { status: 204 });
       }
       reads.push(table);
@@ -68,11 +70,12 @@ beforeEach(() => {
           : Response.json([{ id: block, archetype: null, notes: "My strength program", status: "active",
             program_id: "tactical-barbell", ...(kind === undefined ? {} : { program_kind: kind }) }]);
       }
+      if (table === "set_logs") return Response.json(sets);
       if (table === "tm_suggestions") return Response.json([{
         id: suggestion, user_id: owner, movement_id: movement, current_tm_kg: 90, suggested_tm_kg: 110,
         derived_from_session_id: session, derived_from_set_log_id: null, status: "pending", source: "derived_amrap",
       }]);
-      if (table === "training_maxes") return Response.json([{ id: "measurement", tm_percent: null }]);
+      if (table === "training_maxes") return Response.json([{ id: "measurement", movement_id: movement, one_rm_kg: 100, tm_percent: null }]);
       if (table === "profiles") return Response.json([{ tm_percent_default: 90 }]);
       if (table === "program_recommendations") return Response.json([{
         id: suggestion, kind: "tm-bump", block_id: block, title: "Review squat loads", detail: "Review the next cycle.",
@@ -93,9 +96,22 @@ describe("DC-R6 program-owned TM advice", () => {
     kind = programKind;
     const client = await mock.client();
     expect(await syncTmSuggestionsForSession(client, owner, session)).toEqual([]);
-    expect(reads).toEqual(["sessions", "planned_sessions", "training_blocks"]);
+    expect(reads.slice(0, 3)).toEqual(["sessions", "planned_sessions", "training_blocks"]);
+    expect(reads).not.toContain("training_maxes");
+    expect(writes.filter((write) => write.method !== "DELETE")).toEqual([]);
     expect(await acceptTmSuggestion(input())).toMatchObject({ ok: false });
-    expect(writes).toEqual([]);
+    expect(writes.filter((write) => write.method !== "DELETE")).toEqual([]);
+  });
+
+  it("DC-K4 proposes a new 1RM from a marked authored test set and leaves the stored value alone", async () => {
+    sets = [{ id: "set-1", movement_id: movement, weight_kg: 110, reps: 3, rpe: null, set_kind: "main", notes: null, skipped: false,
+      prescribed: { authoredTest: { after: "updateFromLoggedSet" } } }];
+    const client = await mock.client();
+    await syncTmSuggestionsForSession(client, owner, session);
+    const writesByMethod = writes.filter((write) => write.table === "tm_suggestions");
+    const insert = writesByMethod.find((write) => write.method === "POST" || write.method === "PATCH")!;
+    expect(insert.body).toMatchObject({ source: "derived_amrap", derived_from_set_log_id: "set-1", derived_formula: "brzycki", suggested_tm_kg: 105.75 });
+    expect(writes.some((write) => write.table === "training_maxes")).toBe(false);
   });
 
   it.each([null, undefined])("retains the existing conversion for a legacy source with kind %s", async (legacyKind) => {
@@ -111,7 +127,7 @@ describe("DC-R6 program-owned TM advice", () => {
   it("accepts a freestyle source without a planned-session link", async () => {
     linked = false;
     expect(await acceptTmSuggestion(input())).toEqual({ ok: true });
-    expect(writes.find((write) => write.table === "training_maxes")?.body.one_rm_kg).toBe(122.5);
+    expect(writes.find((write) => write.table === "training_maxes")?.body?.one_rm_kg).toBe(122.5);
   });
 
   it("refuses unreadable planned-session ownership without writing", async () => {

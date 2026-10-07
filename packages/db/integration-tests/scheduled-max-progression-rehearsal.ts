@@ -154,7 +154,48 @@ export async function rehearseScheduledMaxProgression(database: postgres.Sql, st
     assert.equal((await database`SELECT status FROM public.tm_suggestions
       WHERE id=${scheduled.find((row) => row.movement_id === derivedMovement)!.id}::uuid`)[0]!.status, "dismissed");
     assert.equal(await generate(freshCandidates), 0);
-    return ["0161-up-down-up-and-unchanged-RLS", "0161-DC-R6-concurrent-generation-and-absolute-max-exclusion",
+    stage("0165-authored-test-up-down-up-and-accept");
+    const authoredUp = readFileSync(new URL("../drizzle/0165_authored_test_max_suggestions.sql", import.meta.url), "utf8");
+    const authoredDown = readFileSync(new URL("../rollbacks/0165_authored_test_max_suggestions.down.sql", import.meta.url), "utf8");
+    const decideCatalog = async () => JSON.stringify(await database`SELECT proowner::regrole::text AS owner,prosecdef,proconfig,proacl::text AS acl,
+      md5(replace(prosrc,E'\r\n',E'\n')) AS body FROM pg_proc WHERE oid='public.decide_max_suggestions(uuid[],boolean)'::regprocedure`);
+    const decideBefore = await decideCatalog();
+    await database.begin((tx) => tx.unsafe(authoredUp));
+    const decideAfter = await decideCatalog();
+    assert.notEqual(decideAfter, decideBefore);
+    const authoredConnection = await database.reserve();
+    try { await authoredConnection.unsafe(authoredDown); }
+    catch (error) { await authoredConnection.unsafe("ROLLBACK"); throw error; }
+    finally { authoredConnection.release(); }
+    assert.equal(await decideCatalog(), decideBefore);
+    await database.begin((tx) => tx.unsafe(authoredUp));
+    assert.equal(await decideCatalog(), decideAfter);
+    await asUser(owner, (tx) => tx`UPDATE public.planned_sessions SET completed_session_id=${session.id}::uuid WHERE user_id=${owner}::uuid`);
+    const authoredSet = (movement: string, index: number, prescribed: unknown) => asUser(owner, async (tx) => (await tx`INSERT INTO public.set_logs(
+      session_id,movement_id,set_index,reps,weight_kg,prescribed) VALUES(${session.id}::uuid,${movement}::uuid,${index},3,100,${JSON.stringify(prescribed)}::jsonb)
+      RETURNING id`)[0]!.id as string);
+    const authoredSuggestion = (setId: string, movement: string) => asUser(owner, async (tx) => (await tx`INSERT INTO public.tm_suggestions(
+      user_id,movement_id,current_tm_kg,suggested_tm_kg,source,derived_from_session_id,derived_from_set_log_id,derived_formula)
+      VALUES(${owner}::uuid,${movement}::uuid,92.25,94.5,'derived_amrap',${session.id}::uuid,${setId}::uuid,'epley') RETURNING id`)[0]!.id as string);
+    const maxOf = async () => Number((await database`SELECT one_rm_kg FROM public.training_maxes
+      WHERE user_id=${owner}::uuid AND movement_id=${derivedMovement}::uuid`)[0]!.one_rm_kg);
+    const plain = await authoredSet(derivedMovement, 0, { percentTm: 90 });
+    const unmarked = await authoredSuggestion(plain, derivedMovement);
+    await assertOwnershipRefusal(() => decisions([unmarked], true), "42501");
+    await database`UPDATE public.tm_suggestions SET status='dismissed' WHERE id=${unmarked}::uuid`;
+    const marked = await authoredSet(derivedMovement, 1, { authoredTest: { after: "updateFromLoggedSet" } });
+    const otherSet = await authoredSet(staleMovement, 2, { authoredTest: { after: "updateFromLoggedSet" } });
+    const otherMovement = await authoredSuggestion(otherSet, derivedMovement);
+    await assertOwnershipRefusal(() => decisions([otherMovement], true), "42501");
+    await database`UPDATE public.tm_suggestions SET status='dismissed' WHERE id=${otherMovement}::uuid`;
+    const authoredPending = await authoredSuggestion(marked, derivedMovement);
+    await assert.rejects(decisions([authoredPending], true, foreign));
+    assert.equal(await maxOf(), 102.5);
+    assert.equal(await decisions([authoredPending], true), 1);
+    assert.equal(await maxOf(), 105);
+    assert.equal(await decisions([authoredPending], true), 0);
+    assert.equal(await maxOf(), 105);
+    return ["0165-authored-test-up-down-up-owner-isolation-and-replay", "0161-up-down-up-and-unchanged-RLS", "0161-DC-R6-concurrent-generation-and-absolute-max-exclusion",
       "0161-single-accept-decline-replay-and-21-day-clock", "0161-atomic-bulk-decline-and-bulk-accept", "0161-stale-max-and-atomic-preference",
       "0161-derived-precedence-stale-bulk-rollback-and-imperial"];
   } catch (error) {

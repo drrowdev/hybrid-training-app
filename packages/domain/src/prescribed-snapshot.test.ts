@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  readAuthoredTestRule,
   resolvePrescribedSnapshot,
   validateSubmittedTarget,
   TARGET_VALIDATION_TOLERANCE,
@@ -170,5 +171,23 @@ describe("validateSubmittedTarget", () => {
   it("handles a zero expected target (bodyweight work)", () => {
     expect(validateSubmittedTarget(0, 0)).toBe(0);
     expect(validateSubmittedTarget(20, 0)).toBeNull();
+  });
+});
+
+describe("DC-K4 authored test marker", () => {
+  const roundKg = (kg: number) => Math.round(kg / 2.5) * 2.5;
+  it("DC-K4: carries a valid marker into the snapshot", () => {
+    const r = resolvePrescribedSnapshot(
+      { kind: "main", percentTm: 95, reps: 3, meta: { authoredTest: { after: "fixedIncrease", stepKg: 5 } } },
+      { tmKg: 100, roundToPlate: roundKg },
+    );
+    expect(r.prescribed?.authoredTest).toEqual({ after: "fixedIncrease", stepKg: 5 });
+  });
+  it("DC-K4: rejects malformed markers", () => {
+    expect(readAuthoredTestRule({ after: "fixedIncrease" })).toBeNull();
+    expect(readAuthoredTestRule({ after: "fixedIncrease", stepKg: -1 })).toBeNull();
+    expect(readAuthoredTestRule({ after: "keep" })).toBeNull();
+    expect(readAuthoredTestRule(null)).toBeNull();
+    expect(readAuthoredTestRule({ after: "updateFromLoggedSet" })).toEqual({ after: "updateFromLoggedSet" });
   });
 });

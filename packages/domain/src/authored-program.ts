@@ -12,6 +12,9 @@ export type MovementDose =
 
 export type AuthoredLoad = { kind: "pct" | "kg" | "rir"; value: number | string };
 export type AuthoredTestAfter = "updateFromLoggedSet" | "fixedIncrease" | "keep";
+/** What a logged test set does to the account 1RM. "keep" is never marked. */
+export type AuthoredTestRule = { after: "updateFromLoggedSet" } | { after: "fixedIncrease"; stepKg: number };
+
 export interface AuthoredWeek {
   type: "Build" | "Deload" | "Test";
   sets: string;
@@ -19,6 +22,7 @@ export interface AuthoredWeek {
   pct: number;
   fewer?: boolean;
   after?: AuthoredTestAfter;
+  stepKg?: number;
 }
 export interface AuthoredMovementOverride {
   sets?: string;
@@ -132,6 +136,7 @@ export interface AuthoredPrescriptionItem {
     programLoadBasis?: ProgramLoadBasis;
     authoredLoadRoundingKg?: number;
     authoredReps?: string;
+    authoredTest?: AuthoredTestRule;
   };
 }
 
@@ -228,6 +233,16 @@ export function effectiveAuthoredMovement(movement: AuthoredMovement, week?: Aut
   };
 }
 
+/** The 1RM rule a Test week attaches to its main lifts; null when nothing should be proposed. */
+export function authoredTestRule(week: AuthoredWeek | undefined): AuthoredTestRule | null {
+  if (week?.type !== "Test") return null;
+  if (week.after === "updateFromLoggedSet") return { after: "updateFromLoggedSet" };
+  if (week.after === "fixedIncrease" && typeof week.stepKg === "number" && Number.isFinite(week.stepKg) && week.stepKg > 0) {
+    return { after: "fixedIncrease", stepKg: week.stepKg };
+  }
+  return null;
+}
+
 export function authoredMovementIds(definition: AuthoredProgramDefinition): string[] {
   return [...new Set(definition.workouts.flatMap((workout) => workout.parts.flatMap((part) =>
     part.kind === "rehab" ? [] : part.kind === "movement" ? [part.movement.movementId]
@@ -302,6 +317,8 @@ export function compileAuthoredWorkout(
     const sets = authoredRange(effective.sets, 20);
     const reps = movement.dose.kind === "reps" ? authoredRange(effective.reps) : null;
     const load = effective.load;
+    const testRule = !circuit && movement.role === "main" && movement.dose.kind === "reps" && !effective.overridden && load?.kind === "pct"
+      ? authoredTestRule(week) : null;
     return Array.from({ length: circuit?.rounds ?? sets.max }, (_, round) => ({
       movementId: selected.id, movementSlug: selected.slug, movementName: selected.displayName,
       kind: movement.role, sets: 1, isAmrap: false,
@@ -317,6 +334,7 @@ export function compileAuthoredWorkout(
       meta: { authoredPartId: partId, authoredMovementId: movement.id, restSeconds: movement.restSeconds,
         ...(load?.kind === "pct" ? { programLoadBasis: { version: 1 as const, kind: "one-rm" as const, percent: 100, roundingKg: null }, authoredLoadRoundingKg: 2.5 } : {}),
         ...(reps ? { authoredReps: effective.reps } : {}),
+        ...(testRule ? { authoredTest: testRule } : {}),
         ...(movement.role === "tendon" ? { rehab: true } : {}) },
     }));
   };
