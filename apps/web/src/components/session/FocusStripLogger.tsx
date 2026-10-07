@@ -46,9 +46,22 @@ import type {
   addStrengthSet,
   updateStrengthSetInline,
 } from "@/lib/sessions/actions";
-import { readResume } from "@/lib/sessions/session-resume";
+import { readResume, writeResume } from "@/lib/sessions/session-resume";
+import { CardioLogForm } from "./CardioLogForm";
+import { CardioPlanView } from "./CardioPlanView";
+import { SessionDock } from "./SessionDock";
+import { useSessionLoggingState } from "./SessionLoggingState";
+import type { logCardioSession } from "@/lib/sessions/actions";
+import Link from "next/link";
+import { FinishSessionBar } from "./FinishSessionBar";
 
 export type FocusStripLoggerProps = {
+  preserveOrder?: boolean;
+  authoredCardio?: {
+    units: "metric" | "imperial";
+    action: typeof logCardioSession;
+    logs: { id: string; blockIndex: number; durationSec: number }[];
+  };
   sessionId: string;
   groups: MovementGroup[];
   setsByMovement: ReadonlyMap<string, LoggedSet[]>;
@@ -213,8 +226,17 @@ export function FocusStripLogger({
   systemLoadMovementIds,
   bodyweightKg,
   equipmentByMovementId,
+  preserveOrder = false,
+  authoredCardio,
 }: FocusStripLoggerProps) {
   const router = useRouter();
+  const loggingState = useSessionLoggingState();
+  const coveredIndices = useMemo(() => {
+    const covered = new Set(loggedItemIndices);
+    for (const log of authoredCardio?.logs ?? []) covered.add(log.blockIndex - 1);
+    for (const index of loggingState?.loggedCardioItemIndices ?? []) covered.add(index);
+    return covered;
+  }, [loggedItemIndices, authoredCardio?.logs, loggingState?.loggedCardioItemIndices]);
   const linkedCircuitByMovementId = useMemo(
     () => buildLinkedCircuitByMovementId(groups),
     [groups],
@@ -223,9 +245,9 @@ export function FocusStripLogger({
     return firstOpenMovementId(
       groups,
       linkedCircuitByMovementId,
-      loggedItemIndices,
+      coveredIndices,
     );
-  }, [groups, linkedCircuitByMovementId, loggedItemIndices]);
+  }, [groups, linkedCircuitByMovementId, coveredIndices]);
   // Resume state records which movement the lifter was actually on. Without
   // this, the strip always opens on `firstOpenId` — mounting the FIRST open
   // movement (A) even when the lifter was mid-set on a LATER one (B) — and
@@ -246,6 +268,9 @@ export function FocusStripLogger({
   // markup — the standard-safe place for client-only initial state that
   // must differ from what the server rendered.
   const [activeId, setActiveId] = useState<string>(firstOpenId);
+  const [lastStrengthKey, setLastStrengthKey] = useState(firstOpenId);
+  const activeIdRef = useRef(activeId);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
   // Gates `MovementFocusView`'s own resume restoration (cursor/draft/rest)
   // and its draft-persistence effect: both must wait until this one-shot
   // resume application below has run, or a persist firing on the FIRST
@@ -253,13 +278,17 @@ export function FocusStripLogger({
   // movement — would overwrite the very resume snapshot we're about to read.
   const [resumeReady, setResumeReady] = useState(false);
   const resumeAppliedRef = useRef(false);
+  const [declinedOptionalIds, setDeclinedOptionalIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   useEffect(() => {
     if (resumeAppliedRef.current) return;
     resumeAppliedRef.current = true;
     const saved = readResume(sessionId);
-    const resolved = resolveInitialActiveKey(groups, firstOpenId, saved?.activeKey, saved?.cursor, loggedItemIndices);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot, client-only application of resume state; see the comment above `activeId`
+    if (preserveOrder && saved?.declinedOptionalKeys) setDeclinedOptionalIds(new Set(saved.declinedOptionalKeys));
+    const resolved = resolveInitialActiveKey(groups, firstOpenId, saved?.activeKey, saved?.cursor, coveredIndices);
     if (resolved !== firstOpenId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot, client-only application of resume state; see the comment above `activeId`
       setActiveId(resolved);
     }
     setResumeReady(true);
@@ -268,9 +297,11 @@ export function FocusStripLogger({
     // groups/firstOpenId change would fight the lifter's live navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [declinedOptionalIds, setDeclinedOptionalIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  useEffect(() => {
+    if (!preserveOrder || !resumeReady) return;
+    const saved = readResume(sessionId);
+    writeResume({ ...saved, sessionId, declinedOptionalKeys: [...declinedOptionalIds] });
+  }, [preserveOrder, resumeReady, sessionId, declinedOptionalIds]);
   const [swapOpen, setSwapOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [skipRehabOpen, setSkipRehabOpen] = useState(false);
@@ -315,8 +346,15 @@ export function FocusStripLogger({
     setSwapped((previous) => reconcileConfirmedSwaps(previous, groups));
   }, [groups]);
 
-  const activeOriginal =
+  const selectedGroup =
     groups.find((group) => movementGroupKey(group) === activeId) ?? groups[0];
+  const cardioItem = selectedGroup?.items[0]?.kind.startsWith("cardio_") ? selectedGroup.items[0] : null;
+  if (selectedGroup && !cardioItem && lastStrengthKey !== movementGroupKey(selectedGroup)) {
+    setLastStrengthKey(movementGroupKey(selectedGroup));
+  }
+  const activeOriginal = cardioItem
+    ? groups.find((group) => movementGroupKey(group) === lastStrengthKey) ?? selectedGroup
+    : selectedGroup;
   if (!activeOriginal) return null;
   const activeOriginalKey = movementGroupKey(activeOriginal);
   const activeSwap = swapped[activeOriginalKey];
@@ -371,7 +409,7 @@ export function FocusStripLogger({
   );
   const totalRequiredDone = groups.reduce(
     (sum, group) =>
-      sum + coveredCount(requiredIndices(group), loggedItemIndices),
+      sum + coveredCount(requiredIndices(group), coveredIndices),
     0,
   );
 
@@ -385,11 +423,11 @@ export function FocusStripLogger({
       const optional = optionalIndices(group);
       const all = [...required, ...optional];
       return {
-        done: coveredCount(all, loggedItemIndices),
+        done: coveredCount(all, coveredIndices),
         total: all.length,
         settled:
-          coveredCount(required, loggedItemIndices) === required.length &&
-          (optional.every((index) => loggedItemIndices.has(index)) ||
+          coveredCount(required, coveredIndices) === required.length &&
+          (optional.every((index) => coveredIndices.has(index)) ||
             declinedOptionalIds.has(movementGroupKey(group))),
       };
     },
@@ -421,13 +459,31 @@ export function FocusStripLogger({
 
   const advance = (
     declinedIds = declinedOptionalIds,
-    coveredIndices = loggedItemIndices,
+    covered = coveredIndices,
   ) => {
-    const next = nextOpenMovement(groups, activeId, coveredIndices, declinedIds);
+    const next = nextOpenMovement(groups, activeId, covered, declinedIds);
     if (next) setActiveId(next);
   };
 
   const role = bucketForGroup(activeOriginal);
+  const selectedKey = movementGroupKey(selectedGroup!);
+  const cardioIndex = selectedGroup!.itemIndices[0]!;
+  const cardioLog = authoredCardio?.logs.find((log) => log.blockIndex === cardioIndex + 1);
+  const nextOpenKey = nextOpenMovement(groups, activeId, coveredIndices, declinedOptionalIds);
+  const finish = preserveOrder && nextOpenKey == null
+    ? <div style={{ flex: 1 }}><FinishSessionBar sessionId={sessionId} variant="banner" authored disabled={!loggingState?.hasStrengthSets && !loggingState?.hasCardioLogs} testId="finish-stickybar" /></div>
+    : undefined;
+  const dockAccessory = (
+    <button type="button" className="cp-btn cp-dock-accessory" data-testid="movement-navigator-open"
+      onClick={() => setNavOpen(true)} aria-haspopup="dialog" aria-expanded={navOpen}
+      style={{ display: "grid", placeItems: "center", gap: 1, lineHeight: 1.1, padding: "6px 8px" }}>
+      <span aria-hidden="true" style={{ fontSize: 17 }}>☰</span>
+      <span style={{ fontSize: 12, fontWeight: 650 }}>Moves</span>
+      <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+        {Math.max(0, totalRequired - totalRequiredDone)} left
+      </span>
+    </button>
+  );
   const isRehabGroup = activeOriginal.items.every(
     (item) => item.meta?.rehab === true,
   );
@@ -499,6 +555,13 @@ export function FocusStripLogger({
       }
       hapticTick(hapticsEnabled);
       setSkipRehabOpen(false);
+      if (preserveOrder) {
+        if (activeIdRef.current !== activeId) return;
+        const covered = new Set(coveredIndices);
+        for (const item of remainingRehab) covered.add(item.itemIndex);
+        advance(declinedOptionalIds, covered);
+        return;
+      }
       const nextSection = sectionSummaries.find(
         (section) => section.key !== "rehab",
       );
@@ -540,7 +603,7 @@ export function FocusStripLogger({
           <span style={{ color: "var(--cp-text)", fontWeight: 650 }}>
             {totalRequiredDone}/{totalRequired}
           </span>{" "}
-          sets logged
+          {preserveOrder ? "steps logged" : "sets logged"}
         </span>
         {remainingRehab.length > 0 && currentSection === "rehab" && (
           <span style={{ color: "var(--cp-warning)", fontWeight: 600 }}>
@@ -570,12 +633,12 @@ export function FocusStripLogger({
                   letterSpacing: "-0.025em",
                 }}
               >
-                {activeGroup.movementName}
+                {cardioItem ? selectedGroup!.movementName : activeGroup.movementName}
               </h2>
-              <MovementHowToButton
+              {!cardioItem && <MovementHowToButton
                 movementId={activeGroup.movementId}
                 displayName={activeGroup.movementName}
-              />
+              />}
             </div>
             <div
               style={{
@@ -584,11 +647,11 @@ export function FocusStripLogger({
                 fontSize: 12,
               }}
             >
-              {roleLabel}
-              {targetSummary ? ` · ${targetSummary}` : ""}
+              {cardioItem ? "Cardio" : roleLabel}
+              {!cardioItem && targetSummary ? ` · ${targetSummary}` : ""}
             </div>
           </div>
-          <button
+          {!cardioItem && <button
             type="button"
             onClick={() => setSwapOpen(true)}
             aria-label={`Swap ${activeGroup.movementName}`}
@@ -606,9 +669,33 @@ export function FocusStripLogger({
             }}
           >
             ⇄
-          </button>
+          </button>}
         </div>
 
+        {cardioItem && authoredCardio && (
+          <>
+            {cardioItem.cardioPlan && <CardioPlanView plan={cardioItem.cardioPlan} hideSummary={cardioItem.cardioPlan.summary === selectedGroup!.movementName} />}
+            {coveredIndices.has(cardioIndex) ? (
+              <SessionDock accessory={dockAccessory} primary={
+                <div style={{ display: "flex", flex: 1, gap: 12, alignItems: "center" }}>
+                  {cardioLog && <Link href={`/app/sessions/${sessionId}/cardio/${cardioLog.id}/edit`}>Edit cardio</Link>}
+                  {finish ?? <button type="button" className="cp-btn primary" style={{ flex: 1, minHeight: 56 }} onClick={() => advance()}>Next movement</button>}
+                </div>
+              } />
+            ) : <CardioLogForm key={selectedKey} sessionId={sessionId}
+              prescriptionItemIndex={cardioIndex} prescribedDurationMin={cardioItem.durationMin ?? null}
+              movementId={cardioItem.movementId}
+              modality={typeof cardioItem.meta?.modality === "string" ? cardioItem.meta.modality : "other"}
+              units={authoredCardio.units} action={authoredCardio.action} dockAccessory={dockAccessory} resumeKey={selectedKey}
+              onSaved={() => {
+                if (activeIdRef.current !== selectedKey) return;
+                const projected = new Set(coveredIndices);
+                projected.add(cardioIndex);
+                advance(declinedOptionalIds, projected);
+              }} />}
+          </>
+        )}
+        <div hidden={!!cardioItem}>
         {declinedOptional ? (
           <div
             data-testid="focus-strip-optional-declined"
@@ -623,15 +710,6 @@ export function FocusStripLogger({
           >
             <div>
               <strong>Optional sets declined</strong>
-              <div
-                style={{
-                  marginTop: 3,
-                  color: "var(--cp-text-muted)",
-                  fontSize: 12,
-                }}
-              >
-                Required work is preserved. Reopen this lift at any time.
-              </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
@@ -656,6 +734,7 @@ export function FocusStripLogger({
                 Next movement
               </button>
             </div>
+            {preserveOrder && <SessionDock active={!cardioItem} primary={finish ?? <button type="button" className="cp-btn primary cp-dock-cta" onClick={() => advance()}>Next movement</button>} accessory={dockAccessory} />}
           </div>
         ) : (
           <>
@@ -731,38 +810,16 @@ export function FocusStripLogger({
               onExitEdit={() => advance()}
               onSetDeleted={onSetDeleted}
               focusStrip
-              resumeReady={resumeReady}
-              dockAccessory={
-                <button
-                  type="button"
-                  className="cp-btn cp-dock-accessory"
-                  data-testid="movement-navigator-open"
-                  onClick={() => setNavOpen(true)}
-                  aria-haspopup="dialog"
-                  aria-expanded={navOpen}
-                  style={{
-                    display: "grid",
-                    placeItems: "center",
-                    gap: 1,
-                    lineHeight: 1.1,
-                    padding: "6px 8px",
-                  }}
-                >
-                  <span aria-hidden="true" style={{ fontSize: 17 }}>
-                    ☰
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 650 }}>Moves</span>
-                  <span
-                    className="mono"
-                    style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
-                  >
-                    {Math.max(0, totalRequired - totalRequiredDone)} left
-                  </span>
-                </button>
-              }
-              onSaved={({ coveredIndices }) => {
-                const projected = new Set(loggedItemIndices);
-                for (const index of coveredIndices) projected.add(index);
+              resumeReady={resumeReady && !cardioItem}
+              active={!cardioItem}
+              preserveDrafts={preserveOrder}
+              waitForSave={preserveOrder}
+              dockAccessory={dockAccessory}
+              dockPrimary={finish}
+              onSaved={({ coveredIndices: savedIndices }) => {
+                if (activeIdRef.current !== activeId) return;
+                const projected = new Set(coveredIndices);
+                for (const index of savedIndices) projected.add(index);
                 const next = nextMovementAfterSave({
                   groups,
                   activeKey: activeId,
@@ -792,6 +849,7 @@ export function FocusStripLogger({
             )}
           </>
         )}
+        </div>
       </div>
 
       {/* Secondary, low-frequency session controls. These used to sit ABOVE
@@ -799,7 +857,7 @@ export function FocusStripLogger({
           "skip" action was the loudest element on the screen. They live
           below the card now — still one scroll away, no longer competing
           with the thing you opened the page to do. */}
-      {currentSection === "rehab" && remainingRehab.length > 0 && (
+      {!cardioItem && currentSection === "rehab" && remainingRehab.length > 0 && (
         <div
           data-testid="focus-strip-skip-rehab"
           style={{
@@ -927,10 +985,11 @@ export function FocusStripLogger({
         )}
 
       <MovementNavigatorSheet
+        preserveOrder={preserveOrder}
         open={navOpen}
         onClose={() => setNavOpen(false)}
         entries={navigatorEntries}
-        activeKey={activeOriginalKey}
+        activeKey={selectedKey}
         doneCount={totalRequiredDone}
         totalCount={totalRequired}
         onPick={(key) => {

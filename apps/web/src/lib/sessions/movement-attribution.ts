@@ -183,7 +183,10 @@ export function movementIdentityKey(item: AttributableItem): string {
     original == null || original === item.movementId
       ? item.movementId
       : `swap:${original}>${item.movementId}`;
-  const scoped = typeof item.meta?.authoredMovementId === "string" ? `authored:${item.meta.authoredMovementId}:${identity}` : identity;
+  const occurrence = typeof item.meta?.authoredPartId === "string"
+    ? `${item.meta.authoredPartId}:${String(item.meta.authoredMovementId ?? "")}`
+    : item.meta?.authoredMovementId;
+  const scoped = typeof occurrence === "string" ? `authored:${occurrence}:${identity}` : identity;
   return isRehabItem({ meta: item.meta ?? undefined }) ? `rehab:${scoped}` : scoped;
 }
 

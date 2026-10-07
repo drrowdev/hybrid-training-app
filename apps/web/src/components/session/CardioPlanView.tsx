@@ -28,18 +28,20 @@ export function CardioPlanView({
   plan,
   durationMin,
   compact,
+  hideSummary = false,
 }: {
   plan: CardioPlanShape;
   /** When set, shown as a "~N min" chip on the summary line (Preview hides its own duration row). */
   durationMin?: number | null;
   /** Compact variant trims spacing for the Today hero. */
   compact?: boolean;
+  hideSummary?: boolean;
 }) {
   const gap = compact ? 10 : 14;
   return (
     <div data-testid="cardio-plan-view" style={{ display: "flex", flexDirection: "column", gap }}>
       {/* Summary — the one-line "what this is", with the structure meta + duration. */}
-      <div
+      {(!hideSummary || plan.meta || durationMin != null) && <div
         style={{
           borderLeft: "2px solid var(--cp-accent)",
           paddingLeft: 12,
@@ -70,8 +72,8 @@ export function CardioPlanView({
             )}
           </div>
         )}
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "var(--cp-text)" }}>{plan.summary}</p>
-      </div>
+        {!hideSummary && <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "var(--cp-text)" }}>{plan.summary}</p>}
+      </div>}
 
       {/* Format / structure — warm-up·work·cool-down, or the round rotation. */}
       {plan.segments && plan.segments.length > 0 && (
@@ -139,10 +141,10 @@ export function CardioPlanView({
       )}
 
       {/* Effort — the intensity cue, always present. */}
-      <div data-testid="cardio-plan-effort" style={{ display: "grid", gap: 4 }}>
+      {plan.effort && <div data-testid="cardio-plan-effort" style={{ display: "grid", gap: 4 }}>
         <span style={labelStyle}>Effort</span>
         <span style={{ fontSize: 14, color: "var(--cp-text)", lineHeight: 1.5 }}>{plan.effort}</span>
-      </div>
+      </div>}
 
       {/* Log hint — muted footnote. */}
       {plan.logHint && (

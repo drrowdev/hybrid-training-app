@@ -54,6 +54,7 @@ type FinishSlotProps = {
  *  action currently belongs in the ⋯ menu. */
 export function FinishSessionBottomSlot(props: FinishSlotProps) {
   const loggingState = useSessionLoggingState();
+  if (props.authored) return null;
   if (finishPlacement(loggingState?.remainingRequiredSets ?? 0) !== "bottom") {
     return null;
   }

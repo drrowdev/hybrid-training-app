@@ -45,10 +45,10 @@ import {
   smartAccessoryOrder,
   type AccessoryMeta,
 } from "@/lib/sessions/accessory-order";
-import { FocusStripLogger } from "./FocusStripLogger";
+import { FocusStripLogger, type FocusStripLoggerProps } from "./FocusStripLogger";
 
 export type MovementCardListProps = {
-  visiblePartId?: string;
+  authoredCardio?: FocusStripLoggerProps["authoredCardio"];
   sessionId: string;
   isComplete: boolean;
   prescription: Prescription | null;
@@ -162,7 +162,7 @@ export function MovementCardList({
   bodyweightKg,
   accessoryMetaById,
   customAccessoryOrder,
-  visiblePartId,
+  authoredCardio,
 }: MovementCardListProps) {
   const bodyweightIdSet = useMemo(
     () => new Set(bodyweightMovementIds ?? []),
@@ -190,6 +190,7 @@ export function MovementCardList({
     () => groupPrescriptionByMovement(prescription),
     [prescription],
   );
+  const authored = prescription?.items.some((item) => typeof item.meta?.authoredPartId === "string") ?? false;
   // Canonical logged-set attribution (plan §6.9 — `lib/sessions/movement-attribution`).
   // Derived from `sets` rather than the server's first-only id map so EVERY row at
   // an index is attributed, including the extra sets and the optimistic overlay
@@ -403,7 +404,7 @@ export function MovementCardList({
   // First prescribed card with no logged sets across the whole session
   // shows the session-level "Same as planned" button.
   const showFillOnFirst =
-    !isComplete && sets.length === 0 && rehabGroups.length === 0 && visiblePartId === undefined;
+    !isComplete && sets.length === 0 && rehabGroups.length === 0 && !authored;
 
   // Build a single ordered render list so the "first card" check for
   // the session-level fill button stays correct across both sections.
@@ -425,7 +426,7 @@ export function MovementCardList({
   );
 
   const focusGroups = useMemo(
-    () => visiblePartId !== undefined ? groups.filter((group) => group.items[0]?.meta?.authoredPartId === visiblePartId) : [
+    () => authored ? groupPrescriptionByMovement(prescription, true) : [
       ...rehabGroups,
       ...mainGroups,
       ...supplementalGroups,
@@ -433,8 +434,8 @@ export function MovementCardList({
       ...otherGroups,
     ],
     [
-      visiblePartId,
-      groups,
+      authored,
+      prescription,
       rehabGroups,
       mainGroups,
       supplementalGroups,
@@ -446,7 +447,7 @@ export function MovementCardList({
   // Move an accessory card up/down. Recomputes the full movementId order from
   // the current (possibly smart/custom) accessory order, swaps the neighbour,
   // applies it optimistically, and persists in the background. Display-only.
-  const reorderEnabled = !isComplete && accessoryGroups.length > 1 && visiblePartId === undefined;
+  const reorderEnabled = !isComplete && accessoryGroups.length > 1 && !authored;
   const persistOrder = useCallback(
     (ids: string[]) => {
       setLocalOrder(ids);
@@ -570,6 +571,8 @@ export function MovementCardList({
           </div>
         )}
         <FocusStripLogger
+          authoredCardio={authoredCardio}
+          preserveOrder={authored}
           sessionId={sessionId}
           groups={focusGroups}
           setsByMovement={setsByMovement}
