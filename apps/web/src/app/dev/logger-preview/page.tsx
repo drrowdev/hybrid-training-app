@@ -45,6 +45,8 @@ export default async function LoggerPreviewPage({
 }) {
   if (!fixturesEnabled()) notFound();
   const { variant } = await searchParams;
-  if (variant === "authored" || variant === "authored-reject") return <AuthoredLoggerPreview rejectFirst={variant === "authored-reject"} />;
+  if (variant === "authored" || variant === "authored-reject" || variant === "authored-reject-final") {
+    return <AuthoredLoggerPreview rejectFirst={variant === "authored-reject"} rejectFinal={variant === "authored-reject-final"} />;
+  }
   return <LoggerPreview variant={variant ?? "rehab"} />;
 }

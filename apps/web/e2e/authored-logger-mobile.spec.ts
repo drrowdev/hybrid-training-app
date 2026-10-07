@@ -22,7 +22,7 @@ async function logSet(page: Page) {
 test.describe("authored hybrid guided logger", () => {
   test("warm-ups, all Moves, manual jump, cardio, resume and finish share one flow", async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(URL);
+    await page.goto(`${URL}-reject-final`);
     await expect(title(page)).toHaveText("Bench Press");
     await expect(page.getByTestId("movement-focus-card")).toContainText(/warm-up/i);
     await expect(page.getByRole("navigation", { name: "Workout parts" })).toHaveCount(0);
@@ -85,6 +85,12 @@ test.describe("authored hybrid guided logger", () => {
       await page.getByTestId("cardio-log-duration").fill("1");
       await page.getByTestId("cardio-log-submit").click();
       await expect(title(page)).toHaveText("Cable Row");
+      if (pair === 3) {
+        await logButton(page).click();
+        await expect(page.getByTestId("focus-strip-logger").getByRole("alert")).toContainText("Synthetic save rejected");
+        await expect(page.getByTestId("finish-stickybar")).not.toBeVisible();
+        await expect(title(page)).toHaveText("Cable Row");
+      }
       await logSet(page);
     }
     await expect(page.getByTestId("finish-stickybar")).toBeVisible();

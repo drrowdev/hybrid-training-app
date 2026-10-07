@@ -1955,7 +1955,7 @@ export function MovementFocusView({
         <SessionDock
           active={active}
           rest={restTimerNode}
-          primary={isEditing ? logButton : dockPrimary ?? logButton}
+          primary={isEditing || submitting || skipPending ? logButton : dockPrimary ?? logButton}
           accessory={isEditing ? dockCancelButton : dockAccessory}
           editing={isEditing}
           undo={

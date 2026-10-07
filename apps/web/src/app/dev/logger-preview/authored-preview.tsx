@@ -15,7 +15,7 @@ const prescription = authoredFixturePrescription();
 type CardioLog = { id: string; blockIndex: number; durationSec: number };
 type FixtureLogs = { sets: LoggedSet[]; cardio: CardioLog[] };
 
-export function AuthoredLoggerPreview({ rejectFirst = false }: { rejectFirst?: boolean }) {
+export function AuthoredLoggerPreview({ rejectFirst = false, rejectFinal = false }: { rejectFirst?: boolean; rejectFinal?: boolean }) {
   const [logs, setLogs] = useState<FixtureLogs>({ sets: [], cardio: [] });
   const [ready, setReady] = useState(false);
   const rejected = useRef(false);
@@ -30,13 +30,13 @@ export function AuthoredLoggerPreview({ rejectFirst = false }: { rejectFirst?: b
     if (ready) localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
   }, [logs, ready]);
   const addStrengthSet = async (fd: FormData): Promise<AddStrengthSetResult> => {
-    if (rejectFirst && !rejected.current) {
+    const index = Number(fd.get("prescriptionItemIndex"));
+    if ((rejectFirst || rejectFinal && index === prescription.items.length - 1) && !rejected.current) {
       rejected.current = true;
       await new Promise((resolve) => setTimeout(resolve, 100));
       return { error: "Synthetic save rejected", errorCode: "validation" };
     }
     const movement = authoredCatalog.find((entry) => entry.id === fd.get("movementId"))!;
-    const index = Number(fd.get("prescriptionItemIndex"));
     const id = String(fd.get("clientLogId"));
     const skipped = fd.get("skipped") === "true";
     const kind = String(fd.get("setKind"));
