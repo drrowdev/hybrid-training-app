@@ -6117,3 +6117,28 @@ The unused down restores exact function baselines and refuses accepted date
 history. Focused source tests and synthetic responsive UI are local checks;
 database races, ownership, rollback and authenticated save/reopen acceptance
 run only in guarded Linux CI. The coordinator owns merge and release.
+
+## [2026-10-07] repair | Authored hybrid guided logging
+
+Authored workouts use the shared strength logger and one ordered Moves sheet
+for main lifts, accessories, rehab, cardio and distinct run/station occurrences.
+Accepted saves advance through the prescribed sequence; optional-set choices,
+strength/cardio drafts and the standard finish path remain in that flow.
+Authored slots wait for durable acceptance so rejected optimistic writes do
+not advance the cursor or erase the entered draft/error.
+
+Main-lift warm-ups reuse the account scheme and canonical load/bar/plate
+resolution (DC-A1, DC-R3, DC-R6, DC-K4). Existing saved, unstarted workouts gain
+them at start through the revision-checked prescription save, before the
+atomic session copy. Linked in-progress/completed/cancelled prescriptions and
+their item indices are not changed. Working sets retain their authored
+percentages, overrides and rounding; warm-ups remain separate set kinds.
+No schema migration, auth or RLS change is included.
+
+The coordinator explicitly retained the hidden indexed-cardio Skip control:
+current storage cannot represent it without recording positive cardio work.
+Moving past cardio is navigation, not completion. Synthetic six-day/two-week
+fixtures cover ordering, repeated stations, circuits, rejection, resume and
+finish, with 375/1280 screenshots and shared-logger regression coverage.
+Real database/native acceptance remains in guarded Linux CI; merge and release
+require coordinator/owner approval.

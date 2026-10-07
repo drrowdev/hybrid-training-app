@@ -11,6 +11,7 @@ import { getUserTimezone, dayDate } from "./queries";
 import { commitUnreviewedScheduleChange, commitTrainingSchedule, loadTrainingSchedule, scheduleRequestId, scheduleReviewSchema, isMissingScheduleFunction, type ScheduleReview, type SchedulePreview } from "@/lib/schedule/storage";
 import { hasRemainingProgramWorkouts, trainingScheduleAdvice } from "@hta/domain";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
+import { issueAuthoredWarmups } from "./issue-authored-warmups";
 
 export type CreateBlockResult =
   | { ok: true }
@@ -620,6 +621,7 @@ export async function startSessionDirect(
     // The transaction below replaces only a deleted, unfinished link.
   }
 
+  await issueAuthoredWarmups(supabase, user.id, planned);
   let { data: sessionId, error } = await supabase.rpc("start_planned_session_atomically", {
     p_planned_id: planned.id, p_performed_at: retroPerformedAt?.toISOString() ?? null,
   });

@@ -474,6 +474,7 @@ export type Prescription = {
     authoredWorkout?: AuthoredWorkout;
     authoredVersion?: 2;
     authoredWeekIndex?: number;
+    authoredWarmupsIssued?: boolean;
     swimRehab?: {
       version: 1;
       planId: string;
