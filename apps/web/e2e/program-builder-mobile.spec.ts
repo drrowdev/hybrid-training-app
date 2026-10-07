@@ -4,6 +4,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Locator, Page, Request, Response } from "@playwright/test";
 import type { Prescription } from "@hta/db";
+import { authoredProgramDates } from "@hta/domain";
+import { authoredProgramSchema } from "../src/lib/programs/authored/schema";
 import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
 import { greenProtocolEngine, getGreenPhase } from "@hta/green";
 import { test as seededTest, expect } from "./fixtures/seed";
@@ -491,6 +493,62 @@ test.describe("Modular program builder", () => {
     await page.getByLabel("Duration", { exact: true }).fill("5");
     await page.getByRole("link", { name: "Cancel", exact: true }).click();
     expect((await planned(actor)).map((row) => row.prescription)).toEqual(edited.map((row) => row.prescription));
+  });
+
+  test("M20 DC-R5: saved unused program start date retains its complete week plan and identities", async ({ page, actor, catalog }) => {
+    await begin(page, "strength", "Start date acceptance");
+    await lift(page, movement(catalog, "bench-press-flat"));
+    await page.getByRole("button", { name: /^Week 2\b/ }).filter({ hasText: "%" }).click();
+    await page.getByRole("button", { name: "Edit week 2", exact: true }).click();
+    const weekEditor = page.getByRole("region", { name: "Edit week 2", exact: true });
+    await weekEditor.getByRole("button", { name: "Deload", exact: true }).click();
+    await weekEditor.getByLabel("% 1RM", { exact: true }).fill("60");
+    await weekEditor.getByRole("button", { name: "Done", exact: true }).click();
+    await review(page); const blockId = await save(page, actor, "strength");
+    const before = await planned(actor);
+    const original = await actor.from("program_instances").select("id,instance").eq("block_id", blockId).single();
+    expect(original.error).toBeNull();
+    const definition = authoredProgramSchema.parse(original.data?.instance);
+    const newDate = addDaysToYmd(today(), 8);
+    await page.goto(`/app/program/build?edit=${blockId}`);
+    await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+    await expect(page.getByLabel("Start date", { exact: true })).toBeEnabled();
+    await page.getByLabel("Start date", { exact: true }).fill(newDate);
+    await review(page); expect(await save(page, actor, "strength")).toBe(blockId);
+    await page.reload();
+    const after = await planned(actor);
+    expect(after.map((row) => row.id).sort()).toEqual(before.map((row) => row.id).sort());
+    const instance = await actor.from("program_instances").select("id,instance,setup_input").eq("block_id", blockId).single();
+    expect(instance.error).toBeNull();
+    expect(instance.data).toMatchObject({ id: original.data?.id, instance: definition, setup_input: { definition, startedOn: newDate } });
+    const block = await actor.from("training_blocks").select("started_on").eq("id", blockId).single();
+    expect(block.error).toBeNull(); expect(block.data?.started_on).toBe(newDate);
+    const expected = authoredProgramDates(definition, newDate);
+    for (const row of after) {
+      const date = expected.find((entry) => entry.ref === row.prescription.programRef)!;
+      expect(row).toMatchObject({ week_index: date.weekIndex, day_index: date.dayIndex, completed_session_id: null });
+      expect(row.prescription.items).toEqual(before.find((entry) => entry.id === row.id)!.prescription.items);
+    }
+    const snapshot = await actor.rpc("training_schedule_snapshot");
+    expect(snapshot.error).toBeNull();
+    for (const row of after) expect(snapshot.data.entries).toContainEqual(expect.objectContaining({
+      id: row.id, date: expected.find((entry) => entry.ref === row.prescription.programRef)!.date,
+    }));
+    await page.goto(`/app/program/build?edit=${blockId}`);
+    await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+    await expect(page.getByLabel("Start date", { exact: true })).toHaveValue(newDate);
+    await assertNoHorizontalOverflow(page);
+    await page.goto(`/app/program/build?edit=${blockId}&workout=${after[0]!.id}`);
+    await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+    await expect(page.getByLabel("Start date", { exact: true })).toBeDisabled();
+    await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
+    await expect(page.getByLabel("Start date", { exact: true })).toBeDisabled();
+    const started = await actor.rpc("start_planned_session_atomically", { p_planned_id: after[0]!.id });
+    expect(started.error).toBeNull();
+    await page.goto(`/app/program/build?edit=${blockId}`);
+    await page.locator("summary").filter({ hasText: "weeks · starts" }).click();
+    await expect(page.getByLabel("Start date", { exact: true })).toBeDisabled();
+    expect((await actor.from("sessions").select("completed_at").eq("id", started.data).single()).data?.completed_at).toBeNull();
   });
 
   test("M3 DC-K4: hybrid repeats and activity views retain one workout identity", async ({ page, actor, catalog }) => {

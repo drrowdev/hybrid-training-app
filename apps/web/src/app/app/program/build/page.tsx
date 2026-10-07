@@ -6,6 +6,7 @@ import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { ProgramBuilder } from "@/components/program/ProgramBuilder";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { loadAuthoredProgram } from "@/lib/programs/authored/actions";
+import { loadAuthoredStartDateState } from "@/lib/programs/authored/edit-state";
 import { authoredWorkoutSchema } from "@/lib/programs/authored/schema";
 import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
 import Link from "next/link";
@@ -44,13 +45,14 @@ export default async function ProgramBuildPage({ searchParams }: {
   if (!snapshot) return <section><h1>New program</h1><p role="status">Program setup is temporarily unavailable. Try again shortly.</p><Link href="/app/programs">Back to programs</Link></section>;
   if (profileResult.error) throw new Error("Couldn't load your training settings.");
   let initialStartDate: string | undefined;
+  let canChangeStartDate = false;
   let workoutId: string | undefined;
   let initialWeekIndex = 0;
   const plannedSessionId = params.workout ? z.string().uuid().parse(params.workout) : undefined;
   if (editBlockId) {
-    const result = await client.from("training_blocks").select("started_on").eq("id", editBlockId).eq("user_id", user.id).single();
-    if (result.error) throw new Error("Couldn't load the program start date.");
-    initialStartDate = result.data.started_on;
+    const state = await loadAuthoredStartDateState(client, user.id, editBlockId, snapshot);
+    initialStartDate = state.startedOn;
+    canChangeStartDate = state.canChangeStartDate;
     if (plannedSessionId && initial) {
       const selected = await client.from("planned_sessions").select("prescription,completed_session_id,skipped_at")
         .eq("id", plannedSessionId).eq("block_id", editBlockId).eq("user_id", user.id).single();
@@ -85,7 +87,7 @@ export default async function ProgramBuildPage({ searchParams }: {
     activitySelected replacesName={!editBlockId && replacing ? archetypeDisplayName(replacing.archetype, replacing.notes) : undefined}
     rehabProtocols={rehabProtocols.map((protocol) => ({ id: protocol.id, name: protocol.name, summary: formatProtocolSummary(protocol.items) }))}
     commitments={snapshot.entries} activity={activity} initial={initial} editBlockId={editBlockId} initialStartDate={initialStartDate}
-    workoutId={workoutId} plannedSessionId={plannedSessionId} initialRevision={snapshot.revision}
+    workoutId={workoutId} plannedSessionId={plannedSessionId} initialRevision={snapshot.revision} canChangeStartDate={canChangeStartDate}
     initialWeekIndex={initialWeekIndex} oneRmByMovementId={Object.fromEntries(maxes.oneRmByMovementId)}
     bodyweightKg={profileResult.data?.bodyweight_kg == null ? undefined : Number(profileResult.data.bodyweight_kg)}
     swimHref={navigation.setupEnabled && courses ? "/app/swim/import" : navigation.hasPlans ? "/app/swim" : null} />;

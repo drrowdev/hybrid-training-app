@@ -27,6 +27,11 @@ describe("DC-K4/DC-SW7 shared schedule readiness and review", () => {
     const snapshot = { revision: "a".repeat(32), entries: [] };
     await expect(loadAvailableTrainingSchedule(client(snapshot).db)).resolves.toEqual(snapshot);
   });
+  it("exposes start-date editing only with an explicit database capability", async () => {
+    const snapshot = { revision: "a".repeat(32), entries: [], authoredStartDateChanges: true };
+    await expect(loadTrainingSchedule(client(snapshot).db)).resolves.toEqual(snapshot);
+    await expect(loadTrainingSchedule(client({ ...snapshot, authoredStartDateChanges: "true" }).db)).rejects.toThrow();
+  });
   it("passes the reviewed revision, replacement consent and semantic replay hash to one RPC", async () => {
     const { db, rpc } = client({ block_id: "saved" });
     const input = { dates: ["2026-09-23"] };

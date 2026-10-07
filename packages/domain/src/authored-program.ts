@@ -406,6 +406,73 @@ export function authoredProgramDates(definition: AuthoredProgramDefinition, star
   ).flat().sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export function canChangeAuthoredStartDate(args: {
+  available: boolean; scope: "program" | "workout" | "future"; hasBegunWorkout: boolean;
+}): boolean {
+  return args.available && args.scope === "program" && !args.hasBegunWorkout;
+}
+
+/** Reconcile an unused program by authored identity, not its previous calendar week. */
+export function reconcileAuthoredStartDate(args: {
+  startedOn: string;
+  proposed: readonly { ref: string; date: string; weekIndex: number; dayIndex: number }[];
+  existing: readonly {
+    id: string; programRef?: string; date: string; slot: string;
+    preserveContent: boolean; preserveDate: boolean;
+  }[];
+}) {
+  const start = new Date(`${args.startedOn}T00:00:00Z`);
+  if (!Number.isFinite(start.getTime()) || start.toISOString().slice(0, 10) !== args.startedOn) {
+    throw new Error("Choose a valid start date.");
+  }
+  const monday = start.getTime() - ((start.getUTCDay() + 6) % 7) * 86_400_000;
+  const proposedByRef = new Map(args.proposed.map((row, index) => [row.ref, index]));
+  if (proposedByRef.size !== args.proposed.length) throw new Error("The program has duplicate workouts. Reload before editing.");
+  const matched = new Set<number>();
+  const identities = new Set<string>();
+  const slots = new Set<string>();
+  const retained: { existingIndex: number; proposedIndex: number | undefined; date: string; weekIndex: number; dayIndex: number }[] = [];
+  const deleteIndices: number[] = [];
+  const insertIndices: number[] = [];
+  let weeks = 1;
+  const occupy = (date: string, slot: string) => {
+    const instant = new Date(`${date}T00:00:00Z`);
+    const offset = (instant.getTime() - monday) / 86_400_000;
+    if (!Number.isInteger(offset) || instant.toISOString().slice(0, 10) !== date || offset < 0) {
+      throw new Error("A saved workout falls before the new program week. Move that workout before changing the start date.");
+    }
+    const weekIndex = Math.floor(offset / 7), dayIndex = offset % 7;
+    if (weekIndex >= 52) throw new Error("A saved workout falls outside this program. Move that workout before changing the start date.");
+    const key = `${weekIndex}:${dayIndex}:${slot}`;
+    if (slots.has(key)) throw new Error("The new dates overlap a moved workout. Move that workout before changing the start date.");
+    slots.add(key);
+    weeks = Math.max(weeks, weekIndex + 1);
+    return { weekIndex, dayIndex };
+  };
+  args.existing.forEach((row, existingIndex) => {
+    if (identities.has(row.id) || (row.programRef && identities.has(row.programRef))) {
+      throw new Error("The program has duplicate workouts. Reload before editing.");
+    }
+    identities.add(row.id);
+    if (row.programRef) identities.add(row.programRef);
+    const proposedIndex = row.programRef ? proposedByRef.get(row.programRef) : undefined;
+    const proposed = proposedIndex === undefined ? undefined : args.proposed[proposedIndex];
+    if (!proposed && !row.preserveContent && !row.preserveDate) {
+      deleteIndices.push(existingIndex);
+      return;
+    }
+    if (proposedIndex !== undefined) matched.add(proposedIndex);
+    const date = row.preserveDate || !proposed ? row.date : proposed.date;
+    retained.push({ existingIndex, proposedIndex, date, ...occupy(date, row.slot) });
+  });
+  args.proposed.forEach((row, index) => {
+    if (matched.has(index)) return;
+    occupy(row.date, "single");
+    insertIndices.push(index);
+  });
+  return { retained, deleteIndices, insertIndices, weeks };
+}
+
 export interface AuthoredExecutionPart {
   id: string;
   title: string;

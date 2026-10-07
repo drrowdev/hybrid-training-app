@@ -25,6 +25,7 @@ import { IndependentProgramsAssertion, rehearseIndependentPrograms, type Ownersh
 import { rehearsePrescriptionSafety } from "./prescription-safety-rehearsal.ts";
 import { rehearseScheduledMaxProgression } from "./scheduled-max-progression-rehearsal.ts";
 import { rehearseProgramResume } from "./resume-program-rehearsal.ts";
+import { rehearseAuthoredStartDate } from "./authored-start-date-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { MigrationRunnerRehearsalError, rehearseMigrationRunner } from "./migration-runner-rehearsal.ts";
@@ -746,6 +747,7 @@ try {
   stages.push(...await rehearsePrescriptionSafety(database, (name) => { stage = name; }));
   stages.push(...await rehearseScheduledMaxProgression(database, (name) => { stage = name; }));
   stages.push(...await rehearseProgramResume(database, (name) => { stage = name; }));
+  stages.push(...await rehearseAuthoredStartDate(database, (name) => { stage = name; }));
   status = "passed";
 } catch (error) {
   modularUpdateSubstep = projectModularUpdateSubstep(stage, currentModularUpdateSubstep);

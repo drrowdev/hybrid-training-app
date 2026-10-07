@@ -6096,3 +6096,24 @@ and refuses any references rather than deleting user history. A catalog-backed
 browser fixture selects it in the program editor and logs reps/effort without
 kg. Publication is not live availability: production application requires
 separate authorization after deployment.
+
+## [2026-10-07] repair | Change a saved authored program's unused start date
+
+The owner approved editing a saved authored program's start date until its
+first workout starts, including a small database change and app-first release.
+Migration 0164 patches existing functions without new columns, tables, grants
+or RLS changes. The date-specific schedule operation fails closed on an older
+database and keeps the existing account lock, revision, overlap consent and
+replay boundaries (DC-K4/DC-R5). Any begun planned-session link freezes the
+date, including incomplete or deleted-session history. Unchanged historical
+dates and workout/future edit scopes retain their existing behavior.
+
+Date reconciliation uses authored week references across Monday and weekday
+changes, retaining workout identities and custom content. Manually chosen
+dates stay fixed; an impossible placement or collision requires correction
+rather than dropping user state. Retained rows move through temporary indices,
+following the existing deload RPC pattern, without deletion or detachment.
+The unused down restores exact function baselines and refuses accepted date
+history. Focused source tests and synthetic responsive UI are local checks;
+database races, ownership, rollback and authenticated save/reopen acceptance
+run only in guarded Linux CI. The coordinator owns merge and release.

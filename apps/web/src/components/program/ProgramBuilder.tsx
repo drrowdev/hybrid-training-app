@@ -222,9 +222,11 @@ function PartEditor({ part, catalog, rehabProtocols, weeks, weekIndex, onChange,
 
 export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, editBlockId, initialStartDate, initialRevision,
   activity = "hybrid", workoutId, plannedSessionId, initialWeekIndex = 0, oneRmByMovementId, bodyweightKg, replacesName,
+  canChangeStartDate = false,
 }: {
   catalog: AuthoredCatalogMovement[]; today: string; commitments: TrainingCommitment[]; rehabProtocols?: RehabChoice[];
   initial?: AuthoredProgramDefinition; editBlockId?: string; initialStartDate?: string; initialRevision?: string;
+  canChangeStartDate?: boolean;
   activity?: ProgramActivity; swimHref?: string | null; workoutId?: string; plannedSessionId?: string;
   initialWeekIndex?: number; activitySelected?: boolean; replacesName?: string;
 } & Loads) {
@@ -237,6 +239,8 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
   const [openPart, setOpenPart] = useState<string | null>(null);
   const [menu, setMenu] = useState<"add" | "copy" | null>(null);
   const [startedOn, setStartedOn] = useState(initialStartDate ?? today);
+  const [savedStartDate, setSavedStartDate] = useState(initialStartDate);
+  const [startDateEditable, setStartDateEditable] = useState(canChangeStartDate);
   const [editRevision, setEditRevision] = useState(initialRevision);
   const [current, setCurrent] = useState<Awaited<ReturnType<typeof reloadAuthoredProgram>> | null>(null);
   const [scope, setScope] = useState<"program" | "workout" | "future">(workoutId ? "workout" : "program");
@@ -327,8 +331,13 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
     </div>
     {!editBlockId && replacesName && <p className={styles.muted}>Replaces {replacesName}</p>}
     <details className={styles.builderDetails}><summary>{definition.weeks.length} weeks{startedOn && <> · starts {formatProgramDate(startedOn, true)}</>}</summary>
-      <div className={styles.inlineFields}><Field label="Start date"><input className={styles.input} type="date" required min={editBlockId ? undefined : today}
-        disabled={!!editBlockId} value={startedOn} onChange={(event) => { setStartedOn(event.target.value); setPreview(null); setRequestId(null); }} /></Field>
+      <div className={styles.inlineFields}><Field label="Start date"><input className={styles.input} type="date" required min={editBlockId && startedOn === savedStartDate ? undefined : today}
+        disabled={!!editBlockId && (!startDateEditable || scope !== "program")} value={startedOn}
+        onChange={(event) => { setStartedOn(event.target.value); setPreview(null); setRequestId(null); setAcceptOverlap(false); setError(null); }} /></Field>
+        {editBlockId && !startDateEditable && savedStartDate && startedOn !== savedStartDate &&
+          <button type="button" className={styles.button} onClick={() => {
+            setStartedOn(savedStartDate); setPreview(null); setRequestId(null); setAcceptOverlap(false); setError(null);
+          }}>Use current start date</button>}
         <Field label="Weeks"><select className={styles.select} disabled={!!workoutId} value={definition.weeks.length} onChange={(event) => {
           const count = Number(event.target.value);
           const trim = (movement: AuthoredMovement) => ({ ...movement, overrides: Object.fromEntries(Object.entries(movement.overrides ?? {}).filter(([key]) => Number(key) < count)) });
@@ -352,6 +361,8 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
       <button type="button" className={styles.button} onClick={() => {
         const draft = definition.workouts.find((workout) => workout.id === workoutId);
         if (scope !== "program" && draft) setDefinition({ ...current.definition, workouts: current.definition.workouts.map((workout) => workout.id === workoutId ? draft : workout) });
+        if (startedOn === savedStartDate || scope !== "program") setStartedOn(current.startedOn);
+        setSavedStartDate(current.startedOn); setStartDateEditable(current.canChangeStartDate);
         setEditRevision(current.revision); setCurrent(null); setPreview(null); setRequestId(null); setError(null);
       }}>Reapply my changes</button>
     </section>}

@@ -7,11 +7,15 @@ const entrySchema = z.object({
   id: z.string(), source: z.enum(["primary", "swim", "session"]), programId: z.string().nullable(),
   date: z.string(), title: z.string(), state: z.enum(["scheduled", "started", "completed", "rest", "paused"]),
 });
-const snapshotSchema = z.object({ revision: z.string(), entries: z.array(entrySchema) });
+const snapshotSchema = z.object({
+  revision: z.string(), entries: z.array(entrySchema),
+  authoredStartDateChanges: z.literal(true).optional(),
+});
 
 export interface ScheduleSnapshot {
   revision: string;
   entries: TrainingCommitment[];
+  authoredStartDateChanges?: true;
 }
 export interface ScheduleReview {
   revision: string;

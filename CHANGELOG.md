@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Saved program start date
+- An unused authored program's start date can be changed in the full program
+  editor. Dates remain fixed after the first workout starts.
+- Function-only migration **0164_authored_program_start_date** saves the date,
+  retained workout identities and complete definition atomically. Existing
+  notes, custom prescriptions and manually chosen dates are preserved.
+- Deploy the app before applying the migration. Date editing stays unavailable
+  while the migration is pending; other edits continue normally. The down
+  migration refuses accepted date-change history; repair forward after use.
+
 ### Band triceps pressdown
 - Added **Band Triceps Pressdown** to the shared movement library with setup
   instructions. It uses existing band equipment and weight-optional reps/RIR logging.

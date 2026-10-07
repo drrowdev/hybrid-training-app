@@ -21,7 +21,7 @@ describe("normal command failure projection", () => {
       command: { exitCode: 1, signal: null, record: "parsed" },
     });
   });
-  it.each([record(164), `${record(158)}\n${record(158)}`])("refuses invalid or ambiguous attribution", (stderr) => {
+  it.each([record(165), `${record(158)}\n${record(158)}`])("refuses invalid or ambiguous attribution", (stderr) => {
     expect(projectNormalCommandFailure({ code: 1, stderr })).toEqual({
       sqlstate: null, position: { status: "unmatched" },
       command: { exitCode: 1, signal: null, record: "invalid" },
