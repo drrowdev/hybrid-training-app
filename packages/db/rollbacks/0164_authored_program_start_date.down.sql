@@ -8,7 +8,7 @@ BEGIN
     RAISE EXCEPTION 'Saved start-date history exists; rollback refused.' USING ERRCODE='55000';
   END IF;
   FOR entry IN SELECT * FROM (VALUES
-    ('public.update_program_instance_atomically(uuid,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb)', 'c3b72f4a3cac2ac588aef6bc109c4904'),
+    ('public.update_program_instance_atomically(uuid,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb)', '2fe2169da1113341c566360dbb916b6b'),
     ('public.independent_program_schedule_commit(text,jsonb,text,uuid,text,boolean)', '96ee82effface7b2e21c65f11aac644f'),
     ('public.training_schedule_commit(text,jsonb,text,uuid,text,boolean)', '0c3f406f4fef7048c68f59f11ca62d4c'),
     ('public.training_schedule_snapshot()', 'af9aeba030a02db03ba587862e8d6d86')
