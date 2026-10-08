@@ -72,7 +72,7 @@ const legacyParts = authoredWorkoutV1Schema.shape.parts.element.options;
 const authoredWorkoutV2Schema = authoredWorkoutV1Schema.extend({
   parts: z.array(z.discriminatedUnion("kind", [
     legacyParts[0],
-    z.object({ id, kind: z.literal("movement"), movement: authoredMovementV2Schema }).strict(),
+    z.object({ id, kind: z.literal("movement"), movement: authoredMovementV2Schema, linkNext: z.literal(true).optional() }).strict(),
     z.object({
       id, kind: z.literal("circuit"), name: z.string().trim().min(1).max(100),
       rounds: z.number().int().min(1).max(20),

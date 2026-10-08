@@ -372,6 +372,34 @@ try {
   assert.equal(bandSet.movementId, catalog[5].id);
   assert.equal(Number(bandSet.weightKg), 0, "Band logging must not require a kg estimate");
   assert.equal(Number(bandSet.rpe), 8.75);
+  await page.evaluate(() => window.showBuilder());
+  await page.getByLabel("Program name", { exact: true }).fill("Linked sets");
+  await exercise(0, ["Seated overhead press", "3", "8", "RIR 2"]);
+  await exercise(0, ["Chest-supported DB row", "3", "10", "RIR 2"]);
+  await exercise(0, ["Hammer curl", "2", "12", "RIR 2"]);
+  const linkDay = await day(0);
+  await expect(linkDay.getByTestId("link-group")).toHaveCount(0);
+  await linkDay.getByRole("button", { name: /^Link Seated overhead press and Chest-supported DB row$/ }).click();
+  await expect(linkDay.getByRole("group", { name: "Superset", exact: true })).toBeVisible();
+  await capture("linked-superset");
+  await linkDay.getByRole("button", { name: /^Link Chest-supported DB row and Hammer curl$/ }).click();
+  await expect(linkDay.getByRole("group", { name: "Tri-set", exact: true })).toBeVisible();
+  await linkDay.getByRole("button", { name: /^Unlink Chest-supported DB row and Hammer curl$/ }).click();
+  await expect(linkDay.getByRole("group", { name: "Superset", exact: true })).toBeVisible();
+  await linkDay.getByRole("button", { name: /^Unlink Seated overhead press and Chest-supported DB row$/ }).click();
+  await expect(linkDay.getByTestId("link-group")).toHaveCount(0);
+  await linkDay.getByRole("button", { name: /^Link Seated overhead press and Chest-supported DB row$/ }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.saved?.workouts[0]?.parts[0]?.linkNext)).toBe(true);
+  const linked = await page.evaluate(() => window.compiled(0, 0).map(item => [item.movementName, item.circuit?.name, item.circuit?.round]));
+  assert.deepEqual(linked, [
+    ["Seated overhead press", "Superset", 0], ["Seated overhead press", "Superset", 1], ["Seated overhead press", "Superset", 2],
+    ["Chest-supported DB row", "Superset", 0], ["Chest-supported DB row", "Superset", 1], ["Chest-supported DB row", "Superset", 2],
+    ["Hammer curl", undefined, undefined], ["Hammer curl", undefined, undefined],
+  ]);
+  await page.evaluate(() => window.showToday(0));
+  await expect(page.getByTestId("today-hero-preview")).toContainText("Superset");
+  await capture("linked-today");
   assert.deepEqual(errors, []);
   if (directory) await writeFile(path.join(directory, "builder-visible-strings.json"), JSON.stringify(strings, null, 2));
   console.log("DC-A1 / DC-K4 / DC-R5: full six-day program authored through UI; weeks 1/4/6, live maxes, pull-up, circuits and responsive layouts passed.");
