@@ -5,6 +5,7 @@ export const MODULAR_BROWSER_CASES: readonly BrowserCase[] = Object.freeze([
   "M1 DC-K4: strength creation retains library identities through reload and logging",
   "M2 DC-K4: running setup and future edits retain typed prescriptions",
   "M3 DC-K4: hybrid repeats and activity views retain one workout identity",
+  "M3b DC-K4: linked exercises save as a superset and alternate in the workout",
   "M4 DC-SW7: swimming coexists with reviewed primary commitments and independent lifecycle",
   "M5 DC-K4: stale schedule review and retried saves preserve one accepted program",
   "M6 DC-SW8: two users cannot read or change each other's programs",
