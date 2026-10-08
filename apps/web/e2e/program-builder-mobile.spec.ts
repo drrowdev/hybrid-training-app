@@ -642,6 +642,32 @@ test.describe("Modular program builder", () => {
     await expect(page.getByTestId("finish-stickybar")).toHaveAttribute("data-armed", "true");
   });
 
+  test("M3b DC-K4: linked exercises save as a superset and alternate in the workout", async ({ page, actor, catalog }) => {
+    const first = movement(catalog, "goblet-squat"), second = movement(catalog, "bench-press-flat");
+    await begin(page, "strength", "Linked acceptance");
+    for (const selected of [first, second]) {
+      await lift(page, selected);
+      await page.getByTestId("builder-exercise").last().getByLabel("Sets", { exact: true }).fill("2");
+    }
+    await page.getByRole("button", { name: /^Link /, exact: false }).click();
+    await expect(page.getByTestId("link-group")).toHaveAccessibleName("Superset");
+    await review(page);
+    await save(page, actor, "strength");
+    const row = (await planned(actor))[0]!;
+    expect(row.prescription.items.map((item) => item.circuit?.name)).toEqual(Array(4).fill("Superset"));
+    expect(row.prescription.items.map((item) => item.circuit?.round)).toEqual([0, 1, 0, 1]);
+    await page.goto(`/app/program/build?edit=${row.block_id}`);
+    await openBuilderDay(page, weekday());
+    await expect(page.getByTestId("link-group")).toHaveCount(1);
+    const sessionId = await start(page, row.id);
+    for (let index = 0; index < 4; index++) {
+      await page.getByTestId("movement-focus-log-button").click();
+      await expect.poll(async () => (await loggedSets(actor, sessionId)).length).toBe(index + 1);
+    }
+    const indices = (await loggedSets(actor, sessionId)).map((entry) => entry.prescription_item_index);
+    expect(indices).toEqual([0, 2, 1, 3]);
+  });
+
   test("M4 DC-SW7: swimming coexists with reviewed primary commitments and independent lifecycle", async ({ page, actor, catalog }) => {
     stage("m4-01");
     await begin(page, "strength", "Independent strength");

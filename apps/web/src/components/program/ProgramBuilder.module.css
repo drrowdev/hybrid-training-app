@@ -62,6 +62,17 @@
 .builderMenu { display: grid; border: 1px solid var(--cp-border-strong); background: var(--cp-bg-elevated); border-radius: 10px; padding: 6px; margin: 8px 16px 0 0; max-width: 300px; box-shadow: var(--cp-shadow); }
 .builderMenu button { min-height: 44px; border: 0; border-radius: 6px; background: transparent; color: var(--cp-text); text-align: left; padding: 8px 12px; }
 .builderMenu button:hover { background: var(--cp-surface-soft); }
+.linkGroup { margin: 4px 16px 4px 0; padding: 0 0 4px; border: 1px solid var(--cp-border); border-left: 3px solid var(--cp-accent); border-radius: 10px; background: color-mix(in srgb, var(--cp-accent) 5%, transparent); }
+.linkLabel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 14px 2px; color: var(--cp-accent); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.linkLabel small { color: var(--cp-warning); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.linkGroup .exerciseRow { border-left-color: transparent; }
+.linkGroup .exerciseRow[aria-expanded="true"] { border-left-color: var(--cp-accent); }
+.linkGroup .exerciseEditor { margin-right: 10px; }
+.linkToggle { display: flex; align-items: center; gap: 8px; width: calc(100% - 16px); min-height: 44px; margin: 0 16px 0 0; padding: 0 14px; border: 0; background: transparent; color: var(--cp-text-muted); font-size: 13px; text-align: left; }
+.linkToggle span { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--cp-border-strong); border-radius: 50%; font-size: 13px; line-height: 1; }
+.linkToggle:hover, .linkToggle:focus-visible { color: var(--cp-accent); }
+.linkToggle[data-linked="true"] { color: var(--cp-text-soft); }
+.linkGroup .linkToggle { width: 100%; margin: 0; }
 .circuitWeeks { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; flex-basis: 100%; }
 .circuitDifferent { grid-template-columns: 60px repeat(6, minmax(0, 1fr)); }
 .circuitLabels { display: grid; grid-template-rows: 16px 44px 44px; gap: 8px; align-items: center; font-size: 12px; color: var(--cp-text-muted); }

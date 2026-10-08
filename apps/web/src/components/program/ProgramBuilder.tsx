@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import {
-  authoredLoadDisplay, authoredWorkoutActivity, effectiveAuthoredMovement, formatAuthoredInterval, formatAuthoredLoad,
+  authoredLinkGroups, authoredLoadDisplay, authoredWorkoutActivity, canLinkAuthoredPart, defaultLinkName, moveAuthoredPart, removeAuthoredPart, setAuthoredPartLinked, effectiveAuthoredMovement, formatAuthoredInterval, formatAuthoredLoad,
   parseAuthoredLoad, upgradeAuthoredProgram,
   type AuthoredCatalogMovement, type AuthoredMovement, type AuthoredMovementOverride, type AuthoredProgramDefinition,
   type AuthoredProgramDefinitionV2, type AuthoredWeek, type AuthoredWorkout, type AuthoredWorkoutPart,
@@ -312,6 +312,9 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
           : { ...part, id: newId(), intervals: part.intervals.map((entry) => ({ ...entry, id: newId() })) });
     setWorkout(copy); setMenu(null);
   };
+  const partTitle = (part: AuthoredWorkoutPart) => part.kind === "movement" ? catalog.find((entry) => entry.id === part.movement.movementId)?.displayName ?? "Choose an exercise"
+    : part.kind === "circuit" ? part.name : part.kind === "rehab" ? rehabProtocols.find((entry) => entry.id === part.protocolId)?.name ?? "Rehab"
+      : catalog.find((entry) => entry.id === part.movementId)?.displayName ?? "Cardio";
   const partSummary = (part: AuthoredWorkoutPart) => {
     if (part.kind === "rehab") return rehabProtocols.find((entry) => entry.id === part.protocolId)?.summary ?? "";
     if (part.kind === "cardio") return part.duration ? `${part.duration} min${part.effort ? ` · ${part.effort}` : ""}` : part.intervals.map(formatAuthoredInterval).join(" / ");
@@ -425,31 +428,48 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
               disabled={index !== workout.weekday && definition.workouts.some((entry) => entry.weekday === index)}>{name}</option>)}</select></Field>}
             {!workoutId && <button type="button" className={styles.button} onClick={() => update({ ...definition, workouts: definition.workouts.filter((entry) => entry.id !== workout.id) })}>Rest</button>}
           </div></details>}
-          {workout?.parts.map((part, index) => {
-            const title = part.kind === "movement" ? catalog.find((entry) => entry.id === part.movement.movementId)?.displayName ?? "Choose an exercise"
-              : part.kind === "circuit" ? part.name : part.kind === "rehab" ? rehabProtocols.find((entry) => entry.id === part.protocolId)?.name ?? "Rehab"
-                : catalog.find((entry) => entry.id === part.movementId)?.displayName ?? "Cardio";
-            const changed = part.kind === "movement" && effectiveAuthoredMovement(part.movement, week, weekIndex).overridden;
-            return <div key={part.id} data-testid="builder-exercise">
-              <button type="button" className={styles.exerciseRow} aria-expanded={openPart === part.id} onClick={() => setOpenPart(openPart === part.id ? null : part.id)}>
-                <span>{part.kind === "movement" && part.movement.role === "main" && <em>Main</em>}{title}
-                  {changed && <small>Week {weekIndex + 1} changed</small>}</span>
-                <span>{partSummary(part)}</span>
-              </button>
-              {openPart === part.id && <div className={styles.exerciseEditor}>
-                <PartEditor key={`${part.id}:${weekIndex}`} part={part} catalog={definition.activity === "running" ? catalog.filter((entry) => entry.modality === "run") : catalog}
-                  rehabProtocols={rehabProtocols} weeks={definition.weeks} weekIndex={weekIndex} loads={loads}
-                  onChange={(next) => setWorkout({ ...workout, parts: workout.parts.map((entry) => entry.id === part.id ? next : entry) })} />
-                <div className={styles.editorTools}>{[-1, 1].map((delta) => <button type="button" className={styles.iconButton} key={delta}
-                  aria-label={delta < 0 ? "Move up" : "Move down"} disabled={index + delta < 0 || index + delta >= workout.parts.length} onClick={() => {
-                    const parts = [...workout.parts]; [parts[index], parts[index + delta]] = [parts[index + delta]!, parts[index]!]; setWorkout({ ...workout, parts });
-                  }}>{delta < 0 ? "↑" : "↓"}</button>)}
-                  <button type="button" className={styles.inlineLink} onClick={() => {
-                    setWorkout({ ...workout, parts: workout.parts.filter((entry) => entry.id !== part.id) }); setOpenPart(null);
-                  }}>Remove</button>
-                </div>
-              </div>}
-            </div>;
+          {workout && authoredLinkGroups(workout.parts).map((group) => {
+            const first = workout.parts.indexOf(group[0]!);
+            const linkName = defaultLinkName(group.length);
+            const linkToggle = (index: number, linked: boolean) => {
+              const next = workout.parts[index + 1];
+              if (workout.parts[index]?.kind !== "movement" || next?.kind !== "movement" || (!linked && !canLinkAuthoredPart(workout.parts, index))) return null;
+              return <button type="button" key={`link:${index}`} className={styles.linkToggle} data-linked={linked}
+                aria-label={`${linked ? "Unlink" : "Link"} ${partTitle(workout.parts[index]!)} and ${partTitle(next)}`}
+                onClick={() => setWorkout({ ...workout, parts: setAuthoredPartLinked(workout.parts, index, !linked) })}>
+                <span aria-hidden="true">{linked ? "⛓︎" : "+"}</span>{linked ? "Unlink" : "Link"}
+              </button>;
+            };
+            const rows = group.map((part, offset) => {
+              const index = first + offset;
+              const changed = part.kind === "movement" && effectiveAuthoredMovement(part.movement, week, weekIndex).overridden;
+              return <div key={part.id} data-testid="builder-exercise">
+                <button type="button" className={styles.exerciseRow} aria-expanded={openPart === part.id} onClick={() => setOpenPart(openPart === part.id ? null : part.id)}>
+                  <span>{part.kind === "movement" && part.movement.role === "main" && <em>Main</em>}{partTitle(part)}
+                    {changed && <small>Week {weekIndex + 1} changed</small>}</span>
+                  <span>{partSummary(part)}</span>
+                </button>
+                {openPart === part.id && <div className={styles.exerciseEditor}>
+                  <PartEditor key={`${part.id}:${weekIndex}`} part={part} catalog={definition.activity === "running" ? catalog.filter((entry) => entry.modality === "run") : catalog}
+                    rehabProtocols={rehabProtocols} weeks={definition.weeks} weekIndex={weekIndex} loads={loads}
+                    onChange={(next) => setWorkout({ ...workout, parts: workout.parts.map((entry) => entry.id === part.id ? next : entry) })} />
+                  <div className={styles.editorTools}>{[-1, 1].map((delta) => <button type="button" className={styles.iconButton} key={delta}
+                    aria-label={delta < 0 ? "Move up" : "Move down"} disabled={index + delta < 0 || index + delta >= workout.parts.length}
+                    onClick={() => setWorkout({ ...workout, parts: moveAuthoredPart(workout.parts, index, delta < 0 ? -1 : 1) })}>{delta < 0 ? "↑" : "↓"}</button>)}
+                    <button type="button" className={styles.inlineLink} onClick={() => {
+                      setWorkout({ ...workout, parts: removeAuthoredPart(workout.parts, part.id) }); setOpenPart(null);
+                    }}>Remove</button>
+                  </div>
+                </div>}
+                {offset < group.length - 1 && linkToggle(index, true)}
+              </div>;
+            });
+            if (group.length < 2) return [...rows, linkToggle(first, false)];
+            return [<div key={group[0]!.id} className={styles.linkGroup} role="group" aria-label={linkName} data-testid="link-group">
+              <div className={styles.linkLabel}>{linkName}{group.some((part) => part.kind === "movement" && part.movement.role === "main") &&
+                <small>Main lift linked · heavy sets get less rest</small>}</div>
+              {rows}
+            </div>, linkToggle(first + group.length - 1, false)];
           })}
           <div className={styles.dayTools}>
             <button type="button" className={styles.button} aria-expanded={menu === "add"} onClick={() => setMenu(menu === "add" ? null : "add")}>Add exercise</button>

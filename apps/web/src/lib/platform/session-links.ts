@@ -35,6 +35,7 @@
  * canonical slot: a link stored against the slot survives the swap.
  */
 import { z } from "zod";
+import { MAX_LINK_MEMBERS } from "@hta/domain";
 
 /** Envelope version. Bumped only on an incompatible shape change. */
 export const SESSION_LINKS_VERSION = 1 as const;
@@ -45,9 +46,8 @@ export const SESSION_LINKS_VERSION = 1 as const;
  */
 export const RESERVED_LINK_IDS: readonly string[] = ["tb-ab-triad"];
 
-/** Upper bound on members in one link — a giant set beyond this is a workout. */
-export const MAX_LINK_MEMBERS = 8;
 /** Upper bound on links within one strength slot. */
+export { MAX_LINK_MEMBERS, defaultLinkName } from "@hta/domain";
 export const MAX_LINKS_PER_SERIES = 6;
 
 /**
@@ -63,20 +63,6 @@ export const MAX_LINKS_PER_SERIES = 6;
  * link that silently applies to the wrong week.
  */
 export const MILESTONE_SERIES_PREFIX = "activation.milestone.";
-
-/**
- * Default human name for a link of `n` STATIONS.
- *
- * Stations, not members: the AB Triad is three movements the lifter thinks of as
- * one thing, so linking a lift to it is a superset of two stations, not a giant
- * set of four. Required by the logger, which rejects circuit metadata carrying
- * an empty name.
- */
-export function defaultLinkName(stationCount: number): string {
-  if (stationCount <= 2) return "Superset";
-  if (stationCount === 3) return "Tri-set";
-  return "Giant set";
-}
 
 const linkIdSchema = z
   .string()

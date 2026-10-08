@@ -53,3 +53,18 @@ describe("DC-R5 focused authored program contracts", () => {
     expect(authoredProgramSchema.safeParse(input).success).toBe(false);
   });
 });
+
+describe("DC-K4 linked exercises", () => {
+  it("accepts linkNext on movement parts and leaves old definitions unchanged", () => {
+    const v2 = authoredProgramSchema.parse(definition("strength", [movement, { ...movement, id: id(20), movement: { ...movement.movement, id: id(21) } }]));
+    const linked = structuredClone(v2); (linked.workouts[0]!.parts[0] as { linkNext?: true }).linkNext = true;
+    expect(authoredProgramSchema.parse(linked).workouts[0]?.parts[0]).toMatchObject({ linkNext: true });
+    expect(v2.workouts[0]?.parts[0]).not.toHaveProperty("linkNext");
+  });
+  it("rejects a link flag that is not true", () => {
+    const v2 = authoredProgramSchema.parse(definition("strength", [movement]));
+    (v2.workouts[0]!.parts[0] as { linkNext?: unknown }).linkNext = false;
+    expect(authoredProgramSchema.safeParse(v2).success).toBe(false);
+  });
+});
+

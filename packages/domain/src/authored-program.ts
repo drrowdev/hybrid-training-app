@@ -1,3 +1,4 @@
+import { authoredLinkGroups, defaultLinkName } from "./authored-links";
 import type { BlockProgramKind } from "./program-ownership";
 import type { ProgramLoadBasis } from "./program-load-basis";
 import { resolveTargetLoadKg } from "./target-load";
@@ -51,7 +52,7 @@ export interface AuthoredInterval {
 }
 
 export type AuthoredWorkoutPart =
-  | { id: string; kind: "movement"; movement: AuthoredMovement }
+  | { id: string; kind: "movement"; movement: AuthoredMovement; linkNext?: boolean }
   | { id: string; kind: "rehab"; protocolId: string }
   | {
       id: string; kind: "circuit"; name: string; rounds: number; movements: AuthoredMovement[];
@@ -301,7 +302,8 @@ export function compileAuthoredWorkout(
   };
   const compileMovement = (
     movement: AuthoredMovement, partId: string, circuit?: Omit<NonNullable<AuthoredPrescriptionItem["circuit"]>, "round">,
-  ): AuthoredPrescriptionItem[] => {
+        link?: Omit<NonNullable<AuthoredPrescriptionItem["circuit"]>, "round">,
+      ): AuthoredPrescriptionItem[] => {
     const selected = resolve(movement.movementId);
     if (selected.pattern === "cardio") {
       if (!circuit || movement.dose.kind !== "distance") throw new Error("Add running or machine intervals as a cardio part.");
@@ -330,15 +332,24 @@ export function compileAuthoredWorkout(
         : load?.kind === "kg" ? { targetWeightKg: Number(load.value) }
           : load?.kind === "rir" ? { targetRir: authoredRange(load.value, 10) } : {}),
       ...(movement.notes ? { notes: movement.notes } : {}),
-      ...(circuit ? { circuit: { ...circuit, round } } : {}),
+      ...(circuit ? { circuit: { ...circuit, round } } : link && round < link.rounds ? { circuit: { ...link, round } } : {}),
       meta: { authoredPartId: partId, authoredMovementId: movement.id, restSeconds: movement.restSeconds,
+        ...(link ? { authoredLink: true } : {}),
         ...(load?.kind === "pct" ? { programLoadBasis: { version: 1 as const, kind: "one-rm" as const, percent: 100, roundingKg: null }, authoredLoadRoundingKg: 2.5 } : {}),
         ...(reps ? { authoredReps: effective.reps } : {}),
         ...(testRule ? { authoredTest: testRule } : {}),
         ...(movement.role === "tendon" ? { rehab: true } : {}) },
     }));
   };
-  const items = workout.parts.flatMap((part): AuthoredPrescriptionItem[] => {
+  const compileGroup = (group: AuthoredWorkoutPart[]): AuthoredPrescriptionItem[] => {
+    const members = group.flatMap((part) => part.kind === "movement" ? [part] : []);
+    if (members.length < 2) return group.flatMap(compilePart);
+    // Sets beyond the shortest member fall out of the rotation and log solo.
+    const rounds = Math.min(...members.map((part) => authoredRange(effectiveAuthoredMovement(part.movement, week, weekIndex).sets, 20).min));
+    const link = { id: `${members[0]!.id}:link`, name: defaultLinkName(members.length), size: members.length, rounds };
+    return members.flatMap((part, position) => compileMovement(part.movement, part.id, undefined, { ...link, position }));
+  };
+  const compilePart = (part: AuthoredWorkoutPart): AuthoredPrescriptionItem[] => {
     if (part.kind === "rehab") {
       if (!compileRehab) throw new Error("Choose an available rehab protocol from your library.");
       return compileRehab(part.protocolId, part.id);
@@ -397,7 +408,8 @@ export function compileAuthoredWorkout(
       },
       meta: { authoredPartId: part.id, intervals, repeats: duration ? 1 : part.repeats, modality: part.modality },
     }];
-  });
+  };
+  const items = authoredLinkGroups(workout.parts).flatMap(compileGroup);
   return { items, meta: { authoredWorkout: workout } };
 }
 
@@ -509,9 +521,10 @@ export function authoredExecutionParts(items: readonly {
     const part = parts.get(id);
     if (part) { part.itemIndices.push(index); return; }
     const protocolName = item.meta?.rehabProtocolName;
+    const linked = item.meta?.authoredLink === true;
     parts.set(id, {
-      id, title: typeof protocolName === "string" ? protocolName : item.circuit?.name ?? item.movementName ?? "Workout part",
-      kind: typeof protocolName === "string" ? "rehab" : item.kind.startsWith("cardio_") ? "cardio" : item.circuit ? "circuit" : "movement",
+      id, title: typeof protocolName === "string" ? protocolName : linked ? item.movementName ?? "Workout part" : item.circuit?.name ?? item.movementName ?? "Workout part",
+      kind: typeof protocolName === "string" ? "rehab" : item.kind.startsWith("cardio_") ? "cardio" : item.circuit && !linked ? "circuit" : "movement",
       itemIndices: [index],
     });
   });
