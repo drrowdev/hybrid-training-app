@@ -10,6 +10,10 @@ import { cardioPreviewRows } from "@/components/session/cardio-preview-rows";
 import type { SwimWorkoutView } from "@/lib/swim/view-types";
 import styles from "./Today.module.css";
 
+function sameText(a: string | undefined, b: string | undefined) {
+  return (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+}
+
 function range(min: number, max: number) { return min === max ? String(min) : `${min}–${max}`; }
 
 export function workoutDose(items: PrescriptionItem[]): { text: string; spoken: string } {
@@ -39,7 +43,8 @@ export type WorkoutLoadContext = { oneRmByMovementId: Record<string, number>; bo
 function Row({ row, detailed = false, loadContext, onRemove }: {
   row: PrescriptionMovementRow; detailed?: boolean; loadContext?: WorkoutLoadContext; onRemove?: (movementId: string) => void;
 }) {
-  const dose = workoutDose(row.items);
+  // The cue line already shows each item's note, so the dose must not repeat it.
+  const dose = workoutDose(row.items.map(({ notes: _notes, ...item }) => item));
   const first = row.items[0];
   const authored = first?.meta?.authoredLoadRoundingKg === 2.5 && first.percentTm != null;
   const resolved = authored ? authoredLoadDisplay({ kind: "pct", value: first.percentTm! },
@@ -111,26 +116,38 @@ export function WorkoutExercises({ items, detailed = false, loadContext, onRemov
     <Group title="Main lifts" rows={rows(false)} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
     <Group title="Supplemental" rows={rows(true)} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
     <Group title="Accessories" rows={[...groups.accessories, ...groups.hingeCompensations, ...groups.tendon]} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
-    {groups.cardio.map((item, index) => <section className={styles.group} key={index}>
-      <h3>{item.movementName ?? "Conditioning"}</h3>
-      {item.cardioPlan ? <>
-        <p className={styles.cardioCue}>{item.cardioPlan.summary}</p>
+    {groups.cardio.map((item, index) => {
+      const plan = item.cardioPlan;
+      const heading = item.movementName ?? "Conditioning";
+      const segments = plan?.segments ?? [];
+      const summary = plan && !sameText(plan.summary, heading) ? plan.summary : "";
+      const effort = plan?.effort &&
+        !sameText(plan.effort, heading) && !sameText(plan.effort, plan.summary) &&
+        !segments.some((segment) => segment.detail.toLowerCase().includes(plan.effort.trim().toLowerCase()))
+        ? plan.effort : "";
+      return <section className={styles.group} key={index}>
+      <h3>{heading}</h3>
+      {plan ? <>
+        {summary && <p className={styles.cardioCue}>{summary}</p>}
         <ul className={styles.rows}>
-          {item.cardioPlan.segments?.map((segment, i) => <li className={styles.exercise} key={`segment-${i}`}>
-            <span>{segment.label}</span><span className={styles.dose}>{segment.detail}</span>
-          </li>)}
-          {item.cardioPlan.stations?.map((station, i) => <li className={styles.exercise} key={`station-${i}`}>
+          {segments.map((segment, i) => sameText(segment.label, heading)
+            ? <li className={styles.exercise} key={`segment-${i}`}><span>{segment.detail}</span></li>
+            : <li className={styles.exercise} key={`segment-${i}`}>
+              <span>{segment.label}</span><span className={styles.dose}>{segment.detail}</span>
+            </li>)}
+          {plan.stations?.map((station, i) => <li className={styles.exercise} key={`station-${i}`}>
             <span>{station.name}</span><span className={styles.dose}>{[station.load, station.target].filter(Boolean).join(" · ")}</span>
           </li>)}
         </ul>
-        <p className={styles.cardioCue}>{item.cardioPlan.effort}</p>
+        {effort && <p className={styles.cardioCue}>{effort}</p>}
       </> : <>
         {item.notes && <p className={styles.cardioCue}>{item.notes}</p>}
         <ul className={styles.rows}>{cardioPreviewRows(item).map((row) => <li className={styles.exercise} key={row.label}>
           <span>{row.label}</span><span className={styles.dose}>{row.value}</span>
         </li>)}</ul>
       </>}
-    </section>)}
+    </section>;
+    })}
   </div>;
 }
 

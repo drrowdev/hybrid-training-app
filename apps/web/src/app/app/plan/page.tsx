@@ -11,7 +11,7 @@ import { SharedTrainingWeek, SharedTrainingMonth } from "@/components/program/Sh
 import { ScheduleViewToggle } from "@/components/program/TrainingMonth";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
-  endBlock,
+  endBlockAndLeave,
   movePlannedSession,
   skipPlannedSession,
   unskipPlannedSession,
@@ -393,7 +393,7 @@ export default async function PlanPage({
             canEdit={canEditPlan}
             editHref={block.programId === "authored" ? `/app/program/build?edit=${block.id}` : `/app/program?edit=${block.id}`}
             startNewHref={block.programId === "authored" && block.programKind ? `/app/program/build?activity=${block.programKind}` : "/app/program"}
-            endAction={endBlock}
+            endAction={endBlockAndLeave}
             recoveryAvailable={recovery.then((result) => result.control !== null)}
             recoveryControl={
               <Suspense fallback={null}>

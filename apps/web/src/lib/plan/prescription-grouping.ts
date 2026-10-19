@@ -370,6 +370,7 @@ export function groupByMovementThenKind(
  */
 function isContentlessItem(item: PrescriptionItem): boolean {
   if (item.reps != null) return false;
+  if (item.repRange) return false;
   if (item.percentTm != null) return false;
   if (item.durationMin != null) return false;
   if (item.holdSec != null) return false;
@@ -478,7 +479,11 @@ function sameExceptSets(a: PrescriptionItem, b: PrescriptionItem): boolean {
     const circuit = _circuit
       ? { id: _circuit.id, name: _circuit.name, position: _circuit.position, size: _circuit.size, rounds: _circuit.rounds }
       : undefined;
-    const withCircuit = { ...rest, ...(circuit ? { circuit } : {}) };
+    // `rehabSetIndex` numbers each expanded set of a rehab item, so it differs
+    // by design; leaving it in kept a 3-set rehab row from reading "3 × 10".
+    const { rehabSetIndex: _rehabSetIndex, ...meta } = (rest.meta ?? {}) as Record<string, unknown>;
+    void _rehabSetIndex;
+    const withCircuit = { ...rest, ...(rest.meta ? { meta } : {}), ...(circuit ? { circuit } : {}) };
     return JSON.stringify(
       it.setRange ? withCircuit : { ...withCircuit, optional: _optional },
     );
