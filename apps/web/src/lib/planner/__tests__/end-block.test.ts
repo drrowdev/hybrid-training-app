@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const { rpc, revalidatePath } = vi.hoisted(() => ({ rpc: vi.fn(), revalidatePath: vi.fn() }));
+const { rpc, revalidatePath, redirect } = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  revalidatePath: vi.fn(),
+  redirect: vi.fn((to: string) => { throw new Error(`REDIRECT:${to}`); }),
+}));
 vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ rpc }),
   getAuthUser: async () => ({ data: { user: { id: "11111111-2222-4222-8222-222222222222" } } }),
 }));
-import { endBlock } from "../actions";
+import { endBlock, endBlockAndLeave } from "../actions";
 const id = "11111111-1111-4111-8111-111111111111";
 
 describe("DC-K4/DC-SW7 ending only the selected primary program", () => {
@@ -47,6 +52,10 @@ describe("DC-K4/DC-SW7 ending only the selected primary program", () => {
     const form = new FormData(); form.set("id", id);
     await expect(endBlock(form)).rejects.toThrow("Your schedule changed.");
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+  it("returns to Programs after ending from the program's own page", async () => {
+    const form = new FormData(); form.set("id", id);
+    await expect(endBlockAndLeave(form)).rejects.toThrow("REDIRECT:/app/programs");
   });
   it("rejects malformed ids before any database call", async () => {
     const form = new FormData(); form.set("id", "not-a-uuid");

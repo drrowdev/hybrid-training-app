@@ -327,6 +327,14 @@ describe("groupByMovementThenKind", () => {
     expect(out.movements[0]!.sets[0]!.isBackOff).toBe(false);
   });
 
+  it("keeps an accessory whose only dose is a rep range, as authored programs write it", () => {
+    const out = groupByMovementThenKind([
+      item({ kind: "accessory", movementId: "curl", movementSlug: "hammer_curl", sets: 1, repRange: { min: 8, max: 15 } }),
+      item({ kind: "accessory", movementId: "push", movementSlug: "pressdown", sets: 1, repRange: { min: 10, max: 20 }, targetRir: { min: 1, max: 3 } }),
+    ]);
+    expect(out.accessories.map((row) => row.movementSlug)).toEqual(["hammer_curl", "pressdown"]);
+  });
+
   it("keeps items whose only renderable content is on the bw payload (isometric holds, rep ranges)", () => {
     const items: PrescriptionItem[] = [
       {
@@ -458,6 +466,15 @@ describe("collapseIdenticalSetItems", () => {
       { ...base, circuit: { ...circuit, round: 1 } },
       { ...base, circuit: { ...circuit, round: 2 } },
     ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sets).toBe(3);
+  });
+
+  it("collapses expanded rehab sets despite their per-set index", () => {
+    const base = item({ kind: "tendon", movementSlug: "copenhagen_plank", reps: 10, sets: 1 });
+    const out = collapseIdenticalSetItems([0, 1, 2].map((rehabSetIndex) => ({
+      ...base, meta: { rehab: true, rehabItemIndex: 0, rehabSetIndex },
+    })));
     expect(out).toHaveLength(1);
     expect(out[0]!.sets).toBe(3);
   });

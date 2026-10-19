@@ -118,7 +118,7 @@ const output = await build({
           : args.path === "@/components/plan/ThisWeekRail"
           ? "export function ThisWeekRail() { throw new Error('Unexpected schedule drawer'); }"
           : args.path === "@/lib/programs/authored/actions"
-          ? "export const previewAuthoredProgram = input => window.preview(input); export const saveAuthoredProgram = input => window.save(input); export const reloadAuthoredProgram = () => { throw new Error('Unexpected reload'); };"
+          ? "export const previewAuthoredProgram = input => window.preview(input); export const saveAuthoredProgram = input => window.save(input); export const reloadAuthoredProgram = () => { throw new Error('Unexpected reload'); }; export const loadAuthoredProgramToCopy = () => { throw new Error('Unexpected copy'); };"
           : args.path === "@/lib/sessions/actions"
           ? "export const deleteSet = () => { throw new Error('Unexpected delete'); };"
           : "const unexpected = () => { throw new Error('Unexpected mutation'); }; export const movePlannedSession = unexpected, previewPlannedMove = unexpected, skipPlannedSession = unexpected, applySwimDateEdit = unexpected, previewSwimDateEdit = unexpected, skipSwimWorkout = unexpected;",

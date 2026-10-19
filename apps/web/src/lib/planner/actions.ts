@@ -40,6 +40,12 @@ export async function endBlock(formData: FormData): Promise<void> {
   revalidatePath("/app/plan/history");
 }
 
+/** Ends a program from its own page, which no longer exists afterwards. */
+export async function endBlockAndLeave(formData: FormData): Promise<void> {
+  await endBlock(formData);
+  redirect("/app/programs");
+}
+
 /**
  * Soft-delete a training block. Distinct from `endBlock` which writes
  * status='archived' to mark "no longer active". `deleteBlock` is the

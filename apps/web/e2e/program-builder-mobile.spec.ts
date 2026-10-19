@@ -1319,10 +1319,8 @@ test.describe("Modular program builder", () => {
       await page.goto(`/app/plan?block=${running.block_id}`);
       await page.getByTestId("program-actions-more").click();
       await page.getByTestId("program-actions-end").click();
-      const ended = page.waitForResponse((response) => response.request().method() === "POST" &&
-        !!response.request().headers()["next-action"] && new URL(response.url()).pathname === "/app/plan");
       await page.getByTestId("end-block-confirm").click();
-      expect((await ended).ok()).toBe(true);
+      await expect(page).toHaveURL(/\/app\/programs$/);
       await expect.poll(async () => {
         const result = await actor.from("training_blocks").select("status").eq("id", running.block_id).single();
         expect(result.error).toBeNull(); return result.data?.status;
