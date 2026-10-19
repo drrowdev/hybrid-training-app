@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { AuthoredCatalogMovement, ProgramActivity } from "@hta/domain";
-import { upgradeAuthoredProgram } from "@hta/domain";
+import { upgradeAuthoredProgram, canCopyAuthoredProgram } from "@hta/domain";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { ProgramBuilder } from "@/components/program/ProgramBuilder";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -83,7 +83,16 @@ export default async function ProgramBuildPage({ searchParams }: {
   catalog.sort((a, b) => a.displayName.localeCompare(b.displayName));
   const activity: ProgramActivity = params.activity === "strength" || params.activity === "running" ? params.activity : "hybrid";
   const replacing = active.find((block) => block.programKind === activity);
-  return <ProgramBuilder catalog={catalog} today={todayYmd(profileResult.data?.timezone ?? "UTC")}
+  const copyResult = editBlockId ? null : await client.from("program_instances")
+    .select("block_id,display_name,program_family,status")
+    .eq("program_id", "authored").eq("user_id", user.id).is("deleted_at", null).not("block_id", "is", null)
+    .order("created_at", { ascending: false }).limit(50);
+  const copySources = (copyResult?.data ?? []).flatMap((row) => {
+    const sourceActivity = ["strength", "running", "hybrid"].includes(row.program_family) ? row.program_family as ProgramActivity : null;
+    return sourceActivity && row.block_id && canCopyAuthoredProgram(sourceActivity, activity)
+      ? [{ blockId: row.block_id as string, name: (row.display_name as string | null)?.trim() || "Untitled program", active: row.status === "active" }] : [];
+  });
+  return <ProgramBuilder catalog={catalog} today={todayYmd(profileResult.data?.timezone ?? "UTC")} copySources={copySources}
     activitySelected replacesName={!editBlockId && replacing ? archetypeDisplayName(replacing.archetype, replacing.notes) : undefined}
     rehabProtocols={rehabProtocols.map((protocol) => ({ id: protocol.id, name: protocol.name, summary: formatProtocolSummary(protocol.items) }))}
     commitments={snapshot.entries} activity={activity} initial={initial} editBlockId={editBlockId} initialStartDate={initialStartDate}

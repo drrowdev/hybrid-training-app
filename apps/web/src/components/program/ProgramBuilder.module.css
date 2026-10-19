@@ -21,6 +21,7 @@
 .weekCard[aria-pressed="true"] { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .overrideDot { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--cp-accent); vertical-align: middle; }
 .weekEditor, .inlineFields, .exerciseEditor { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.copyFrom .field { flex: 1 1 220px; }
 .weekEditor { margin-top: 10px; padding: 14px; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface); }
 .weekEditor h3 { flex-basis: 100%; margin: 0; font-size: 15px; font-weight: 600; }
 .weekEditor > .field { width: 76px; }
