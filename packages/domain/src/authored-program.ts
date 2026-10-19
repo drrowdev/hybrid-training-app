@@ -218,6 +218,36 @@ export function upgradeAuthoredProgram(definition: AuthoredProgramDefinition): A
   };
 }
 
+/** Whether a program of `source` activity can be copied into a new `target` program. */
+export function canCopyAuthoredProgram(source: ProgramActivity, target: ProgramActivity): boolean {
+  return source === target || target === "hybrid";
+}
+
+/**
+ * Weeks and workouts of `source` with every workout, part, station and interval
+ * given a fresh id, so the copy never shares identities with the original.
+ */
+export function copyAuthoredProgramContent(
+  source: AuthoredProgramDefinition, newId: () => string,
+): Pick<AuthoredProgramDefinitionV2, "weeks" | "workouts"> {
+  const upgraded = upgradeAuthoredProgram(source);
+  const movement = (entry: AuthoredMovement): AuthoredMovement => ({ ...structuredClone(entry), id: newId() });
+  return {
+    weeks: structuredClone(upgraded.weeks),
+    workouts: upgraded.workouts.map((workout) => ({
+      ...structuredClone(workout), id: newId(),
+      parts: workout.parts.map((part): AuthoredWorkoutPart => {
+        if (part.kind === "movement") return { ...structuredClone(part), id: newId(), movement: movement(part.movement) };
+        if (part.kind === "circuit") return { ...structuredClone(part), id: newId(), movements: part.movements.map(movement) };
+        if (part.kind === "cardio") {
+          return { ...structuredClone(part), id: newId(), intervals: part.intervals.map((interval) => ({ ...interval, id: newId() })) };
+        }
+        return { ...part, id: newId() };
+      }),
+    })),
+  };
+}
+
 export function effectiveAuthoredMovement(movement: AuthoredMovement, week?: AuthoredWeek, weekIndex = 0) {
   const followsWeek = movement.role === "main" && movement.dose.kind === "reps" && week != null;
   const override = movement.overrides?.[weekIndex] ?? {};

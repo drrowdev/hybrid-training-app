@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import {
-  authoredLinkGroups, authoredLoadDisplay, authoredWorkoutActivity, canLinkAuthoredPart, defaultLinkName, moveAuthoredPart, removeAuthoredPart, setAuthoredPartLinked, effectiveAuthoredMovement, formatAuthoredInterval, formatAuthoredLoad,
+  authoredLinkGroups, authoredLoadDisplay, authoredWorkoutActivity, canLinkAuthoredPart, copyAuthoredProgramContent, defaultLinkName, moveAuthoredPart, removeAuthoredPart, setAuthoredPartLinked, effectiveAuthoredMovement, formatAuthoredInterval, formatAuthoredLoad,
   parseAuthoredLoad, upgradeAuthoredProgram,
   type AuthoredCatalogMovement, type AuthoredMovement, type AuthoredMovementOverride, type AuthoredProgramDefinition,
   type AuthoredProgramDefinitionV2, type AuthoredWeek, type AuthoredWorkout, type AuthoredWorkoutPart,
   type ProgramActivity, type TrainingCommitment,
 } from "@hta/domain";
-import { previewAuthoredProgram, saveAuthoredProgram, reloadAuthoredProgram, type AuthoredPreview } from "@/lib/programs/authored/actions";
+import { previewAuthoredProgram, saveAuthoredProgram, reloadAuthoredProgram, loadAuthoredProgramToCopy, type AuthoredPreview } from "@/lib/programs/authored/actions";
 import { ProgramConfirmation } from "./ProgramDialog";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { formatProgramDate } from "@/lib/programs/presentation";
@@ -222,9 +222,10 @@ function PartEditor({ part, catalog, rehabProtocols, weeks, weekIndex, onChange,
 
 export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, editBlockId, initialStartDate, initialRevision,
   activity = "hybrid", workoutId, plannedSessionId, initialWeekIndex = 0, oneRmByMovementId, bodyweightKg, replacesName,
-  canChangeStartDate = false,
+  canChangeStartDate = false, copySources = [],
 }: {
   catalog: AuthoredCatalogMovement[]; today: string; commitments: TrainingCommitment[]; rehabProtocols?: RehabChoice[];
+  copySources?: { blockId: string; name: string; active: boolean }[];
   initial?: AuthoredProgramDefinition; editBlockId?: string; initialStartDate?: string; initialRevision?: string;
   canChangeStartDate?: boolean;
   activity?: ProgramActivity; swimHref?: string | null; workoutId?: string; plannedSessionId?: string;
@@ -238,6 +239,7 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
   const [openDay, setOpenDay] = useState<number | null>(initial?.workouts.find((workout) => workout.id === workoutId)?.weekday ?? 0);
   const [openPart, setOpenPart] = useState<string | null>(null);
   const [menu, setMenu] = useState<"add" | "copy" | null>(null);
+  const [copySourceId, setCopySourceId] = useState("");
   const [startedOn, setStartedOn] = useState(initialStartDate ?? today);
   const [savedStartDate, setSavedStartDate] = useState(initialStartDate);
   const [startDateEditable, setStartDateEditable] = useState(canChangeStartDate);
@@ -312,6 +314,19 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
           : { ...part, id: newId(), intervals: part.intervals.map((entry) => ({ ...entry, id: newId() })) });
     setWorkout(copy); setMenu(null);
   };
+  const copyFromProgram = () => {
+    if (!copySourceId) return;
+    if (definition.workouts.length && !window.confirm("Replace the workouts in this program?")) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        const source = await loadAuthoredProgramToCopy(copySourceId);
+        const content = copyAuthoredProgramContent(source, newId);
+        update({ ...definition, ...content });
+        setWeekIndex(0); setEditWeek(false); setOpenPart(null); setOpenDay(content.workouts[0]?.weekday ?? 0); setCopySourceId("");
+      } catch { setError("Couldn't copy that program. Try again."); }
+    });
+  };
   const partTitle = (part: AuthoredWorkoutPart) => part.kind === "movement" ? catalog.find((entry) => entry.id === part.movement.movementId)?.displayName ?? "Choose an exercise"
     : part.kind === "circuit" ? part.name : part.kind === "rehab" ? rehabProtocols.find((entry) => entry.id === part.protocolId)?.name ?? "Rehab"
       : catalog.find((entry) => entry.id === part.movementId)?.displayName ?? "Cardio";
@@ -356,6 +371,14 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, initial, e
         }}>{Array.from({ length: 16 }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}</select></Field>
       </div>
     </details>
+    {!editBlockId && copySources.length > 0 && <div className={`${styles.inlineFields} ${styles.copyFrom}`}>
+      <Field label="Copy from"><select className={styles.select} value={copySourceId} disabled={pending}
+        onChange={(event) => setCopySourceId(event.target.value)}>
+        <option value="">Choose a program</option>
+        {copySources.map((source) => <option key={source.blockId} value={source.blockId}>{source.name}{source.active ? " · Active" : ""}</option>)}
+      </select></Field>
+      <button type="button" className={styles.button} disabled={pending || !copySourceId} onClick={copyFromProgram}>Copy</button>
+    </div>}
     {workoutId && <Field label="Apply changes to"><select aria-label="Apply changes to" className={styles.select} value={scope} onChange={(event) => {
       setScope(event.target.value as "workout" | "future"); setWeekIndex(initialWeekIndex); setPreview(null); setRequestId(null);
     }}><option value="workout">This workout</option><option value="future">This and future matching workouts</option></select></Field>}

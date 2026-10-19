@@ -364,6 +364,18 @@ export async function loadAuthoredProgram(blockId: string) {
   return authoredProgramSchema.parse(result.data.instance);
 }
 
+export async function loadAuthoredProgramToCopy(blockId: string) {
+  const client = await createClient();
+  const { data: { user } } = await getAuthUser();
+  if (!user) throw new Error("Sign in to copy a program.");
+  const result = await client.from("program_instances").select("instance")
+    .eq("block_id", z.string().uuid().parse(blockId)).eq("program_id", "authored")
+    .eq("user_id", user.id).is("deleted_at", null)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (result.error || !result.data) throw new Error("This program is no longer available to copy.");
+  return authoredProgramSchema.parse(result.data.instance);
+}
+
 export async function reloadAuthoredProgram(blockId: string) {
   const client = await createClient();
   const { data: { user } } = await getAuthUser();
