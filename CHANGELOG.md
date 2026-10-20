@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Row Erg naming and circuit display
+- Erg movements are named consistently: "Erg Row — …" is now "Row Erg — …", and a plain "Row Erg" is added to the library. Saved workouts keep the name they were saved with.
+- A circuit that mixes strength and cardio shows once, with its round count, on Today and in the plan drawer.
+- Shared-catalog migration **0166_row_erg_naming**. Deploy the app first, then apply 0166 through the guarded `ci.yml` `migrate_production` run. The down restores the old names and removes Row Erg only when nothing references it.
+
 ### Test week updates 1RM
 - A logged test set in a program week set to update from the logged set proposes a new 1RM on Today. Accepting or dismissing works as for scheduled increases; nothing changes until accepted. Editing or deleting the set withdraws an unaccepted proposal.
 - Test weeks can add a fixed amount instead (stepKg) or keep the 1RM.
