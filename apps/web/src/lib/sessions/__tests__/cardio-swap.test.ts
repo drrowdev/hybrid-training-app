@@ -56,7 +56,7 @@ const candidates: CardioCandidate[] = [
   {
     id: "mov-row-z2",
     slug: "erg-z2",
-    display_name: "Erg Row — Z2",
+    display_name: "Row Erg — Z2",
     pattern: "cardio",
     equipment: "erg",
     metadata: { modality: "rowing", zone: "Z2" },
@@ -104,9 +104,9 @@ describe("classifyCardioKind", () => {
   });
 
   it("classifies max-effort and 500m intervals as VO2", () => {
-    // Erg Row — 500m Intervals seed (protocol "6-10x500m") should be VO2.
+    // Row Erg — 500m Intervals seed (protocol "6-10x500m") should be VO2.
     expect(classifyCardioKind({ protocol: "6-10x500m" })).toBe("cardio_vo2");
-    // Erg Row — 2k Time Trial seed (emphasis "max-effort-test") should be VO2.
+    // Row Erg — 2k Time Trial seed (emphasis "max-effort-test") should be VO2.
     expect(classifyCardioKind({ emphasis: "max-effort-test" })).toBe(
       "cardio_vo2",
     );

@@ -2,7 +2,7 @@
  * Regression tests for two accessory-picker leaks surfaced from the
  * Quick-workout flow:
  *
- *   1. Cardio movements (`pattern: "cardio"`, e.g. "Erg Row — Threshold")
+ *   1. Cardio movements (`pattern: "cardio"`, e.g. "Row Erg — Threshold")
  *      were being chosen as strength accessories via the aesthetic
  *      muscle-gap pass, then rendered nonsensically through the
  *      accessory-intensity "hold" path. They must be excluded from the
@@ -76,7 +76,7 @@ describe("pickAccessoriesForSession — cardio exclusion", () => {
       mv({
         id: "erg-threshold",
         slug: "erg-threshold",
-        displayName: "Erg Row — Threshold",
+        displayName: "Row Erg — Threshold",
         pattern: "cardio",
         equipment: "erg",
         primaryMuscles: ["rear_delts", "mid_back", "lats"],

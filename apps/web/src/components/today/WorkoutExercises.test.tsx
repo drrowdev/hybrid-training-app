@@ -7,6 +7,34 @@ const render = (items: unknown[]) =>
   renderToStaticMarkup(<WorkoutExercises items={items as PrescriptionItem[]} detailed />);
 
 describe("WorkoutExercises detailed view", () => {
+  it("shows a mixed circuit once, with its round count, outside Accessories", () => {
+    const station = (round: number, position: number, over: Record<string, unknown>) => {
+      const id = `part-1:${round}:${position}`;
+      return {
+        sets: 1, circuit: { id, name: "Station circuit", position: 0, size: 1, rounds: 1 },
+        meta: { authoredPartId: id }, ...over,
+      };
+    };
+    const items = [
+      { kind: "accessory", movementId: "cossack", movementName: "Loaded Cossack Squat", sets: 1, reps: 8 },
+      ...[0, 1, 2].flatMap((round) => [
+        station(round, 0, { kind: "accessory", movementId: "carry", movementName: "Farmer Carry (KB)", distanceM: { min: 40, max: 40 } }),
+        station(round, 1, { kind: "cardio_threshold", movementId: "ski", movementName: "Ski Erg",
+          cardioPlan: { summary: "Ski Erg", segments: [{ label: "Ski Erg", detail: "500 m" }], effort: "" } }),
+      ]),
+    ];
+    const html = render(items);
+    expect(html).toContain("Station circuit");
+    expect(html).toContain("3 rounds");
+    expect(html.match(/Farmer Carry/g)).toHaveLength(1);
+    expect(html.match(/Ski Erg/g)).toHaveLength(1);
+    expect(html).toContain("40 m");
+    expect(html).not.toContain("1 × 40 m");
+    const accessories = html.slice(html.indexOf("Accessories"), html.indexOf("Station circuit"));
+    expect(accessories).toContain("Loaded Cossack Squat");
+    expect(accessories).not.toContain("Farmer Carry");
+  });
+
   it("shows a note once, as the cue", () => {
     const html = render([{
       kind: "tendon", movementId: "c", movementName: "Copenhagen Plank", sets: 1,
