@@ -39,6 +39,12 @@ export type CardioLogFormProps = {
   onSaved?: () => void;
   resumeKey?: string;
   prescriptionItemIndex?: number;
+  /**
+   * `marker`: a station inside a circuit round whose time is entered on a later
+   * station — one tap, saved with the smallest duration the log accepts.
+   * `round`: the station that takes the time of the whole round.
+   */
+  roundMode?: "own" | "marker" | "round";
   sessionId: string;
   /** Prescribed duration in minutes — pre-fills the input. */
   prescribedDurationMin: number | null;
@@ -64,6 +70,8 @@ export type CardioLogFormProps = {
 };
 
 const MI_TO_KM = 1.609344;
+/** One second: the smallest duration a cardio log accepts. */
+const MARKER_DURATION_MIN = 1 / 60;
 
 export function hasQueuedCardioSession(
   entries: readonly OutboxEntry[],
@@ -101,6 +109,7 @@ export function CardioLogForm({
   initialDurationMin,
   initialDistanceKm,
   prescriptionItemIndex,
+  roundMode = "own",
   dockAccessory,
   onSaved,
   resumeKey,
@@ -195,7 +204,7 @@ export function CardioLogForm({
     fd.set("sessionId", sessionId);
     if (prescriptionItemIndex !== undefined) fd.set("prescriptionItemIndex", String(prescriptionItemIndex));
     fd.set("completed", completed ? "true" : "false");
-    fd.set("actualDurationMin", duration);
+    fd.set("actualDurationMin", roundMode === "marker" ? String(MARKER_DURATION_MIN) : duration);
     fd.set("modality", modality);
     const clientLogId = createClientId();
     fd.set("clientLogId", clientLogId);
@@ -258,7 +267,7 @@ export function CardioLogForm({
     <button type="submit" disabled={pending || !outboxHydrated} data-testid="cardio-log-submit"
       className={`cp-btn primary big${dockAccessory ? " cp-dock-cta" : ""}`} style={{ minHeight: 52, textAlign: "center", justifyContent: "center",
         opacity: pending || !outboxHydrated ? 0.7 : 1, cursor: pending || !outboxHydrated ? "not-allowed" : "pointer" }}>
-      {pending ? "Saving…" : completed ? prescriptionItemIndex === undefined ? "Finish workout" : "Save cardio" : "Save skip"}
+      {pending ? "Saving…" : completed ? prescriptionItemIndex === undefined ? "Finish workout" : roundMode === "marker" ? "Done" : "Save cardio" : "Save skip"}
     </button>
   );
   return (
@@ -373,7 +382,7 @@ export function CardioLogForm({
         data-testid="cardio-log-duration-rpe-row"
       >
         <label style={fieldStackStyle}>
-          <span style={labelStyle}>Duration (min)</span>
+          <span style={labelStyle}>{roundMode === "round" ? "Round time (min)" : "Duration (min)"}</span>
           <input
             type="number"
             inputMode="numeric"
