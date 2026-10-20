@@ -96,6 +96,24 @@ describe("CardioLogForm", () => {
     expect(html).toMatch(/Finish workout/);
   });
 
+  it("asks for no duration on a marker station and keeps it on the round station", () => {
+    const render = (roundMode: "marker" | "round") =>
+      renderToStaticMarkup(
+        <CardioLogForm
+          sessionId="00000000-0000-0000-0000-000000000001"
+          prescriptionItemIndex={0}
+          roundMode={roundMode}
+          prescribedDurationMin={null}
+          movementId={null}
+          modality="other"
+          units="metric"
+          action={noopAction}
+        />,
+      );
+    expect(render("marker")).not.toContain('data-testid="cardio-log-duration"');
+    expect(render("round")).toContain('data-testid="cardio-log-duration"');
+  });
+
   it("pre-fills duration with the prescribed duration", () => {
     const html = renderToStaticMarkup(
       <CardioLogForm
