@@ -10,7 +10,7 @@
  *   2. PATTERN — the aesthetic (hypertrophy muscle-gap) pass must never
  *      prescribe a non-hypertrophy movement (cardio / plyometric /
  *      Olympic / tendon / carry / drill) as a rep-based filler. That was
- *      the "Erg Row — Threshold @ 4×12" bug, generalised.
+ *      the "Row Erg — Threshold @ 4×12" bug, generalised.
  *
  * These run against the REAL seed catalog (`SEED_MOVEMENTS`), so a new
  * movement with a missing/typo'd tag fails CI here rather than in prod.

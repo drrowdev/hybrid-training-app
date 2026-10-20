@@ -389,7 +389,7 @@ export function pickAccessoriesForSession({
 }): AccessoryPick[] {
   // Cardio movements are conditioning, not strength accessories. They have
   // muscle tags (lats, quads, …) so the aesthetic gap-fill could otherwise
-  // pick e.g. "Erg Row — Threshold" as an accessory, where it renders
+  // pick e.g. "Row Erg — Threshold" as an accessory, where it renders
   // nonsensically through the accessory-intensity path. Exclude them from
   // the candidate pool entirely. Legacy fixtures omit `pattern` (undefined)
   // so they're unaffected.
@@ -1081,7 +1081,7 @@ const VARIATION_TOP_K = 3;
  * Without this guard the muscle-gap pass — which filters by `primaryMuscles`
  * alone — could pick e.g. `pogo-hop` (plyo, calves) or `iso-calf-hold`
  * (tendon) as a "4×12 @ RIR 3" calf filler, the same class of bug as the
- * "Erg Row — Threshold" cardio leak. See accessory-picker-cardio-machine
+ * "Row Erg — Threshold" cardio leak. See accessory-picker-cardio-machine
  * + catalog-integrity tests.
  */
 const AESTHETIC_ELIGIBLE_PATTERNS: ReadonlySet<string> = new Set([

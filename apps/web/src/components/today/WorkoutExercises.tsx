@@ -3,6 +3,7 @@ import { authoredLoadDisplay } from "@hta/domain";
 import type { PrescriptionItem } from "@hta/db";
 import { collapseIdenticalSetItems, groupByMovementThenKind, isSupplementalOnlySection, type PrescriptionMovementRow } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows, circuitNameOfRow } from "@/lib/plan/superset-grouping";
+import { extractRoundCircuits, type RoundCircuit } from "@/lib/plan/circuit-rounds";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { splitPrescriptionChunks } from "@/lib/plan/prescription-chunks";
@@ -100,12 +101,39 @@ function Group({ title, rows, minutes, detailed = false, loadContext, onRemove }
   </section>;
 }
 
+function circuitStationValue(item: PrescriptionItem): string {
+  if (item.kind.startsWith("cardio_")) {
+    return item.cardioPlan?.segments?.[0]?.detail ??
+      (item.durationMin != null ? `${item.durationMin} min` : "");
+  }
+  // Each station is one set per round, so "1 ×" would only add noise.
+  const dose = workoutDose([{ ...item, notes: undefined }]).text.replace(/^1 × /, "");
+  return [dose, item.targetWeightKg != null ? `${item.targetWeightKg} kg` : null].filter(Boolean).join(" · ");
+}
+
+function CircuitGroup({ circuit }: { circuit: RoundCircuit }) {
+  return <section className={styles.group} data-testid="session-preview-section-circuit">
+    <h3>{circuit.name || "Circuit"}<span>{circuit.rounds} {circuit.rounds === 1 ? "round" : "rounds"}</span></h3>
+    <ul className={styles.rows}>
+      {circuit.stations.map((item, index) => {
+        const value = circuitStationValue(item);
+        return <li className={styles.exercise} key={`${item.movementId}-${index}`}>
+          <div><span data-testid="prescription-name">{item.movementName}</span>
+            {item.notes && <div className={styles.cue}>{item.notes}</div>}</div>
+          {value && <span className={styles.dose} data-testid="prescription-value">{value}</span>}
+        </li>;
+      })}
+    </ul>
+  </section>;
+}
+
 export function WorkoutExercises({ items, detailed = false, loadContext, onRemove }: {
   items: PrescriptionItem[]; detailed?: boolean; loadContext?: WorkoutLoadContext;
   /** Adds a remove control to each movement row (summary view only). */
   onRemove?: (movementId: string) => void;
 }) {
-  const groups = groupByMovementThenKind(items);
+  const { circuits, rest } = extractRoundCircuits(items);
+  const groups = groupByMovementThenKind(rest);
   const rows = (supplemental: boolean) => groups.movements.filter((group) =>
     isSupplementalOnlySection(group) === supplemental && (!detailed || group.sets.length > 0))
     .map((group) => ({ ...group, items: group.sets.length ? group.sets.map((set) => set.item) : group.warmups }));
@@ -116,7 +144,8 @@ export function WorkoutExercises({ items, detailed = false, loadContext, onRemov
     <Group title="Main lifts" rows={rows(false)} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
     <Group title="Supplemental" rows={rows(true)} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
     <Group title="Accessories" rows={[...groups.accessories, ...groups.hingeCompensations, ...groups.tendon]} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
-    {groups.cardio.map((item, index) => {
+        {circuits.map((circuit) => <CircuitGroup key={circuit.partId} circuit={circuit} />)}
+        {groups.cardio.map((item, index) => {
       const plan = item.cardioPlan;
       const heading = item.movementName ?? "Conditioning";
       const segments = plan?.segments ?? [];

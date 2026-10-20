@@ -95,7 +95,7 @@ const RUNNING: NewMovement[] = [
   run("run-treadmill-easy", "Treadmill — Easy", { equipment: "treadmill", interferenceCost: "low_moderate", metadata: { modality: "running", zone: "Z2" } }),
 ];
 
-// ─── cardio: rowing (5) ───
+// ─── cardio: rowing (6) ───
 const row = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "cardio",
@@ -109,11 +109,12 @@ const row = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   });
 
 const ROWING: NewMovement[] = [
-  row("erg-z2", "Erg Row — Z2", { equipment: "erg", metadata: { modality: "rowing", zone: "Z2" } }),
-  row("erg-threshold", "Erg Row — Threshold", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", zone: "Z4" }, experienceMin: 1 }),
-  row("erg-intervals-500", "Erg Row — 500m Intervals", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", protocol: "6-10x500m", kind: "cardio_vo2" }, experienceMin: 2 }),
-  row("erg-sprints-30-30", "Erg Row — 30/30 Sprints", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", protocol: "tabata-style" }, experienceMin: 2 }),
-  row("erg-2k-tt", "Erg Row — 2k Time Trial", { equipment: "erg", interferenceCost: "high", metadata: { modality: "rowing", emphasis: "max-effort-test", kind: "cardio_vo2" }, experienceMin: 2 }),
+  row("row-erg", "Row Erg", { equipment: "erg" }),
+  row("erg-z2", "Row Erg — Z2", { equipment: "erg", metadata: { modality: "rowing", zone: "Z2" } }),
+  row("erg-threshold", "Row Erg — Threshold", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", zone: "Z4" }, experienceMin: 1 }),
+  row("erg-intervals-500", "Row Erg — 500m Intervals", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", protocol: "6-10x500m", kind: "cardio_vo2" }, experienceMin: 2 }),
+  row("erg-sprints-30-30", "Row Erg — 30/30 Sprints", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", protocol: "tabata-style" }, experienceMin: 2 }),
+  row("erg-2k-tt", "Row Erg — 2k Time Trial", { equipment: "erg", interferenceCost: "high", metadata: { modality: "rowing", emphasis: "max-effort-test", kind: "cardio_vo2" }, experienceMin: 2 }),
 ];
 
 // ─── cardio: other modalities (15) ───

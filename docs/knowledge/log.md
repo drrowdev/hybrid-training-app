@@ -6146,3 +6146,12 @@ fixtures cover ordering, repeated stations, circuits, rejection, resume and
 finish, with 375/1280 screenshots and shared-logger regression coverage.
 Real database/native acceptance remains in guarded Linux CI; merge and release
 require coordinator/owner approval.
+
+## [2026-10-20] decision | Row Erg naming and mixed-circuit display
+
+Migration 0166 renames the five "Erg Row — …" catalog movements to
+"Row Erg — …" to match "Ski Erg" and adds the plain "Row Erg" movement the
+library lacked. Shared catalog only; saved workouts keep their stored names and
+the down migration refuses when the new movement is referenced. Today and the
+plan drawer now show an authored mixed circuit once, with its round count,
+instead of spreading every expanded round across Accessories and Cardio.
