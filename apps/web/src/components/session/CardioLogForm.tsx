@@ -380,22 +380,25 @@ export function CardioLogForm({
       <div
         className="cardio-log-duration-rpe-row"
         data-testid="cardio-log-duration-rpe-row"
+        style={roundMode === "marker" ? { gridTemplateColumns: "1fr" } : undefined}
       >
-        <label style={fieldStackStyle}>
-          <span style={labelStyle}>{roundMode === "round" ? "Round time (min)" : "Duration (min)"}</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={prescriptionItemIndex === undefined ? 1 : 1 / 60}
-            step={prescriptionItemIndex === undefined ? 1 : "any"}
-            max={600}
-            required
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            data-testid="cardio-log-duration"
-            style={inputStyle}
-          />
-        </label>
+        {roundMode !== "marker" && (
+          <label style={fieldStackStyle}>
+            <span style={labelStyle}>{roundMode === "round" ? "Round time (min)" : "Duration (min)"}</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={prescriptionItemIndex === undefined ? 1 : 1 / 60}
+              step={prescriptionItemIndex === undefined ? 1 : "any"}
+              max={600}
+              required
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              data-testid="cardio-log-duration"
+              style={inputStyle}
+            />
+          </label>
+        )}
 
         <div style={fieldStackStyle}>
           <RpeInput
