@@ -74,3 +74,27 @@ export function extractRoundCircuits(items: readonly PrescriptionItem[]): {
   }));
   return { circuits, rest };
 }
+
+/**
+ * How a cardio station of an expanded circuit round is logged.
+ *
+ * A lifter usually knows the time of the whole round, not of each station. When
+ * a round has several cardio stations, the last one asks for the round time and
+ * the earlier ones are a one-tap "done". Anything else (a lone cardio part, or
+ * a station outside an expanded round) logs its own duration as before.
+ */
+export type CardioRoundLogMode = "own" | "marker" | "round";
+
+export function cardioRoundLogMode(
+  item: PrescriptionItem,
+  allItems: readonly PrescriptionItem[],
+): CardioRoundLogMode {
+  const self = expandedRound(item);
+  if (!self || !item.kind.startsWith("cardio_")) return "own";
+  const siblings = allItems.flatMap((other) => {
+    const found = other.kind.startsWith("cardio_") ? expandedRound(other) : null;
+    return found && found.partId === self.partId && found.round === self.round ? [found.position] : [];
+  });
+  if (siblings.length < 2) return "own";
+  return self.position === Math.max(...siblings) ? "round" : "marker";
+}

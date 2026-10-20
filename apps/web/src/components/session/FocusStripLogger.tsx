@@ -20,6 +20,7 @@ import { MovementFocusView } from "./MovementFocusView";
 import { LastSetHintRow } from "./MovementCard";
 import { SwapMovementModal, type ConfirmedMovementSwap } from "./SwapMovementModal";
 import { withConfirmedMovementSwap } from "@/lib/sessions/movement-grouping";
+import { cardioRoundLogMode } from "@/lib/plan/circuit-rounds";
 import {
   MovementNavigatorSheet,
   buildNavigatorEntries,
@@ -684,6 +685,7 @@ export function FocusStripLogger({
               } />
             ) : <CardioLogForm key={selectedKey} sessionId={sessionId}
               prescriptionItemIndex={cardioIndex} prescribedDurationMin={cardioItem.durationMin ?? null}
+              roundMode={cardioRoundLogMode(cardioItem, groups.flatMap((group) => group.items))}
               movementId={cardioItem.movementId}
               modality={typeof cardioItem.meta?.modality === "string" ? cardioItem.meta.modality : "other"}
               units={authoredCardio.units} action={authoredCardio.action} dockAccessory={dockAccessory} resumeKey={selectedKey}
