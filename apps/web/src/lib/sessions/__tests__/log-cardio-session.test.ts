@@ -17,6 +17,7 @@ type SessionRow = {
   id: string;
   user_id: string;
   completed_at: string | null;
+  prescription?: unknown;
 };
 
 const sessions: SessionRow[] = [
@@ -198,6 +199,7 @@ describe("logCardioSession", () => {
     sessionUpdates.length = 0;
     sessions[0]!.completed_at = null;
     sessions[0]!.user_id = USER_ID;
+    sessions[0]!.prescription = undefined;
     tableCounts.cardio_logs = 0;
     tableCounts.session_items = 0;
     tableCounts.set_logs = 0;
@@ -360,6 +362,27 @@ describe("logCardioSession", () => {
     const res = await addCardioBlock(fd);
 
     expect(res).toEqual({ ok: true });
+  });
+
+  it("accepts an authored cardio part whose catalog movement has no modality", async () => {
+    const movementId = "00000000-0000-4000-8000-0000000000a1";
+    sessions[0]!.prescription = {
+      items: [{
+        kind: "cardio_threshold", movementId, movementName: "Ski Erg",
+        meta: { authoredPartId: "p1" },
+      }],
+    };
+    const { logCardioSession } = await import("../actions");
+
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("prescriptionItemIndex", "0");
+    fd.set("actualDurationMin", "1");
+    fd.set("movementId", movementId);
+    fd.set("modality", "other");
+
+    expect(await logCardioSession(fd)).toEqual({ ok: true });
+    expect(cardioInserts[0]).toMatchObject({ block_index: 1, modality: "other" });
   });
 
   it("logs but does NOT flip completed_at when completed=false (skip path)", async () => {
