@@ -1034,7 +1034,8 @@ export async function logCardioSession(
     }
     const item = prescription?.items?.[partIndex];
     if (!item?.kind.startsWith("cardio_") || typeof item.meta?.authoredPartId !== "string" ||
-        item.movementId !== parsed.data.movementId || item.meta.modality !== parsed.data.modality) {
+        item.movementId !== parsed.data.movementId ||
+        (typeof item.meta.modality === "string" ? item.meta.modality : "other") !== parsed.data.modality) {
       return { error: "This cardio part changed. Reload the workout.", errorCode: "validation" };
     }
     if (session.completed_at) return { error: "Edit the saved result to correct a completed workout.", errorCode: "validation" };
