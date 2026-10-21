@@ -25,6 +25,8 @@ const sessions: SessionRow[] = [
 ];
 
 const cardioInserts: Array<Record<string, unknown>> = [];
+const setLogInserts: Array<Record<string, unknown>> = [];
+const setLogDeletes: string[] = [];
 const sessionUpdates: Array<{ id: string; patch: Record<string, unknown> }> = [];
 let cardioBlockInsertError: { code: string; message: string } | null = null;
 let existingCardioClientId: string | null = null;
@@ -94,6 +96,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
       const insert = (row: Record<string, unknown>) => {
         if (table === "cardio_logs") cardioInserts.push(row);
+        if (table === "set_logs") setLogInserts.push(row);
         return {
           select: () => ({
             single: async () => ({ data: { id: "new-id" }, error: null }),
@@ -149,6 +152,10 @@ vi.mock("@/lib/supabase/server", () => ({
         insert,
         upsert,
         update,
+        delete: () => {
+          if (table === "set_logs") setLogDeletes.push(table);
+          return builder;
+        },
       });
 
       // Count query (`.select("id", { count: "exact", head: true })`)
@@ -196,6 +203,8 @@ vi.mock("@/lib/planner/queries", () => ({
 describe("logCardioSession", () => {
   beforeEach(() => {
     cardioInserts.length = 0;
+    setLogInserts.length = 0;
+    setLogDeletes.length = 0;
     sessionUpdates.length = 0;
     sessions[0]!.completed_at = null;
     sessions[0]!.user_id = USER_ID;
@@ -383,6 +392,56 @@ describe("logCardioSession", () => {
 
     expect(await logCardioSession(fd)).toEqual({ ok: true });
     expect(cardioInserts[0]).toMatchObject({ block_index: 1, modality: "other" });
+  });
+
+  it("saves a sled weight as a set on the station and replaces it on re-log", async () => {
+    const movementId = "00000000-0000-4000-8000-0000000000a2";
+    sessions[0]!.prescription = {
+      items: [{
+        kind: "cardio_threshold", movementId, movementName: "Sled Push — Heavy", distanceM: { min: 20, max: 20 },
+        meta: { authoredPartId: "p1", modality: "sled" },
+      }],
+    };
+    const { logCardioSession } = await import("../actions");
+
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("prescriptionItemIndex", "0");
+    fd.set("actualDurationMin", String(1 / 60));
+    fd.set("movementId", movementId);
+    fd.set("modality", "sled");
+    fd.set("loadKg", "102.5");
+    fd.set("avgRpe", "8");
+
+    expect(await logCardioSession(fd)).toEqual({ ok: true });
+    expect(setLogDeletes).toHaveLength(1);
+    expect(setLogInserts).toEqual([expect.objectContaining({
+      session_id: SESSION_ID, movement_id: movementId, set_kind: "accessory",
+      weight_kg: 102.5, distance_m: 20, rpe: 8, prescription_item_index: 0,
+    })]);
+  });
+
+  it("rejects a weight on a station that is not a sled", async () => {
+    const movementId = "00000000-0000-4000-8000-0000000000a3";
+    sessions[0]!.prescription = {
+      items: [{
+        kind: "cardio_threshold", movementId, movementName: "Ski Erg",
+        meta: { authoredPartId: "p1", modality: "ski-erg" },
+      }],
+    };
+    const { logCardioSession } = await import("../actions");
+
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("prescriptionItemIndex", "0");
+    fd.set("actualDurationMin", "1");
+    fd.set("movementId", movementId);
+    fd.set("modality", "ski-erg");
+    fd.set("loadKg", "20");
+
+    expect(await logCardioSession(fd)).toMatchObject({ errorCode: "validation" });
+    expect(setLogInserts).toHaveLength(0);
+    expect(cardioInserts).toHaveLength(0);
   });
 
   it("logs but does NOT flip completed_at when completed=false (skip path)", async () => {

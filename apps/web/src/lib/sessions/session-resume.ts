@@ -53,7 +53,7 @@ export type ResumeState = {
   declinedOptionalKeys?: string[];
   cardioDrafts?: Record<string, {
     completed: boolean; duration: string; rpe: string; notes: string;
-    avgHr: string; distance: string; showMore: boolean;
+    avgHr: string; distance: string; showMore: boolean; loadKg?: string;
   }>;
   /** Absolute epoch ms the rest countdown ends at. */
   restDeadlineMs?: number;

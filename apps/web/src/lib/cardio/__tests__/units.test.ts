@@ -6,7 +6,25 @@ import {
   minutesToSeconds,
   paceUnitLabel,
   distanceUnitLabel,
+  parseClockToSeconds,
+  formatMinutesToClock,
 } from "../units";
+
+describe("m:ss durations", () => {
+  it("parses m:ss and rejects anything else", () => {
+    expect(parseClockToSeconds("1:45")).toBe(105);
+    expect(parseClockToSeconds(" 12:05 ")).toBe(725);
+    expect(parseClockToSeconds("0:30")).toBe(30);
+    for (const bad of ["", "2", "1:5", "1:75", "1.5", "a:bc"]) expect(parseClockToSeconds(bad)).toBeNull();
+  });
+
+  it("formats minutes as m:ss", () => {
+    expect(formatMinutesToClock(1.75)).toBe("1:45");
+    expect(formatMinutesToClock(10)).toBe("10:00");
+    expect(formatMinutesToClock(null)).toBe("");
+    expect(formatMinutesToClock(0)).toBe("");
+  });
+});
 
 describe("parsePaceToSecPerKm", () => {
   it("parses M:SS to total seconds", () => {

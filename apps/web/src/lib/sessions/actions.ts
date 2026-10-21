@@ -974,6 +974,7 @@ const logCardioSessionSchema = z.object({
   // points at the same catalog entry the user was prescribed.
   movementId: z.string().uuid().optional().nullable(),
   modality: z.string().trim().min(1).max(40).default("other"),
+  loadKg: z.coerce.number().min(0.01).max(1000).optional().nullable(),
   clientLogId: z.string().uuid().optional().nullable(),
 }).strict().superRefine((input, ctx) => {
   if (input.prescriptionItemIndex === undefined && !Number.isInteger(input.actualDurationMin)) {
@@ -995,6 +996,7 @@ export async function logCardioSession(
     distanceKm: formData.get("distanceKm") || undefined,
     movementId: formData.get("movementId") || undefined,
     modality: formData.get("modality") || "other",
+    loadKg: formData.get("loadKg") || undefined,
     clientLogId: formData.get("clientLogId") || undefined,
   });
   if (!parsed.success) {
@@ -1024,6 +1026,7 @@ export async function logCardioSession(
     return { error: "Not your session.", errorCode: "forbidden" };
   }
   const partIndex = parsed.data.prescriptionItemIndex;
+  let loadedStationDistanceM: number | null = null;
   if (partIndex !== undefined) {
     let prescription = session.prescription as Prescription | null;
     if (!prescription) {
@@ -1039,6 +1042,12 @@ export async function logCardioSession(
       return { error: "This cardio part changed. Reload the workout.", errorCode: "validation" };
     }
     if (session.completed_at) return { error: "Edit the saved result to correct a completed workout.", errorCode: "validation" };
+    if (parsed.data.loadKg != null) {
+      if (item.meta.modality !== "sled") {
+        return { error: "This cardio part changed. Reload the workout.", errorCode: "validation" };
+      }
+      loadedStationDistanceM = item.distanceM?.max ?? null;
+    }
   }
 
   // review-208 #2 + review-211 #2 — for hybrid sessions, logging the
@@ -1092,6 +1101,29 @@ export async function logCardioSession(
       error: upsertErr?.message ?? "Could not read the saved cardio log.",
       errorCode: "transient",
     };
+  }
+
+  if (partIndex !== undefined && parsed.data.loadKg != null && parsed.data.movementId) {
+    const duration_sec = Math.round(parsed.data.actualDurationMin * 60);
+    const { error: clearErr } = await supabase
+      .from("set_logs")
+      .delete()
+      .eq("session_id", parsed.data.sessionId)
+      .eq("movement_id", parsed.data.movementId)
+      .eq("prescription_item_index", partIndex);
+    if (clearErr) return { error: clearErr.message, errorCode: "transient" };
+    const { error: loadErr } = await supabase.from("set_logs").insert({
+      session_id: parsed.data.sessionId,
+      movement_id: parsed.data.movementId,
+      set_index: partIndex,
+      set_kind: "accessory",
+      weight_kg: parsed.data.loadKg,
+      ...(loadedStationDistanceM ? { distance_m: loadedStationDistanceM } : { duration_sec }),
+      rpe: parsed.data.avgRpe ?? null,
+      notes: parsed.data.notes ?? null,
+      prescription_item_index: partIndex,
+    });
+    if (loadErr) return { error: loadErr.message, errorCode: "transient" };
   }
 
   // Only flip the session to completed when (a) the user marked the
