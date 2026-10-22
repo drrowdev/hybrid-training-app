@@ -11,13 +11,9 @@ import {
 } from "@/lib/planner/queries";
 import { addDaysToYmd, todayYmd, ymdToUtc } from "@/lib/dates";
 import { hasTwoADaySlotPair } from "@/lib/planner/slot";
-import { FRESHNESS_REGION_LABELS, getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
-import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
-import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
-import { attributeLimitation, buildLimitationResponse } from "@/lib/limitations/response";
-import { MUSCLE_FROM_DB_ENUM, MUSCLE_LABELS } from "@/lib/muscle/muscle-groups";
+import { buildLimitationResponse } from "@/lib/limitations/response";
 import { deriveLimitationsContext } from "@/lib/planner/limitations-context";
 import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
@@ -88,7 +84,7 @@ export default async function TodayPage() {
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
   const activePrograms = getActiveBlocks();
 
-  const [{ data: todaySessions, error: todaySessionsError }, plannedToday, freshness, activeBlocks, tmRows, { data: activeLimitationsRaw, error: limitationsError }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
+  const [{ data: todaySessions, error: todaySessionsError }, plannedToday, activeBlocks, tmRows, { data: activeLimitationsRaw, error: limitationsError }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -97,7 +93,6 @@ export default async function TodayPage() {
       .lt("performed_at", ymdToUtc(addDaysToYmd(todayIso, 1), profile?.timezone ?? "UTC").toISOString())
       .order("performed_at", { ascending: false }),
     getTodayPlannedSessions(),
-    getRegionFreshness(supabase, userId),
     activePrograms,
     listTrainingMaxes(),
     supabase
@@ -132,14 +127,9 @@ export default async function TodayPage() {
   // and week-strip bucketing) still runs serially
   // after the Promise.all since it consumes results from multiple
   // groups.
-  const plannedMovementIds = Array.from(
-    new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
-  );
   const [
     { suggestions: pendingSuggestions, oneRm: showOneRmSuggestions },
     nextEvent,
-    { movementRegionById, movementSlugById },
-    muscleFreshnessRows,
   ] = await Promise.all([
     // Group A — pending TM suggestions + their joined source set /
     // session / movement rows. The inner Promise.all stays inside
@@ -244,34 +234,6 @@ export default async function TodayPage() {
       .maybeSingle()
       .then((r) => r.data),
 
-    // Group D — region / slug maps for the planned movements today
-    // (DC-V2 heavy-on-recovering soft warning).
-    (async (): Promise<{
-      movementRegionById: Map<string, { primaryRegion: string; name: string }>;
-      movementSlugById: Map<string, string | null>;
-    }> => {
-      const regionMap = new Map<string, { primaryRegion: string; name: string }>();
-      const slugMap = new Map<string, string | null>();
-      if (plannedMovementIds.length === 0) {
-        return { movementRegionById: regionMap, movementSlugById: slugMap };
-      }
-      const { data: movs, error: movementError } = await supabase
-        .from("movements")
-        .select("id, display_name, slug, primary_region")
-        .in("id", plannedMovementIds);
-      if (movementError) throw new Error("Couldn't check today's exercises. Try again.");
-      for (const m of movs ?? []) {
-        regionMap.set(m.id, {
-          primaryRegion: m.primary_region as string,
-          name: m.display_name as string,
-        });
-        slugMap.set(m.id, (m.slug as string | null) ?? null);
-      }
-      return { movementRegionById: regionMap, movementSlugById: slugMap };
-    })(),
-
-    // Group E — muscle-level freshness (PR feat/muscle-grid-16).
-    getMuscleFreshness(supabase, userId, { tz: profile?.timezone ?? "UTC" }),
   ]);
 
   const taper = computeTaperRecommendation(
@@ -431,24 +393,6 @@ export default async function TodayPage() {
     }
   }
 
-  const freshnessByRegion = new Map(
-    freshness.map((r) => [r.region, { freshness: r.freshness, regionLabel: r.regionLabel }]),
-  );
-  const conflictsBySlot = new Map<string, FreshnessConflict>();
-  for (const p of plannedToday) {
-    const itemsWithSlug = p.prescription.items.map((i) => ({
-      ...i,
-      movementSlug: movementSlugById.get(i.movementId) ?? null,
-    }));
-    const c = findHeavyOnRecoveringConflictWithMuscles(
-      itemsWithSlug,
-      movementRegionById,
-      freshnessByRegion,
-      muscleFreshnessRows,
-    );
-    if (c) conflictsBySlot.set(p.id, c);
-  }
-
   const isTwoADay = hasTwoADaySlotPair(
     plannedToday.map((planned) => planned.slot),
   );
@@ -525,7 +469,6 @@ export default async function TodayPage() {
       ) })) : null,
   ]);
   const limitationResponse = limitationData?.response;
-  const limitationContexts = (activeLimitationsRaw ?? []).map((row) => ({ id: row.id, ctx: deriveLimitationsContext([row]) }));
   const limitationAffected = new Set(limitationResponse
     ? [...limitationResponse.swaps, ...limitationResponse.drops, ...limitationResponse.warns].map((row) => row.sessionId) : []);
   const plannedWorkouts = orderPlannedSessionsForToday(plannedToday, isTwoADay)
@@ -534,27 +477,6 @@ export default async function TodayPage() {
       const workout = plannedTodayWorkout(planned, activeBlocks, plannedDaysAll);
       workout.loadContext = { oneRmByMovementId: Object.fromEntries(tmRows.map((row) => [row.movementId, row.oneRmKg])),
         bodyweightKg: profile?.bodyweight_kg == null ? undefined : Number(profile.bodyweight_kg) };
-      const conflict = conflictsBySlot.get(planned.id);
-      if (limitationAffected.has(planned.id) && limitationResponse && limitationData) {
-        const offence = [...limitationResponse.warns, ...limitationResponse.swaps, ...limitationResponse.drops]
-          .find((row) => row.sessionId === planned.id)!;
-        const limitationId = attributeLimitation(limitationData.catalog.find((row) => row.id === offence.fromMovementId),
-          offence.fromMovementId, limitationContexts);
-        const limitation = activeLimitationsRaw?.find((row) => row.id === limitationId);
-        const area = (limitation?.region ? FRESHNESS_REGION_LABELS[limitation.region] : undefined)
-          ?? (limitation?.affected_muscles ?? []).map((muscle: string) => {
-            const group = MUSCLE_FROM_DB_ENUM[muscle];
-            return group ? MUSCLE_LABELS[group] : undefined;
-          }).find((label: string | undefined) => !!label);
-        workout.note = area
-          ? `${area} still recovering. ${offence.fromName} may need a lighter load or a swap.`
-          : "An active limitation affects this workout.";
-      }
-      else if (conflict) workout.note = `${conflict.regionLabel} still recovering. Heavy ${conflict.movementName} may need a lighter top set or a substitution.`;
-      if (!workout.done && !workout.note) {
-        if (recoveryBannerProps?.state.kind === "applied") workout.note = `Recovering from ${recoveryBannerProps.eventName}.`;
-        else if (taperBannerProps?.state.kind === "applied") workout.note = `Tapering for ${taperBannerProps.eventName}.`;
-      }
       return workout;
     });
   const linkedIds = new Set([...plannedWorkouts, ...swims.workouts].flatMap((workout) => workout.sessionId ? [workout.sessionId] : []));
