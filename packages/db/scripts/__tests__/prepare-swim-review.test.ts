@@ -47,7 +47,7 @@ function fake() {
     if (text.includes('AS "extensionMember"')) return [];
     if (text.includes("ORDER BY id")) return canonical.map((m, i) =>
       ({ id: i + 1, hash: m.hash, created_at: m.folderMillis }));
-    if (text.includes("AS global")) return [{ global: 334, seeded: 330, ready: true }];
+    if (text.includes("AS global")) return [{ global: 333, seeded: 329, ready: true }];
     if (text.includes("c.relname AS name")) return [{ name: "movements" }, { name: "sessions" }];
     return [{ empty: true }];
   });
@@ -169,7 +169,7 @@ describe("bounded phase evidence and connection cleanup", () => {
         }
         if (text.includes("AS global")) {
           if (kind === "ready") rows[0]!.ready = "true";
-          if (kind === "catalog") rows[0]!.global = 330;
+          if (kind === "catalog") rows[0]!.global = 329;
         }
         if (vi.mocked(runtime.seed).mock.calls.length && text.includes("auth.users")) {
           if (kind === "users") rows[0]!.usersEmpty = false;

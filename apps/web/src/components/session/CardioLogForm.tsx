@@ -46,6 +46,8 @@ export type CardioLogFormProps = {
    * `round`: the station that takes the time of the whole round.
    */
   roundMode?: "own" | "marker" | "round";
+  /** The station is pushed or pulled with a weight (a sled), so ask for it. */
+  loadedStation?: boolean;
   sessionId: string;
   /** Prescribed duration in minutes — pre-fills the input. */
   prescribedDurationMin: number | null;
@@ -111,6 +113,7 @@ export function CardioLogForm({
   initialDistanceKm,
   prescriptionItemIndex,
   roundMode = "own",
+  loadedStation = false,
   dockAccessory,
   onSaved,
   resumeKey,
@@ -166,7 +169,7 @@ export function CardioLogForm({
 
   const [completed, setCompleted] = useState<boolean>(true);
   const clockDuration = prescriptionItemIndex !== undefined;
-  const hasLoad = clockDuration && modality === "sled";
+  const hasLoad = clockDuration && loadedStation;
   const [duration, setDuration] = useState<string>(
     durationDefault == null ? ""
       : clockDuration ? formatMinutesToClock(durationDefault) : String(durationDefault),

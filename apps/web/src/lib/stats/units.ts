@@ -69,7 +69,7 @@ export function formatWeight(
  * implement is being loaded pass an implement-specific step (see
  * `lib/sessions/load-increment.ts`); everything else gets the plate default.
  */
-export type WeightStep = { kg: number; lb: number };
+export type WeightStep = { kg: number; lb: number; ladderKg?: readonly number[] };
 
 /**
  * Plate-loaded default: the smallest pair of plates on a bar. Also the
@@ -97,6 +97,16 @@ export function stepWeightKg(
   deltaSteps: number,
   opts: { floorAtZero?: boolean; step?: WeightStep } = {},
 ): number {
+  const ladder = opts.step?.ladderKg;
+  if (ladder && ladder.length > 0) {
+    const sorted = [...ladder].sort((a, b) => a - b);
+    const eps = 1e-6;
+    if (deltaSteps > 0) {
+      return sorted.find((rung) => rung > kg + eps) ?? sorted[sorted.length - 1]!;
+    }
+    const lower = sorted.filter((rung) => rung < kg - eps);
+    return lower.length > 0 ? lower[lower.length - 1]! : sorted[0]!;
+  }
   const stepD = weightStepDisplay(units, opts.step);
   const currentD = roundDisplayWeight(displayWeight(kg, units), units);
   let nextD = currentD + deltaSteps * stepD;

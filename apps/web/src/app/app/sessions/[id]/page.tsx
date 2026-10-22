@@ -17,6 +17,8 @@ import {
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { CancelWorkoutButton } from "@/components/session/CancelWorkoutButton";
 import { EditableSessionTitle } from "@/components/session/EditableSessionTitle";
+import { SessionDateEditor } from "@/components/session/SessionDateEditor";
+import { addDaysToYmd, todayYmd, ymdInTimezone } from "@/lib/dates";
 import { BackLink } from "@/components/ui/BackLink";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
@@ -1029,6 +1031,18 @@ export default async function SessionDetailPage({
             >
               {crumb}
             </div>
+          );
+        })()}
+        {isComplete && (() => {
+          const tz = feedbackPrefs?.timezone ?? "UTC";
+          const today = todayYmd(tz);
+          return (
+            <SessionDateEditor
+              sessionId={session.id}
+              performedOn={ymdInTimezone(new Date(session.performed_at as string), tz)}
+              minYmd={addDaysToYmd(today, -14)}
+              maxYmd={today}
+            />
           );
         })()}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>

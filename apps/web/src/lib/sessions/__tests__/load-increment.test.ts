@@ -10,7 +10,25 @@ import {
   loadIncrementForRequirement,
   resolveLoadIncrement,
 } from "../load-increment";
-import { DEFAULT_WEIGHT_STEP } from "@/lib/stats/units";
+import { DEFAULT_WEIGHT_STEP, stepWeightKg } from "@/lib/stats/units";
+
+describe("wall ball weights", () => {
+  const step = resolveLoadIncrement({ slug: "wall-ball", equipment: "medicine-ball" });
+
+  it("walks the standard 6 / 9 / 12 kg balls", () => {
+    expect(stepWeightKg(6, "metric", 1, { step })).toBe(9);
+    expect(stepWeightKg(9, "metric", 1, { step })).toBe(12);
+    expect(stepWeightKg(12, "metric", -1, { step })).toBe(9);
+    expect(stepWeightKg(9, "metric", -1, { step })).toBe(6);
+  });
+
+  it("snaps an in-between weight to the next standard ball and stops at the ends", () => {
+    expect(stepWeightKg(6.5, "metric", 1, { step })).toBe(9);
+    expect(stepWeightKg(6.5, "metric", -1, { step })).toBe(6);
+    expect(stepWeightKg(12, "metric", 1, { step })).toBe(12);
+    expect(stepWeightKg(6, "metric", -1, { step })).toBe(6);
+  });
+});
 
 describe("resolveLoadIncrement", () => {
   it("steps dumbbell movements by 1 kg from the catalog equipment tag", () => {

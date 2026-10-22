@@ -339,8 +339,8 @@ export async function verifyResult(client: Client, canonical: { hash: string; fo
     (SELECT count(*)::int FROM public.movements WHERE user_id IS NULL
       AND slug IN (SELECT jsonb_array_elements_text($1::jsonb))) AS seeded,
     public.swim_storage_ready() AS ready`, [JSON.stringify(SEED_MOVEMENTS.map((m) => m.slug))]);
-  requireTrue(counts.length === 1 && counts[0]!.global === 334 &&
-    counts[0]!.seeded === 330 && counts[0]!.ready === true);
+  requireTrue(counts.length === 1 && counts[0]!.global === 333 &&
+    counts[0]!.seeded === 329 && counts[0]!.ready === true);
   const accounts = await client.query(emptyAccounts);
   requireTrue(accounts.length === 1 && accounts[0]!.usersEmpty === true && accounts[0]!.storageEmpty === true);
   // Only the two global catalog tables may contain rows after canonical setup.
@@ -398,7 +398,7 @@ export function defaultRuntime(inspectOnly = false): Runtime {
         journal.entries.every((entry: { idx: number; when: number }, i: number) =>
           entry.idx === i && entry.when === migrations[i]!.folderMillis &&
           (i === 0 || entry.when > migrations[i - 1]!.folderMillis)));
-      requireTrue(SEED_MOVEMENTS.length === 330 && new Set(SEED_MOVEMENTS.map((m) => m.slug)).size === 330 &&
+      requireTrue(SEED_MOVEMENTS.length === 329 && new Set(SEED_MOVEMENTS.map((m) => m.slug)).size === 329 &&
         SEED_MOVEMENTS.every((m) => (m.primaryMuscles?.length ?? 0) > 0 || !requiresPrimaryMuscle(m)));
       return migrations;
     },

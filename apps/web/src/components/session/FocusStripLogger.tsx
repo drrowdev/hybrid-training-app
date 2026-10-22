@@ -20,7 +20,8 @@ import { MovementFocusView } from "./MovementFocusView";
 import { LastSetHintRow } from "./MovementCard";
 import { SwapMovementModal, type ConfirmedMovementSwap } from "./SwapMovementModal";
 import { withConfirmedMovementSwap } from "@/lib/sessions/movement-grouping";
-import { cardioRoundLogMode } from "@/lib/plan/circuit-rounds";
+import { cardioRoundLogMode, roundTimeStation } from "@/lib/plan/circuit-rounds";
+import { isLoadedStationSlug } from "@/lib/cardio/loaded-station";
 import {
   MovementNavigatorSheet,
   buildNavigatorEntries,
@@ -305,6 +306,9 @@ export function FocusStripLogger({
   }, [preserveOrder, resumeReady, sessionId, declinedOptionalIds]);
   const [swapOpen, setSwapOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [roundPrompt, setRoundPrompt] = useState<
+    { index: number; round: number; name: string } | null
+  >(null);
   const [skipRehabOpen, setSkipRehabOpen] = useState(false);
   const [skipRehabPending, setSkipRehabPending] = useState(false);
   const [skipRehabError, setSkipRehabError] = useState<string | null>(null);
@@ -613,9 +617,33 @@ export function FocusStripLogger({
         )}
       </div>
 
+      {roundPrompt && authoredCardio && (() => {
+        const station = groups.flatMap((group) => group.items.map((item, slot) => ({ item, index: group.itemIndices[slot]! })))
+          .find((entry) => entry.index === roundPrompt.index)?.item;
+        if (!station) return null;
+        return (
+          <div className="cp-card" style={{ padding: 16, display: "grid", gap: 12 }} data-testid="focus-strip-round-time">
+            <div>
+              <h2 style={{ margin: 0, fontSize: 24, letterSpacing: "-0.025em" }}>Round {roundPrompt.round}</h2>
+              <div style={{ marginTop: 3, color: "var(--cp-text-muted)", fontSize: 12 }}>{roundPrompt.name}</div>
+            </div>
+            <CardioLogForm key={`round-${roundPrompt.index}-${roundPrompt.round}`} sessionId={sessionId}
+              prescriptionItemIndex={roundPrompt.index} prescribedDurationMin={null} roundMode="round"
+              movementId={station.movementId}
+              modality={typeof station.meta?.modality === "string" ? station.meta.modality : "other"}
+              units={authoredCardio.units} action={authoredCardio.action} dockAccessory={dockAccessory}
+              onSaved={() => setRoundPrompt(null)} />
+            <button type="button" className="cp-link" data-testid="focus-strip-round-time-skip"
+              onClick={() => setRoundPrompt(null)} style={{ justifySelf: "start", minHeight: 44 }}>
+              Skip
+            </button>
+          </div>
+        );
+      })()}
+
       <div
         className="cp-card"
-        style={{ padding: 16, display: "grid", gap: 12 }}
+        style={{ padding: 16, display: roundPrompt ? "none" : "grid", gap: 12 }}
       >
         <div
           style={{
@@ -686,6 +714,7 @@ export function FocusStripLogger({
             ) : <CardioLogForm key={selectedKey} sessionId={sessionId}
               prescriptionItemIndex={cardioIndex} prescribedDurationMin={cardioItem.durationMin ?? null}
               roundMode={cardioRoundLogMode(cardioItem, groups.flatMap((group) => group.items))}
+              loadedStation={isLoadedStationSlug(cardioItem.movementSlug)}
               movementId={cardioItem.movementId}
               modality={typeof cardioItem.meta?.modality === "string" ? cardioItem.meta.modality : "other"}
               units={authoredCardio.units} action={authoredCardio.action} dockAccessory={dockAccessory} resumeKey={selectedKey}
@@ -831,6 +860,18 @@ export function FocusStripLogger({
                   circuits: linkedCircuitByMovementId,
                 });
                 if (next) setActiveId(next);
+                if (!authoredCardio) return;
+                const entries = groups.flatMap((group) =>
+                  group.items.map((item, slot) => ({ item, index: group.itemIndices[slot]! })));
+                for (const index of savedIndices) {
+                  const closing = roundTimeStation(entries, index);
+                  const timed = closing && authoredCardio.logs.some(
+                    (log) => log.blockIndex === closing.index + 1 && log.durationSec > 1);
+                  if (closing && !timed) {
+                    setRoundPrompt(closing);
+                    break;
+                  }
+                }
               }}
             />
             {requiredDone && optionalOpen.length > 0 && (

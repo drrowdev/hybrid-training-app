@@ -6155,3 +6155,13 @@ library lacked. Shared catalog only; saved workouts keep their stored names and
 the down migration refuses when the new movement is referenced. Today and the
 plan drawer now show an authored mixed circuit once, with its round count,
 instead of spreading every expanded round across Accessories and Cardio.
+
+## [2026-10-22] decision | Single Sled Push, round time at round end, session date edit
+
+Migration 0167 renames "Sled Push — Heavy" to "Sled Push" and merges "Sled Push —
+Light" into it (history, saved workouts and authored definitions repointed; the
+row is deleted only when nothing else references it). Sled weight is keyed on the
+catalog slug because the authored modality has no sled value. A circuit round
+that ends on a strength station asks for its time after that station; wall ball
+loads use a 6/9/12 kg ladder; a finished workout's date can be changed for up to
+14 days back, writing `performed_at` only.

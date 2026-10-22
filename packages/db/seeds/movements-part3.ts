@@ -155,8 +155,7 @@ const swim = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   });
 
 const OTHER_CARDIO: NewMovement[] = [
-  sled("sled-push-light", "Sled Push — Light", { equipment: "sled", metadata: { modality: "sled", emphasis: "Z2-equivalent" } }),
-  sled("sled-push-heavy", "Sled Push — Heavy", { equipment: "sled", metadata: { modality: "sled", emphasis: "strength-cardio-hybrid" }, experienceMin: 2 }),
+  sled("sled-push-heavy", "Sled Push", { equipment: "sled", metadata: { modality: "sled", emphasis: "strength-cardio-hybrid" }, experienceMin: 2 }),
   sled("sled-drag-light", "Sled Drag — Light", { equipment: "sled" }),
   sled("sled-drag-heavy", "Sled Drag — Heavy", { equipment: "sled" }),
   sled("sled-drag-backwards", "Backwards Sled Drag", { equipment: "sled", primaryMuscles: ["quads", "calves"], metadata: { modality: "sled", emphasis: "VMO-knee-rehab" } }),

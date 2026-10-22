@@ -78,12 +78,26 @@ export function extractRoundCircuits(items: readonly PrescriptionItem[]): {
 /**
  * How a cardio station of an expanded circuit round is logged.
  *
- * A lifter usually knows the time of the whole round, not of each station. When
- * a round has several cardio stations, the last one asks for the round time and
- * the earlier ones are a one-tap "done". Anything else (a lone cardio part, or
- * a station outside an expanded round) logs its own duration as before.
+ * A lifter usually knows the time of the whole round, not of each station. The
+ * round time is asked once, on the station that ends the round. When that is a
+ * cardio station it asks for the time itself; when the round ends on something
+ * else (a carry, wall balls) every cardio station is a one-tap "done" and the
+ * time is asked after the closing station — see `roundTimeStationIndex`.
+ * Anything else (a lone cardio part, or a station outside an expanded round)
+ * logs its own duration as before.
  */
 export type CardioRoundLogMode = "own" | "marker" | "round";
+
+type RoundStation = { position: number; cardio: boolean };
+
+function roundStations(allItems: readonly PrescriptionItem[], partId: string, round: number): RoundStation[] {
+  return allItems.flatMap((other) => {
+    const found = expandedRound(other);
+    return found && found.partId === partId && found.round === round
+      ? [{ position: found.position, cardio: other.kind.startsWith("cardio_") }]
+      : [];
+  });
+}
 
 export function cardioRoundLogMode(
   item: PrescriptionItem,
@@ -91,10 +105,35 @@ export function cardioRoundLogMode(
 ): CardioRoundLogMode {
   const self = expandedRound(item);
   if (!self || !item.kind.startsWith("cardio_")) return "own";
-  const siblings = allItems.flatMap((other) => {
-    const found = other.kind.startsWith("cardio_") ? expandedRound(other) : null;
-    return found && found.partId === self.partId && found.round === self.round ? [found.position] : [];
+  const stations = roundStations(allItems, self.partId, self.round);
+  const last = stations.reduce((best, station) => (station.position > best.position ? station : best));
+  if (!last.cardio) return "marker";
+  const cardio = stations.filter((station) => station.cardio);
+  if (cardio.length < 2) return "own";
+  return self.position === last.position ? "round" : "marker";
+}
+
+/**
+ * When the station at `index` closes an expanded round that does not end on a
+ * cardio station, the index of the round's last cardio station — the one the
+ * round time is stored on. Null otherwise.
+ */
+export function roundTimeStation(
+  entries: readonly { item: PrescriptionItem; index: number }[],
+  index: number,
+): { index: number; round: number; name: string } | null {
+  const entry = entries.find((candidate) => candidate.index === index);
+  const self = entry ? expandedRound(entry.item) : null;
+  if (!entry || !self || entry.item.kind.startsWith("cardio_")) return null;
+  const inRound = entries.flatMap((candidate) => {
+    const found = expandedRound(candidate.item);
+    return found && found.partId === self.partId && found.round === self.round
+      ? [{ ...candidate, position: found.position, cardio: candidate.item.kind.startsWith("cardio_") }]
+      : [];
   });
-  if (siblings.length < 2) return "own";
-  return self.position === Math.max(...siblings) ? "round" : "marker";
+  if (self.position !== Math.max(...inRound.map((station) => station.position))) return null;
+  const cardio = inRound.filter((station) => station.cardio);
+  if (cardio.length === 0) return null;
+  const last = cardio.reduce((best, station) => (station.position > best.position ? station : best));
+  return { index: last.index, round: self.round + 1, name: self.name };
 }
