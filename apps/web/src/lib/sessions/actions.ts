@@ -8,6 +8,8 @@ import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { type WeightUnit, toKg } from "@/lib/stats/units";
+import { isLoadedStationSlug } from "@/lib/cardio/loaded-station";
+import { daysBetweenYmd, todayYmd, ymdToUtc } from "@/lib/dates";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { reconcileCompletedProgram, PROGRAM_PROGRESS_RETRY_MESSAGE } from "@/lib/platform/completion";
 import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-sets";
@@ -1043,7 +1045,7 @@ export async function logCardioSession(
     }
     if (session.completed_at) return { error: "Edit the saved result to correct a completed workout.", errorCode: "validation" };
     if (parsed.data.loadKg != null) {
-      if (item.meta.modality !== "sled") {
+      if (!isLoadedStationSlug(item.movementSlug)) {
         return { error: "This cardio part changed. Reload the workout.", errorCode: "validation" };
       }
       loadedStationDistanceM = item.distanceM?.max ?? null;
@@ -2276,6 +2278,72 @@ export async function updateSessionTitle(
     .eq("user_id", user.id);
   if (error) return { error: error.message };
 
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true };
+}
+
+const updateDateSchema = z.object({
+  sessionId: z.string().uuid(),
+  performedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date."),
+});
+
+const MAX_DATE_EDIT_DAYS_BACK = 14;
+
+/**
+ * Move a workout to the day it was actually done. Writes `sessions.performed_at`
+ * only — `completed_at` stays the moment it was logged — then re-stamps the
+ * derived load state, which is bucketed by performed day.
+ */
+export async function updateSessionDate(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string }> {
+  const parsed = updateDateSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    performedOn: formData.get("performedOn"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Choose a date." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+
+  const tz = await getUserTimezone(user.id);
+  const { performedOn } = parsed.data;
+  const [y, m, d] = performedOn.split("-").map(Number);
+  const probe = new Date(Date.UTC(y!, m! - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== m! - 1 || probe.getUTCDate() !== d) {
+    return { error: "Choose a valid date." };
+  }
+  const daysAgo = daysBetweenYmd(performedOn, todayYmd(tz));
+  if (daysAgo < 0) return { error: "Choose today or an earlier date." };
+  if (daysAgo > MAX_DATE_EDIT_DAYS_BACK) {
+    return { error: `Choose a date within the last ${MAX_DATE_EDIT_DAYS_BACK} days.` };
+  }
+
+  const { data, error } = await supabase
+    .from("sessions")
+    .update({ performed_at: ymdToUtc(performedOn, tz).toISOString() })
+    .eq("id", parsed.data.sessionId)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "Workout not found." };
+
+  try {
+    await recomputeAfterCompletedSessionMutation({
+      supabase, sessionId: parsed.data.sessionId, userId: user.id,
+    });
+  } catch (e) {
+    console.error("post-completion recompute (updateSessionDate) failed:", e);
+  }
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
 }

@@ -132,22 +132,23 @@ describe("CardioLogForm", () => {
   });
 
   it("asks for a sled's weight, including on a one-tap marker station", () => {
-    const render = (modality: string, roundMode: "own" | "marker") =>
+    const render = (loadedStation: boolean, roundMode: "own" | "marker") =>
       renderToStaticMarkup(
         <CardioLogForm
           sessionId="00000000-0000-0000-0000-000000000001"
           prescriptionItemIndex={0}
           roundMode={roundMode}
+          loadedStation={loadedStation}
           prescribedDurationMin={null}
           movementId={null}
-          modality={modality}
+          modality="other"
           units="metric"
           action={noopAction}
         />,
       );
-    expect(render("sled", "marker")).toContain('data-testid="cardio-log-load"');
-    expect(render("sled", "own")).toContain('data-testid="cardio-log-load"');
-    expect(render("rowing", "own")).not.toContain('data-testid="cardio-log-load"');
+    expect(render(true, "marker")).toContain('data-testid="cardio-log-load"');
+    expect(render(true, "own")).toContain('data-testid="cardio-log-load"');
+    expect(render(false, "own")).not.toContain('data-testid="cardio-log-load"');
   });
 
   it("pre-fills duration with the prescribed duration", () => {

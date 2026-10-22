@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Sled, wall ball and round-time logging
+- Sled stations ask for a weight (kg) and save it as a set on the station. This works for programs created before, because it keys on the exercise, not its modality.
+- A circuit round that ends on a strength station (a carry, wall balls) asks for the round time after that station. Cardio stations earlier in the round are a one-tap Done.
+- Wall ball weights step through 6, 9 and 12 kg.
+- A finished workout can change its date (today back to 14 days) from the session page.
+- "Sled Push — Heavy" is now "Sled Push" and "Sled Push — Light" is removed; logged history moves onto Sled Push. Shared-catalog migration **0167_single_sled_push**. Deploy the app first, then apply 0167 through the guarded `ci.yml` `migrate_production` run. The down restores the names and the Light row; moved history stays on Sled Push.
 ### Row Erg naming and circuit display
 - Erg movements are named consistently: "Erg Row — …" is now "Row Erg — …", and a plain "Row Erg" is added to the library. Saved workouts keep the name they were saved with.
 - A circuit that mixes strength and cardio shows once, with its round count, on Today and in the plan drawer.

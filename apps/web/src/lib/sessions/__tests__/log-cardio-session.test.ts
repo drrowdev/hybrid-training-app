@@ -398,8 +398,8 @@ describe("logCardioSession", () => {
     const movementId = "00000000-0000-4000-8000-0000000000a2";
     sessions[0]!.prescription = {
       items: [{
-        kind: "cardio_threshold", movementId, movementName: "Sled Push — Heavy", distanceM: { min: 20, max: 20 },
-        meta: { authoredPartId: "p1", modality: "sled" },
+        kind: "cardio_threshold", movementId, movementName: "Sled Push", movementSlug: "sled-push-heavy", distanceM: { min: 20, max: 20 },
+        meta: { authoredPartId: "p1" },
       }],
     };
     const { logCardioSession } = await import("../actions");
@@ -409,7 +409,7 @@ describe("logCardioSession", () => {
     fd.set("prescriptionItemIndex", "0");
     fd.set("actualDurationMin", String(1 / 60));
     fd.set("movementId", movementId);
-    fd.set("modality", "sled");
+    fd.set("modality", "other");
     fd.set("loadKg", "102.5");
     fd.set("avgRpe", "8");
 
@@ -425,8 +425,8 @@ describe("logCardioSession", () => {
     const movementId = "00000000-0000-4000-8000-0000000000a3";
     sessions[0]!.prescription = {
       items: [{
-        kind: "cardio_threshold", movementId, movementName: "Ski Erg",
-        meta: { authoredPartId: "p1", modality: "ski-erg" },
+        kind: "cardio_threshold", movementId, movementName: "Ski Erg", movementSlug: "ski-erg",
+        meta: { authoredPartId: "p1", modality: "ski" },
       }],
     };
     const { logCardioSession } = await import("../actions");
@@ -436,7 +436,7 @@ describe("logCardioSession", () => {
     fd.set("prescriptionItemIndex", "0");
     fd.set("actualDurationMin", "1");
     fd.set("movementId", movementId);
-    fd.set("modality", "ski-erg");
+    fd.set("modality", "ski");
     fd.set("loadKg", "20");
 
     expect(await logCardioSession(fd)).toMatchObject({ errorCode: "validation" });

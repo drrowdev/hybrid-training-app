@@ -26,6 +26,9 @@ export type { WeightStep };
 /** Hand-held implements step by the rack, not by a pair of plates. */
 export const DUMBBELL_WEIGHT_STEP: WeightStep = { kg: 1, lb: 2 };
 
+/** Wall balls only come in a few standard weights, so the stepper walks them. */
+export const WALL_BALL_WEIGHT_STEP: WeightStep = { kg: 3, lb: 6, ladderKg: [6, 9, 12] };
+
 export function loadIncrementForRequirement(
   requirement: EquipmentRequirement,
 ): WeightStep {
@@ -47,6 +50,7 @@ export function resolveLoadIncrement(movement: {
   equipment?: string | null;
 }): WeightStep {
   if (!movement.slug && !movement.equipment) return DEFAULT_WEIGHT_STEP;
+  if (/^wall-?ball/.test(movement.slug ?? "")) return WALL_BALL_WEIGHT_STEP;
   return loadIncrementForRequirement(
     resolveRequiredEquipment({
       slug: movement.slug ?? "",
