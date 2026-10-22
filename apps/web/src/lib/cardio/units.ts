@@ -76,6 +76,21 @@ export function formatSecPerKmToPace(
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+const CLOCK_RE = /^(\d{1,3}):([0-5]\d)$/;
+
+/** Parse "m:ss" into whole seconds; null when the text isn't in that form. */
+export function parseClockToSeconds(raw: string | null | undefined): number | null {
+  const m = CLOCK_RE.exec(String(raw ?? "").trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Format minutes (possibly fractional) as "m:ss"; "" when empty or not positive. */
+export function formatMinutesToClock(min: number | null | undefined): string {
+  if (min == null || !Number.isFinite(min) || min <= 0) return "";
+  const total = Math.round(min * 60);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
 /** Convert seconds → whole minutes (rounded), null-safe. */
 export function secondsToMinutes(sec: number | null | undefined): number | null {
   if (sec == null) return null;

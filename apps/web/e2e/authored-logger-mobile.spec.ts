@@ -61,11 +61,11 @@ test.describe("authored hybrid guided logger", () => {
     await page.getByTestId("skip-confirm").click();
     await expect(title(page)).toHaveText("Running");
     await expect(page.getByTestId("cardio-log-toggle-skip")).toHaveCount(0);
-    await page.getByTestId("cardio-log-duration").fill("6");
+    await page.getByTestId("cardio-log-duration").fill("6:00");
     await page.getByTestId("cardio-log-notes").fill("Easy pace");
     await page.reload();
     await expect(title(page)).toHaveText("Running");
-    await expect(page.getByTestId("cardio-log-duration")).toHaveValue("6");
+    await expect(page.getByTestId("cardio-log-duration")).toHaveValue("6:00");
     await expect(page.getByTestId("cardio-log-notes")).toHaveValue("Easy pace");
     await page.getByTestId("cardio-log-submit").click();
     await expect.poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).cardio.length, STORE)).toBe(1);
@@ -82,7 +82,7 @@ test.describe("authored hybrid guided logger", () => {
     // one movement group with four sets ahead of all the runs.
     for (let pair = 0; pair < 4; pair++) {
       await expect(title(page)).toHaveText("Running");
-      await page.getByTestId("cardio-log-duration").fill("1");
+      await page.getByTestId("cardio-log-duration").fill("1:00");
       await page.getByTestId("cardio-log-submit").click();
       await expect(title(page)).toHaveText("Cable Row");
       if (pair === 3) {
@@ -125,10 +125,10 @@ test.describe("authored hybrid guided logger", () => {
     await logButton(page).click();
     await expect(title(page)).toHaveText("Bench Press");
     await pick(page, 4);
-    await page.getByTestId("cardio-log-duration").fill("6");
+    await page.getByTestId("cardio-log-duration").fill("6:00");
     await page.getByTestId("cardio-log-submit").click();
     await expect(page.getByTestId("cardio-log-form").getByRole("alert")).toContainText("Synthetic cardio rejected");
-    await expect(page.getByTestId("cardio-log-duration")).toHaveValue("6");
+    await expect(page.getByTestId("cardio-log-duration")).toHaveValue("6:00");
     expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).cardio.length, STORE)).toBe(0);
     await page.getByTestId("cardio-log-submit").click();
     await expect(page.getByTestId("cardio-log-duration")).toHaveValue("");

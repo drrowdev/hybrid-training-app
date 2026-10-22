@@ -31,6 +31,7 @@ import type { OutboxEntry } from "@/lib/offline/outbox-core";
 import { useSessionLoggingState } from "./SessionLoggingState";
 import { SessionDock } from "./SessionDock";
 import { readResume, writeResume } from "@/lib/sessions/session-resume";
+import { formatMinutesToClock, parseClockToSeconds } from "@/lib/cardio/units";
 
 type LogAction = typeof logCardioSessionAction;
 
@@ -164,9 +165,13 @@ export function CardioLogForm({
       : "";
 
   const [completed, setCompleted] = useState<boolean>(true);
+  const clockDuration = prescriptionItemIndex !== undefined;
+  const hasLoad = clockDuration && modality === "sled";
   const [duration, setDuration] = useState<string>(
-    durationDefault != null ? String(durationDefault) : "",
+    durationDefault == null ? ""
+      : clockDuration ? formatMinutesToClock(durationDefault) : String(durationDefault),
   );
+  const [loadKg, setLoadKg] = useState<string>("");
   const [rpe, setRpe] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [showMore, setShowMore] = useState(initialDistanceDisplay !== "");
@@ -179,19 +184,22 @@ export function CardioLogForm({
     if (draft) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the selected cardio occurrence after hydration
       setCompleted(draft.completed);
-      setDuration(draft.duration); setRpe(draft.rpe); setNotes(draft.notes);
+      setDuration(clockDuration && /^\d+(\.\d+)?$/.test(draft.duration)
+        ? formatMinutesToClock(Number(draft.duration)) : draft.duration);
+      setRpe(draft.rpe); setNotes(draft.notes);
       setAvgHr(draft.avgHr); setDistance(draft.distance); setShowMore(draft.showMore);
+      setLoadKg(draft.loadKg ?? "");
     }
     setDraftReady(true);
-  }, [sessionId, resumeKey]);
+  }, [sessionId, resumeKey, clockDuration]);
   useEffect(() => {
     if (!resumeKey || !draftReady) return;
     const saved = readResume(sessionId);
     writeResume({
       ...saved, sessionId, activeKey: resumeKey, cursor: 0,
-      cardioDrafts: { ...saved?.cardioDrafts, [resumeKey]: { completed, duration, rpe, notes, avgHr, distance, showMore } },
+      cardioDrafts: { ...saved?.cardioDrafts, [resumeKey]: { completed, duration, rpe, notes, avgHr, distance, showMore, loadKg } },
     });
-  }, [sessionId, resumeKey, draftReady, completed, duration, rpe, notes, avgHr, distance, showMore]);
+  }, [sessionId, resumeKey, draftReady, completed, duration, rpe, notes, avgHr, distance, showMore, loadKg]);
 
   const distanceUnit = units === "imperial" ? "mi" : "km";
 
@@ -200,15 +208,27 @@ export function CardioLogForm({
     if (!outboxHydrated) return;
     setError(null);
 
+    let durationMin = duration;
+    if (roundMode === "marker") durationMin = String(MARKER_DURATION_MIN);
+    else if (clockDuration) {
+      const seconds = parseClockToSeconds(duration);
+      if (seconds == null || seconds < 1 || seconds > 36000) {
+        setError("Enter the time as m:ss, for example 1:45.");
+        return;
+      }
+      durationMin = String(seconds / 60);
+    }
+
     const fd = new FormData();
     fd.set("sessionId", sessionId);
     if (prescriptionItemIndex !== undefined) fd.set("prescriptionItemIndex", String(prescriptionItemIndex));
     fd.set("completed", completed ? "true" : "false");
-    fd.set("actualDurationMin", roundMode === "marker" ? String(MARKER_DURATION_MIN) : duration);
+    fd.set("actualDurationMin", durationMin);
     fd.set("modality", modality);
     const clientLogId = createClientId();
     fd.set("clientLogId", clientLogId);
     if (movementId) fd.set("movementId", movementId);
+    if (hasLoad && Number(loadKg) > 0) fd.set("loadKg", loadKg.trim());
     if (rpe.trim()) fd.set("avgRpe", rpe.trim());
     if (notes.trim()) fd.set("notes", notes.trim());
     if (avgHr.trim()) fd.set("avgHrBpm", avgHr.trim());
@@ -384,17 +404,50 @@ export function CardioLogForm({
       >
         {roundMode !== "marker" && (
           <label style={fieldStackStyle}>
-            <span style={labelStyle}>{roundMode === "round" ? "Round time (min)" : "Duration (min)"}</span>
+            <span style={labelStyle}>
+              {roundMode === "round" ? "Round time" : "Duration"} ({clockDuration ? "m:ss" : "min"})
+            </span>
+            {clockDuration ? (
+              <input
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                placeholder="1:45"
+                pattern="\d{1,3}:[0-5]\d"
+                required
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                data-testid="cardio-log-duration"
+                style={inputStyle}
+              />
+            ) : (
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                max={600}
+                required
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                data-testid="cardio-log-duration"
+                style={inputStyle}
+              />
+            )}
+          </label>
+        )}
+        {hasLoad && (
+          <label style={fieldStackStyle}>
+            <span style={labelStyle}>Weight (kg)</span>
             <input
               type="number"
-              inputMode="numeric"
-              min={prescriptionItemIndex === undefined ? 1 : 1 / 60}
-              step={prescriptionItemIndex === undefined ? 1 : "any"}
-              max={600}
-              required
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              data-testid="cardio-log-duration"
+              inputMode="decimal"
+              min={0}
+              max={1000}
+              step="any"
+              value={loadKg}
+              onChange={(e) => setLoadKg(e.target.value)}
+              data-testid="cardio-log-load"
               style={inputStyle}
             />
           </label>
