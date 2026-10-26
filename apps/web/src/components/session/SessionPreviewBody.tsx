@@ -139,6 +139,7 @@ export function SessionPreviewBody({
     isSupplementalOnlySection,
   );
   const hasEmbeddedRehab =
+    !session.items.some((item) => typeof item.meta?.authoredPartId === "string") &&
     sections.rehab.length > 0 &&
     (sections.movements.length > 0 ||
       sections.accessories.length > 0 ||

@@ -509,7 +509,7 @@ export function FocusStripLogger({
   );
   const roleLabel =
     isRehabGroup
-      ? hasEmbeddedRehab
+      ? hasEmbeddedRehab && !preserveOrder
         ? "Rehab · during warm-up"
         : "Rehab"
       : role === "main"

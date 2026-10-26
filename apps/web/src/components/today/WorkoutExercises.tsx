@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { authoredLoadDisplay } from "@hta/domain";
 import type { PrescriptionItem } from "@hta/db";
 import { collapseIdenticalSetItems, groupByMovementThenKind, isSupplementalOnlySection, type PrescriptionMovementRow } from "@/lib/plan/prescription-grouping";
@@ -89,7 +89,7 @@ function Group({ title, rows, minutes, detailed = false, loadContext, onRemove }
     ? collapseIdenticalSetItems(row.items).map((item, index) =>
       <Row key={`${row.rowKey}-${index}`} row={{ ...row, items: [item] }} detailed loadContext={loadContext} />)
     : <Row key={row.rowKey} row={row} loadContext={loadContext} onRemove={onRemove} />;
-  return <section className={styles.group} data-testid={`session-preview-section-${title === "Warm-up rehab" ? "rehab" : title === "Main lifts" ? "strength" : title.toLowerCase()}`}>
+  return <section className={styles.group} data-testid={`session-preview-section-${title === "Warm-up rehab" || title === "Rehab" ? "rehab" : title === "Main lifts" ? "strength" : title.toLowerCase()}`}>
     <h3>{title}{minutes != null && <span>~{minutes} min</span>}</h3>
     {segmentSupersetRows(rows).map((segment) => segment.kind === "solo"
       ? <ul className={styles.rows} key={segment.row.rowKey}>{renderRow(segment.row)}</ul>
@@ -127,6 +127,19 @@ function CircuitGroup({ circuit }: { circuit: RoundCircuit }) {
   </section>;
 }
 
+/** Position of an item in the prescription, so sections follow the order the lifter built. */
+function itemRank(items: readonly PrescriptionItem[], item: PrescriptionItem): number {
+  const exact = items.indexOf(item);
+  const index = exact >= 0 ? exact : items.findIndex((other) => other.movementId === item.movementId &&
+    other.meta?.authoredPartId === item.meta?.authoredPartId);
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function partRank(items: readonly PrescriptionItem[], match: (partId: string) => boolean): number {
+  const index = items.findIndex((item) => typeof item.meta?.authoredPartId === "string" && match(item.meta.authoredPartId));
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+}
+
 export function WorkoutExercises({ items, detailed = false, loadContext, onRemove }: {
   items: PrescriptionItem[]; detailed?: boolean; loadContext?: WorkoutLoadContext;
   /** Adds a remove control to each movement row (summary view only). */
@@ -134,18 +147,41 @@ export function WorkoutExercises({ items, detailed = false, loadContext, onRemov
 }) {
   const { circuits, rest } = extractRoundCircuits(items);
   const groups = groupByMovementThenKind(rest);
+  const authored = items.some((item) => typeof item.meta?.authoredPartId === "string");
   const rows = (supplemental: boolean) => groups.movements.filter((group) =>
     isSupplementalOnlySection(group) === supplemental && (!detailed || group.sets.length > 0))
     .map((group) => ({ ...group, items: group.sets.length ? group.sets.map((set) => set.item) : group.warmups }));
+  const rankOfRows = (list: PrescriptionMovementRow[]) => authored && list.length
+    ? Math.min(...list.flatMap((row) => row.items).map((item) => itemRank(items, item)))
+    : 0;
+  const blocks: { rank: number; node: ReactNode }[] = [];
+  const add = (rank: number, node: ReactNode) => blocks.push({ rank, node });
+  add(rankOfRows(groups.rehab), <Group key="rehab" title={authored ? "Rehab" : "Warm-up rehab"} rows={groups.rehab}
+    minutes={estimateSessionMinutes(groups.rehab.flatMap((row) => row.items))} detailed={detailed} />);
+  if (detailed) {
+    const warmups = groups.movements.filter((group) => group.warmups.length > 0).map((group) => ({ ...group, items: group.warmups }));
+    add(rankOfRows(warmups), <Group key="warmup" title="Warm-up" rows={warmups} detailed />);
+  }
+  const main = rows(false);
+  const supplemental = rows(true);
+  const accessories = [...groups.accessories, ...groups.hingeCompensations, ...groups.tendon];
+  add(rankOfRows(main), <Group key="main" title="Main lifts" rows={main} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />);
+  add(rankOfRows(supplemental), <Group key="supplemental" title="Supplemental" rows={supplemental} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />);
+  add(rankOfRows(accessories), <Group key="accessories" title="Accessories" rows={accessories} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />);
+  for (const circuit of circuits) {
+    add(authored ? partRank(items, (id) => id === circuit.partId || id.startsWith(`${circuit.partId}:`)) : 0,
+      <CircuitGroup key={circuit.partId} circuit={circuit} />);
+  }
+  groups.cardio.forEach((item, index) => add(
+    authored ? itemRank(items, item) : 0,
+    <Fragment key={`cardio-${index}`}>{renderCardio(item)}</Fragment>,
+  ));
   return <div className={styles.groups} data-testid={detailed ? "workout-detail-preview" : "today-hero-preview"}>
-    <Group title="Warm-up rehab" rows={groups.rehab} minutes={estimateSessionMinutes(groups.rehab.flatMap((row) => row.items))} detailed={detailed} />
-    {detailed && <Group title="Warm-up" rows={groups.movements.filter((group) => group.warmups.length > 0)
-      .map((group) => ({ ...group, items: group.warmups }))} detailed />}
-    <Group title="Main lifts" rows={rows(false)} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
-    <Group title="Supplemental" rows={rows(true)} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
-    <Group title="Accessories" rows={[...groups.accessories, ...groups.hingeCompensations, ...groups.tendon]} detailed={detailed} loadContext={loadContext} onRemove={onRemove} />
-        {circuits.map((circuit) => <CircuitGroup key={circuit.partId} circuit={circuit} />)}
-        {groups.cardio.map((item, index) => {
+    {(authored ? [...blocks].sort((a, b) => a.rank - b.rank) : blocks).map((block) => block.node)}
+  </div>;
+}
+
+function renderCardio(item: PrescriptionItem) {
       const plan = item.cardioPlan;
       const heading = item.movementName ?? "Conditioning";
       const segments = plan?.segments ?? [];
@@ -154,7 +190,7 @@ export function WorkoutExercises({ items, detailed = false, loadContext, onRemov
         !sameText(plan.effort, heading) && !sameText(plan.effort, plan.summary) &&
         !segments.some((segment) => segment.detail.toLowerCase().includes(plan.effort.trim().toLowerCase()))
         ? plan.effort : "";
-      return <section className={styles.group} key={index}>
+      return <section className={styles.group}>
       <h3>{heading}</h3>
       {plan ? <>
         {summary && <p className={styles.cardioCue}>{summary}</p>}
@@ -176,8 +212,6 @@ export function WorkoutExercises({ items, detailed = false, loadContext, onRemov
         </li>)}</ul>
       </>}
     </section>;
-    })}
-  </div>;
 }
 
 export function SwimExercises({ steps }: { steps: SwimWorkoutView["steps"] }) {
