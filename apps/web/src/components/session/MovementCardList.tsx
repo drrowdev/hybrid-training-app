@@ -711,7 +711,7 @@ export function MovementCardList({
         <>
           <SectionDivider
             label={
-              mainGroups.length > 0 || supplementalGroups.length > 0
+              !authored && (mainGroups.length > 0 || supplementalGroups.length > 0)
                 ? "Rehab · during warm-up"
                 : "Rehab"
             }

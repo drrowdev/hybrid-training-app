@@ -7,6 +7,28 @@ const render = (items: unknown[]) =>
   renderToStaticMarkup(<WorkoutExercises items={items as PrescriptionItem[]} detailed />);
 
 describe("WorkoutExercises detailed view", () => {
+  it("keeps an authored workout's rehab where the lifter placed it, labelled Rehab", () => {
+    const item = (kind: string, movementId: string, movementName: string, part: string, extra: Record<string, unknown> = {}) =>
+      ({ kind, movementId, movementName, sets: 1, reps: 8, meta: { authoredPartId: part, ...extra } });
+    const html = render([
+      item("main", "bench", "Bench Press", "p1"),
+      item("accessory", "row", "Chest-Supported Row", "p2"),
+      item("tendon", "cph", "Copenhagen Plank", "p3", { rehab: true }),
+    ]);
+    expect(html).not.toContain("Warm-up rehab");
+    expect(html.indexOf("Main lifts")).toBeLessThan(html.indexOf("Accessories"));
+    expect(html.indexOf("Accessories")).toBeLessThan(html.indexOf(">Rehab<"));
+    expect(html).toContain('data-testid="session-preview-section-rehab"');
+  });
+
+  it("keeps Warm-up rehab first on a program that is not authored", () => {
+    const html = render([
+      { kind: "main", movementId: "bench", movementName: "Bench Press", sets: 1, reps: 8, meta: {} },
+      { kind: "tendon", movementId: "cph", movementName: "Copenhagen Plank", sets: 1, reps: 8, meta: { rehab: true } },
+    ]);
+    expect(html.indexOf("Warm-up rehab")).toBeLessThan(html.indexOf("Main lifts"));
+  });
+
   it("shows a mixed circuit once, with its round count, outside Accessories", () => {
     const station = (round: number, position: number, over: Record<string, unknown>) => {
       const id = `part-1:${round}:${position}`;
