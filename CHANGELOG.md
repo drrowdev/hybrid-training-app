@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Movement history
+- The logger has a History link for each movement. It lists earlier sessions newest first, one line per set (weight × reps, RPE, notes), skipped sets with their reason, and a PR mark on a new heaviest weight. Warm-up sets are left out. Cardio and sled stations show time, distance and weight where they were logged.
+
 ### Sled, wall ball and round-time logging
 - Sled stations ask for a weight (kg) and save it as a set on the station. This works for programs created before, because it keys on the exercise, not its modality.
 - A circuit round that ends on a strength station (a carry, wall balls) asks for the round time after that station. Cardio stations earlier in the round are a one-tap Done.

@@ -27,6 +27,7 @@ import {
   buildNavigatorEntries,
 } from "./MovementNavigatorSheet";
 import { MovementHowToButton } from "./MovementHowToButton";
+import { MovementHistoryButton } from "./MovementHistory";
 import type { PlateInventoryItem } from "./plate-math";
 import {
   buildLinkedCircuitByMovementId,
@@ -680,6 +681,11 @@ export function FocusStripLogger({
               {!cardioItem && targetSummary ? ` · ${targetSummary}` : ""}
             </div>
           </div>
+          <MovementHistoryButton
+            movementId={cardioItem ? cardioItem.movementId : activeGroup.movementId}
+            displayName={cardioItem ? selectedGroup!.movementName : activeGroup.movementName}
+            excludeSessionId={sessionId}
+          />
           {!cardioItem && <button
             type="button"
             onClick={() => setSwapOpen(true)}
