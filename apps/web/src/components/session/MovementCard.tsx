@@ -32,6 +32,7 @@ import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal, type ConfirmedMovementSwap } from "./SwapMovementModal";
 import { withConfirmedMovementSwap } from "@/lib/sessions/movement-grouping";
 import { MovementHowToButton } from "./MovementHowToButton";
+import { MovementHistoryButton } from "./MovementHistory";
 import { DisclosureArrow } from "./DisclosureArrow";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import { AddSetAfterCompletion } from "./AddSetAfterCompletion";
@@ -434,6 +435,13 @@ export function MovementCard({
             movementId={group.movementId}
             displayName={group.movementName}
           />
+          {!readOnly && (
+            <MovementHistoryButton
+              movementId={group.movementId}
+              displayName={group.movementName}
+              excludeSessionId={sessionId}
+            />
+          )}
           {/Hsr|HSR|\(hsr\)/i.test(group.movementName) && (
             <MetricHelp term="hsr" variant="info" placement="bottom" />
           )}
