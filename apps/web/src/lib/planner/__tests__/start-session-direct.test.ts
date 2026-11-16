@@ -278,7 +278,7 @@ beforeEach(() => {
 });
 
 describe("startSessionDirect — no pre-workout check-in", () => {
-  it("DC-R6 prepares the persisted prescription before atomic start and stops if issuance fails", async () => {
+  it("DC-R6 prepares the persisted prescription before atomic start and still starts if issuance fails", async () => {
     state.planned = { id: VALID_UUID, title: "Authored", slot: "single", planned_at: null, prescription: { items: [] }, completed_session_id: null, user_id: "user-1" };
     const issue = vi.spyOn(warmupIssuance, "issueAuthoredWarmups").mockResolvedValueOnce();
     rpc.mockImplementation(async () => {
@@ -289,8 +289,20 @@ describe("startSessionDirect — no pre-workout check-in", () => {
     expect(rpc).toHaveBeenCalledTimes(1);
     rpc.mockClear();
     issue.mockRejectedValueOnce(new Error("Workout changed"));
-    await expect(startSessionDirect(VALID_UUID)).rejects.toThrow("Workout changed");
-    expect(rpc).not.toHaveBeenCalled();
+    await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(RedirectError);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+  it("starts the workout without warm-ups when issuing them hangs", async () => {
+    state.planned = { id: VALID_UUID, title: "Authored", slot: "single", planned_at: null, prescription: { items: [] }, completed_session_id: null, user_id: "user-1" };
+    vi.spyOn(warmupIssuance, "issueAuthoredWarmups").mockReturnValueOnce(new Promise(() => {}));
+    rpc.mockResolvedValue({ data: NEW_SESSION, error: null });
+    vi.useFakeTimers();
+    const started = startSessionDirect(VALID_UUID);
+    const outcome = expect(started).rejects.toBeInstanceOf(RedirectError);
+    await vi.advanceTimersByTimeAsync(8000);
+    await outcome;
+    expect(rpc).toHaveBeenCalledWith("start_planned_session_atomically", { p_planned_id: VALID_UUID, p_performed_at: null });
+    expect(state.redirected).toBe(`/app/sessions/${NEW_SESSION}`);
   });
   it("DC-K4 starts through one RPC when available, without a client-side insert/link window", async () => {
     state.planned = { id: VALID_UUID, title: "Mixed", slot: "single", planned_at: null, prescription: { items: [] }, completed_session_id: null, user_id: "user-1" };

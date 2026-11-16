@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Starting a workout
+- A workout starts even when its warm-ups can't be prepared in time. It opens with its stored prescription instead of waiting on the warm-up save.
+
 ### Movement history
 - The logger has a History link for each movement. It lists earlier sessions newest first, one line per set (weight × reps, RPE, notes), skipped sets with their reason, and a PR mark on a new heaviest weight. Warm-up sets are left out. Cardio and sled stations show time, distance and weight where they were logged.
 
