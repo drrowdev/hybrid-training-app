@@ -462,6 +462,7 @@ export async function setPlannedTime(formData: FormData): Promise<void> {
 }
 
 const startPlannedSchema = z.object({ id: z.string().uuid() });
+const WARMUP_ISSUE_TIMEOUT_MS = 8000;
 
 /**
  * Maximum allowed back-date for retroactive session logging, in days.
@@ -627,7 +628,21 @@ export async function startSessionDirect(
     // The transaction below replaces only a deleted, unfinished link.
   }
 
-  await issueAuthoredWarmups(supabase, user.id, planned);
+  // Warm-ups are a convenience: a slow or failed issue must never keep the
+  // lifter from starting. The workout then starts with its stored prescription.
+  let warmupTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      issueAuthoredWarmups(supabase, user.id, planned),
+      new Promise<never>((_, reject) => {
+        warmupTimer = setTimeout(() => reject(new Error("Warm-up preparation timed out.")), WARMUP_ISSUE_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (warmupError) {
+    console.error("Starting without issued warm-ups.", warmupError);
+  } finally {
+    clearTimeout(warmupTimer);
+  }
   let { data: sessionId, error } = await supabase.rpc("start_planned_session_atomically", {
     p_planned_id: planned.id, p_performed_at: retroPerformedAt?.toISOString() ?? null,
   });

@@ -247,7 +247,7 @@ jobs:
 
   e2e:
     name: e2e (playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ci
     timeout-minutes: 20
     # Skip cleanly on forks / PRs that don't have the secrets — the
@@ -458,7 +458,7 @@ jobs:
       fail-fast: false
       matrix:
         profile: ${{ fromJSON((github.event_name == 'pull_request' || inputs.acceptance_profile == 'auto' || inputs.acceptance_profile == '') && '["modular","swimming"]' || format('["{0}"]', inputs.acceptance_profile)) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
