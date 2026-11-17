@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import type { ActiveBlock, PlannedDay } from "@/lib/planner/queries";
-import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
+import { loadRequestTrainingSchedule } from "@/lib/schedule/storage";
 import { loadScheduleSessionLinks } from "@/lib/schedule/session-links";
 import { loadTodayWeek, plannedTodayWorkout, plannedWeekSession } from "./workouts";
 
 vi.mock("@/lib/planner/queries", () => ({ archetypeDisplayName: () => "Strength plan" }));
 vi.mock("@/lib/sessions/queries", () => ({ summariseSessionSets: vi.fn() }));
 vi.mock("@/lib/swim/queries", () => ({ loadSwimHistory: vi.fn(), workoutTrainingState: vi.fn() }));
-vi.mock("@/lib/schedule/storage", () => ({ loadAvailableTrainingSchedule: vi.fn() }));
+vi.mock("@/lib/schedule/storage", () => ({ loadRequestTrainingSchedule: vi.fn() }));
 vi.mock("@/lib/schedule/session-links", () => ({ loadScheduleSessionLinks: vi.fn() }));
 
 const client = createClient("https://example.supabase.co", "test-key");
@@ -24,7 +24,7 @@ const planned: PlannedDay = {
 };
 beforeEach(() => {
   vi.mocked(loadScheduleSessionLinks).mockResolvedValue({});
-  vi.mocked(loadAvailableTrainingSchedule).mockResolvedValue(null);
+  vi.mocked(loadRequestTrainingSchedule).mockResolvedValue(null);
 });
 describe("Today workout adapters", () => {
   it("retains the shared drawer's notes, slot, prescription and session state", () => {
@@ -67,7 +67,7 @@ describe("Today workout adapters", () => {
     expect(workout.options).toMatchObject({ swapDates: [{ date: "2026-09-26", title: "Squat" }] });
   });
   it("uses canonical week dates and session links, including off-plan workouts", async () => {
-    vi.mocked(loadAvailableTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [
+    vi.mocked(loadRequestTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [
       { id: "workout", source: "primary", programId: "block", date: "2026-09-24", title: "Squat", state: "completed" },
       { id: "off-plan", source: "session", programId: null, date: "2026-09-22", title: "Quick strength", state: "completed" },
       { id: "rest", source: "primary", programId: "block", date: "2026-09-26", title: "Rest", state: "rest" },
@@ -92,7 +92,7 @@ describe("Today workout adapters", () => {
     });
   });
   it("does not remove Friday when an off-plan workout repeats the same title on Saturday", async () => {
-    vi.mocked(loadAvailableTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [
+    vi.mocked(loadRequestTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [
       { id: planned.id, source: "primary", programId: block.id, date: planned.date, title: planned.title, state: "scheduled" },
       { id: "quick", source: "session", programId: null, date: "2026-09-26", title: planned.title, state: "completed" },
     ] });
@@ -103,7 +103,7 @@ describe("Today workout adapters", () => {
     expect(week.some((row) => row.completedOn)).toBe(false);
   });
   it("retains standalone swim outcome status rather than native schedule status", async () => {
-    vi.mocked(loadAvailableTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [
+    vi.mocked(loadRequestTrainingSchedule).mockResolvedValue({ revision: "revision", entries: [
       { id: "swim", source: "swim", programId: "pool", date: "2026-09-24", title: "Swim", state: "scheduled" },
     ] });
     const workout = { ...plannedTodayWorkout(planned, [block], []), id: "swim", done: true,
@@ -113,7 +113,7 @@ describe("Today workout adapters", () => {
   it("allows only the existing migration-gap fallback and propagates read errors", async () => {
     const fallback = [plannedTodayWorkout(planned, [block], [])];
     expect(await loadTodayWeek(client, [block], fallback)).toEqual(fallback);
-    vi.mocked(loadAvailableTrainingSchedule).mockRejectedValueOnce(new Error("Read failed"));
+    vi.mocked(loadRequestTrainingSchedule).mockRejectedValueOnce(new Error("Read failed"));
     await expect(loadTodayWeek(client, [block], fallback)).rejects.toThrow("Read failed");
   });
 });

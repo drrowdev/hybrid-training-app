@@ -17,7 +17,7 @@ import { estimateSessionDurationBreakdown } from "@/lib/sessions/estimate-durati
 import { summariseSessionSets } from "@/lib/sessions/queries";
 import { displayWeight, weightUnitLabel } from "@/lib/stats/units";
 import type { TodayWorkout, TodayWeekWorkout } from "@/components/today/TodayDashboard";
-import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
+import { loadRequestTrainingSchedule } from "@/lib/schedule/storage";
 import { loadScheduleSessionLinks } from "@/lib/schedule/session-links";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 
@@ -36,7 +36,7 @@ export function plannedWeekSession(planned: PlannedDay, blocks: ActiveBlock[]): 
 }
 
 export async function loadTodayWeek(client: SupabaseClient, blocks: ActiveBlock[], fallback: TodayWorkout[]): Promise<TodayWeekWorkout[]> {
-  const snapshot = await loadAvailableTrainingSchedule(client);
+  const snapshot = await loadRequestTrainingSchedule(client);
   if (!snapshot) return withPlannedDateTraces(fallback, fallback);
   const links = await loadScheduleSessionLinks(client, snapshot.entries);
   const workouts = snapshot.entries.filter((entry) => entry.state !== "rest" && entry.state !== "paused").flatMap((entry): TodayWeekWorkout[] => {

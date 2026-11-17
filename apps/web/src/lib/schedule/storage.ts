@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { TrainingCommitment } from "@hta/domain";
@@ -49,6 +50,22 @@ export class ScheduleUnavailableError extends Error {
 export async function loadAvailableTrainingSchedule(client: SupabaseClient): Promise<ScheduleSnapshot | null> {
   try { return await loadTrainingSchedule(client); }
   catch (error) { if (error instanceof ScheduleUnavailableError) return null; throw error; }
+}
+
+const requestSnapshot = cache(() => ({ pending: null as Promise<ScheduleSnapshot | null> | null }));
+
+/**
+ * Page renders only. The snapshot holds the account's schedule lock for the
+ * whole read, so one render reads it once; writers keep `loadAvailableTrainingSchedule`.
+ */
+export function loadRequestTrainingSchedule(client: SupabaseClient): Promise<ScheduleSnapshot | null> {
+  const slot = requestSnapshot();
+  if (!slot.pending) {
+    const pending = loadAvailableTrainingSchedule(client);
+    slot.pending = pending;
+    pending.catch(() => { if (slot.pending === pending) slot.pending = null; });
+  }
+  return slot.pending;
 }
 
 export function scheduleInputHash(value: unknown): string {
