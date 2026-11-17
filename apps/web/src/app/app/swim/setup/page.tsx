@@ -5,7 +5,7 @@ import { todayYmd } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SetupForm } from "@/components/swim/SetupForm";
 import styles from "@/components/swim/Swim.module.css";
-import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
+import { loadRequestTrainingSchedule } from "@/lib/schedule/storage";
 import { privateSwimCourseAvailable } from "@/lib/swim/course-capability";
 import Link from "next/link";
 import { z } from "zod";
@@ -17,7 +17,7 @@ export default async function SwimSetupPage({ searchParams }: { searchParams: Pr
   const { data: { user } } = await getAuthUser();
   if (!user) redirect("/login");
   const capability = await getSwimCapability(client);
-  const schedule = capability.storageAvailable && capability.setupEnabled ? await loadAvailableTrainingSchedule(client) : null;
+  const schedule = capability.storageAvailable && capability.setupEnabled ? await loadRequestTrainingSchedule(client) : null;
   const { data: profile } = await client.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
   return (
     <main className={styles.page}>

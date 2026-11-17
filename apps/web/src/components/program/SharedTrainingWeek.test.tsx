@@ -16,7 +16,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({})), getAuthUser: vi.fn(async () => ({ data: { user: { id: "owner" } } })),
 }));
 vi.mock("@/lib/swim/standalone-state", () => ({ loadStandaloneSwimStates: mocks.swim }));
-vi.mock("@/lib/schedule/storage", () => ({ loadAvailableTrainingSchedule: mocks.load }));
+vi.mock("@/lib/schedule/storage", () => ({ loadRequestTrainingSchedule: mocks.load }));
 vi.mock("@/lib/planner/queries", () => ({
   getActiveBlocks: mocks.active,
   archetypeDisplayName: (_archetype: string | null, notes: string | null) => notes ?? "Program",

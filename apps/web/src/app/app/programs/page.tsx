@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { todayYmd } from "@/lib/dates";
 import { getActiveBlocks } from "@/lib/planner/queries";
-import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
+import { loadRequestTrainingSchedule } from "@/lib/schedule/storage";
 import { getSwimNavigation } from "@/lib/swim/navigation";
 import { blockOverviewItems, swimOverviewItems } from "@/lib/programs/overview";
 import { hasTemplateWorkoutTitles } from "@/lib/programs/presentation";
@@ -14,7 +14,7 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
   const client = await createClient();
   const params = await searchParams;
   const [active, snapshot, swimming, profile] = await Promise.all([
-    getActiveBlocks(), loadAvailableTrainingSchedule(client), getSwimNavigation(client, user.id),
+    getActiveBlocks(), loadRequestTrainingSchedule(client), getSwimNavigation(client, user.id),
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
   ]);
   if (profile.error) throw new Error("Couldn't load your training settings.");

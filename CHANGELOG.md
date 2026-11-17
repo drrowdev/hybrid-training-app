@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Page load
+- Each page reads the training schedule once per request instead of up to twice, which shortens the time a page holds the account's schedule lock.
+
 ### Starting a workout
 - A workout starts even when its warm-ups can't be prepared in time. It opens with its stored prescription instead of waiting on the warm-up save.
 

@@ -1,5 +1,5 @@
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
+import { loadRequestTrainingSchedule } from "@/lib/schedule/storage";
 import { archetypeDisplayName, getActiveBlocks, getActivePlannedDays } from "@/lib/planner/queries";
 import { ThisWeekRail, type ThisWeekRailProps } from "@/components/plan/ThisWeekRail";
 import { TrainingWeek } from "./TrainingWeek";
@@ -37,7 +37,7 @@ export async function SharedTrainingWeek({ today, primaryWeek }: {
   primaryWeek?: ThisWeekRailProps;
 }) {
   const client = await createClient();
-  const [snapshot, active] = await Promise.all([loadAvailableTrainingSchedule(client), getActiveBlocks()]);
+  const [snapshot, active] = await Promise.all([loadRequestTrainingSchedule(client), getActiveBlocks()]);
   if (!snapshot && !primaryWeek) return null;
   const sessionLinks = await loadScheduleSessionLinks(client, snapshot?.entries ?? []);
   const swimIds = snapshot?.entries.filter((entry) => entry.source === "swim").map((entry) => entry.id) ?? [];
