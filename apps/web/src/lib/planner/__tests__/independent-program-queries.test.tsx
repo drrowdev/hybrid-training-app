@@ -37,6 +37,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/schedule/storage", async (original) => ({
   ...await original<typeof import("@/lib/schedule/storage")>(),
   loadAvailableTrainingSchedule: mocks.schedule,
+  loadRequestTrainingSchedule: mocks.schedule,
 }));
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
