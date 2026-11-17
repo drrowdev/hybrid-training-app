@@ -94,7 +94,7 @@ async function selectSwimDays(page: Page, weekdays: readonly number[]) {
 async function createPlan(page: Page, weekdays: readonly number[] = [1, 4]) {
   await page.goto("/app/swim/setup");
   await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-  await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
+  await page.getByLabel("Recent comfortable non-stop distance (m)", { exact: true }).fill("92");
   await page.getByLabel("Weeks", { exact: true }).fill("2");
   await selectSwimDays(page, weekdays);
   await page.getByRole("button", { name: "Preview plan", exact: true }).click();
@@ -106,7 +106,7 @@ async function createPlan(page: Page, weekdays: readonly number[] = [1, 4]) {
     let state: SwimSetupFailure = { preview: "unavailable", overlapConsent: "unavailable", errorRegion: "unavailable", create: "unavailable" };
     try {
       state = swimSetupFailureSchema.parse(await page.evaluate(() => {
-        const form = document.querySelector('input[name="comfortableLengths"]')?.closest("form");
+        const form = document.querySelector('input[name="comfortableDistance"]')?.closest("form");
         const consent = form?.querySelector<HTMLInputElement>('input[name="acceptOverlap"]');
         const create = form?.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="preview"])');
         return {
@@ -827,7 +827,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(schedule.entries.every((entry) => entry.date < replacementStart)).toBe(true);
     await page.getByRole("link", { name: "Set up swimming", exact: true }).click();
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("50m");
-    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
+    await page.getByLabel("Recent comfortable non-stop distance (m)", { exact: true }).fill("200");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     await page.getByLabel("Start date", { exact: true }).fill(replacementStart);
     const swimDays = page.getByRole("group", { name: "Swim days", exact: true }).getByRole("checkbox");
@@ -1305,14 +1305,14 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
 
     await page.goto("/app/swim/setup");
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
+    await page.getByLabel("Recent comfortable non-stop distance (m)", { exact: true }).fill("92");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     await selectSwimDays(page, primary.swimWeekdays);
     const beforeSetup = await lifecycleState(admin, userId);
     await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText("Review your active limitations before swimming");
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText(REGION_LABELS[region]);
-    await expect(page.getByLabel("Recent comfortable non-stop lengths", { exact: true })).toHaveValue("4");
+    await expect(page.getByLabel("Recent comfortable non-stop distance (m)", { exact: true })).toHaveValue("92");
     await expect(page.getByRole("button", { name: "Create swim plan", exact: true })).toHaveCount(0);
     expect(isDeepStrictEqual(await lifecycleState(admin, userId), beforeSetup) &&
       isDeepStrictEqual(beforeSetup, completed) &&

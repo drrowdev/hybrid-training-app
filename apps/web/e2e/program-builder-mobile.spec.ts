@@ -446,7 +446,7 @@ async function importOverlappingCourse(page: Page, actor: SupabaseClient) {
   const sunday = new Date(`${today()}T00:00:00Z`).getUTCDay();
   for (const day of [sunday, (sunday + 2) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
   await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
-  await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
+  await page.getByLabel("Comfortable non-stop distance (m)").fill("2000");
   await page.getByLabel("Freestyle", { exact: true }).check();
   await page.getByRole("button", { name: "Review plan", exact: true }).click();
   const overlap = page.getByLabel("Keep both workouts on these dates", { exact: true });
@@ -691,7 +691,7 @@ test.describe("Modular program builder", () => {
     stage("m4-08");
     for (const day of [(sunday + 1) % 7, (sunday + 3) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
     await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
-    await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
+    await page.getByLabel("Comfortable non-stop distance (m)").fill("2000");
     await page.getByLabel("Freestyle", { exact: true }).check();
     stage("m4-09");
     await page.getByRole("button", { name: "Review plan", exact: true }).click();
@@ -844,7 +844,7 @@ test.describe("Modular program builder", () => {
     const sunday = new Date(`${scheduledDate}T00:00:00Z`).getUTCDay();
     for (const day of [sunday, (sunday + 2) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
     await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
-    await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
+    await page.getByLabel("Comfortable non-stop distance (m)").fill("2000");
     await page.getByLabel("Freestyle", { exact: true }).check();
     await page.getByRole("button", { name: "Review plan", exact: true }).click();
     await page.getByLabel("I have reviewed the workouts, dates and pools").check();
@@ -1233,7 +1233,7 @@ test.describe("Modular program builder", () => {
       const sunday = new Date(`${today()}T00:00:00Z`).getUTCDay();
       for (const day of [sunday, (sunday + 2) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
       await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
-      await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
+      await page.getByLabel("Comfortable non-stop distance (m)").fill("2000");
       await page.getByLabel("Freestyle", { exact: true }).check();
       await page.getByRole("button", { name: "Review plan", exact: true }).click();
       await page.getByLabel("I have reviewed the workouts, dates and pools").check();

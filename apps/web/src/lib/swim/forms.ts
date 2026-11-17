@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   parsePoolCourse, parsePoolLengthInput, lengthsForNativeDistance, estimateCriticalSwimSpeed,
-  SWIM_ASSESSMENT_VERSION, validateSwimSetup,
+  SWIM_ASSESSMENT_VERSION, validateSwimSetup, wholeLengthsWithinMetres,
   type PoolCourse, type SwimObservation, type SwimSetup,
 } from "@hta/domain";
 import { parseSwimTime } from "./time";
@@ -54,6 +54,13 @@ export function parseBenchmarkForm(form: FormData, course: PoolCourse): SwimObse
   return observation;
 }
 
+function comfortableLengthsFromMetres(value: FormDataEntryValue | null, course: PoolCourse): number {
+  const metres = z.coerce.number().int().min(0).max(1_000_000).parse(value);
+  const lengths = wholeLengthsWithinMetres(metres, course);
+  if (!lengths.ok) throw new SwimInputError(lengths.error.message);
+  return lengths.value;
+}
+
 export function parsePoolForm(form: FormData): PoolCourse {
   const pool = z.enum(["25m", "50m", "25yd", "custom"]).parse(form.get("pool"));
   return courseFromFields(pool, {
@@ -91,7 +98,7 @@ export function parseSetupForm(form: FormData, mode?: "course"): ParsedSwimSetup
     course,
     knownStrokes: z.array(stroke).parse(form.getAll("strokes")),
     equipment: z.array(equipment).parse(form.getAll("equipment")),
-    recentComfortableLengths: z.coerce.number().int().min(0).max(2000).parse(form.get("comfortableLengths")),
+    recentComfortableLengths: comfortableLengthsFromMetres(form.get("comfortableDistance"), course),
     sessionBudgetMinutes: mode === "course" ? null
       : z.coerce.number().int().min(10).max(240).parse(form.get("timeBudgetMinutes")),
     ...(event ? { event } : {}),

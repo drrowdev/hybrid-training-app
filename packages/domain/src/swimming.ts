@@ -449,6 +449,28 @@ export function lengthsForNativeDistance(distance: number, course: PoolCourse): 
 const YARD_METRES_NUMERATOR = 1143;
 const YARD_METRES_DENOMINATOR = 1250;
 
+/**
+ * Whole lengths of a pool that fit inside a distance in metres. A distance
+ * shorter than one length is 0 lengths, which is "cannot swim a full length".
+ */
+export function wholeLengthsWithinMetres(metres: number, course: PoolCourse): SwimResult<number> {
+  if (!Number.isInteger(metres) || metres < 0) {
+    return swimErr("lengths_invalid", "Distance must be a whole number of metres.", { metres });
+  }
+  if (!isValidPoolCourse(course)) {
+    return swimErr("course_invalid", "The pool length is not a supported pool.", { course });
+  }
+  const yards = course.unit === "yd";
+  const lengths = Math.floor(
+    (metres * course.denominator * (yards ? YARD_METRES_DENOMINATOR : 1)) /
+      (course.numerator * (yards ? YARD_METRES_NUMERATOR : 1)),
+  );
+  if (!Number.isSafeInteger(lengths)) {
+    return swimErr("lengths_out_of_range", "This distance is too large.", { metres });
+  }
+  return swimOk(lengths);
+}
+
 export interface SwimCompatibilityProjection {
   readonly distanceMeters: number;
   readonly distanceKm: number;
@@ -768,14 +790,14 @@ export function validateSwimSetup(setup: SwimSetup<number | null>, untimedCourse
       field: "recentComfortableLengths",
       code: "lengths_invalid",
       severity: "blocking",
-      message: "Recent comfortable lengths must be a whole number.",
+      message: "Enter a whole number of metres.",
     });
   } else if (setup.recentComfortableLengths > MAX_POOL_LENGTHS) {
     issues.push({
       field: "recentComfortableLengths",
       code: "lengths_out_of_range",
       severity: "blocking",
-      message: `Recent comfortable lengths above the ${MAX_POOL_LENGTHS} limit.`,
+      message: "That distance is longer than a single swim can be.",
     });
   }
   if (!(untimedCourse && setup.sessionBudgetMinutes === null) && (

@@ -20,6 +20,7 @@ import {
   isISODate,
   isValidPoolCourse,
   lengthsForNativeDistance,
+  wholeLengthsWithinMetres,
   nativeDistance,
   normalizePoolCourse,
   paceTargetMs,
@@ -199,6 +200,14 @@ describe("DC-SW1 · exact pool course", () => {
     const impossible = lengthsForNativeDistance(200, DECIMAL_POOL);
     expect(impossible.ok).toBe(false);
     if (!impossible.ok) expect(impossible.error.code).toBe("distance_not_whole_lengths");
+  });
+
+  it("DC-SW1: converts a distance in metres to whole lengths of any pool", () => {
+    expect(wholeLengthsWithinMetres(600, { numerator: 50, denominator: 1, unit: "m" })).toEqual({ ok: true, value: 12 });
+    expect(wholeLengthsWithinMetres(100, THIRDS_POOL)).toEqual({ ok: true, value: 3 });
+    expect(wholeLengthsWithinMetres(92, SHORT_COURSE_YARDS)).toEqual({ ok: true, value: 4 });
+    expect(wholeLengthsWithinMetres(49, { numerator: 50, denominator: 1, unit: "m" })).toEqual({ ok: true, value: 0 });
+    expect(wholeLengthsWithinMetres(10.5, THIRDS_POOL).ok).toBe(false);
   });
 
   it("projects to generic distance fields as a rounded one-way value", () => {

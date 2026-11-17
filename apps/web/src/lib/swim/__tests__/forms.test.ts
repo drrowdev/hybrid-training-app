@@ -8,7 +8,7 @@ function setup() {
   const form = new FormData();
   for (const [key, value] of Object.entries({
     pool: "custom", poolNumerator: "100", poolDenominator: "3", poolUnit: "m",
-    goal: "base", experience: "returning", comfortableLengths: "3",
+    goal: "base", experience: "returning", comfortableDistance: "100",
     timeBudgetMinutes: "30", startDate: "2026-09-07", weeks: "6",
   })) form.set(key, value);
   form.append("weekdays", "1"); form.append("weekdays", "4"); form.append("strokes", "freestyle");
@@ -41,6 +41,13 @@ describe("ADR0079 swimming form boundaries", () => {
     form.delete("poolNumerator");
     form.delete("poolDenominator");
     expect(parseSetupForm(form).setup.course).toEqual({ numerator, denominator, unit: "m" });
+  });
+  it("converts the comfortable distance in metres to lengths of the chosen pool", () => {
+    const form = setup();
+    form.set("pool", "50m"); form.set("comfortableDistance", "600");
+    expect(parseSetupForm(form).setup.recentComfortableLengths).toBe(12);
+    form.set("pool", "25m");
+    expect(parseSetupForm(form).setup.recentComfortableLengths).toBe(24);
   });
   it("does not fall back to legacy fields when the new length input is invalid", () => {
     const form = setup();

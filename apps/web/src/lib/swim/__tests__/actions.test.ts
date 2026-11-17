@@ -63,7 +63,7 @@ function actualForm() {
 function setupForm() {
   const form = new FormData();
   for (const [key, value] of Object.entries({
-    goal: "base", experience: "beginner", pool: "25yd", comfortableLengths: "4", timeBudgetMinutes: "30",
+    goal: "base", experience: "beginner", pool: "25yd", comfortableDistance: "92", timeBudgetMinutes: "30",
     weeks: "3", startDate: "2026-09-07", weekdays: "1", strokes: "freestyle", requestId: receiptId,
   })) form.set(key, value);
   return form;
@@ -582,7 +582,7 @@ describe("ADR0079 server actions", () => {
     const form = setupForm();
     form.append("weekdays", "4");
     if (assessed) {
-      form.set("comfortableLengths", "16");
+      form.set("comfortableDistance", "366");
       for (const [name, value] of benchmarkForm()) form.set(name, value);
     }
     const response = await previewSwimPlan(form);
@@ -687,7 +687,7 @@ describe("ADR0079 server actions", () => {
     form.set("benchmarkDate", "2026-09-06");
     expect(await action(form)).toMatchObject({ errorCode: "validation" });
     form.delete("time200"); form.delete("time400"); form.delete("verified"); form.delete("benchmarkDate");
-    form.set("comfortableLengths", "0");
+    form.set("comfortableDistance", "0");
     expect(await action(form)).toHaveProperty("guidance");
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
   });
@@ -813,7 +813,7 @@ describe("ADR0079 server actions", () => {
     }));
   });
   it("returns learning guidance rather than forcing a test or prescribing a whole length", async () => {
-    const form = setupForm(); form.set("comfortableLengths", "0");
+    const form = setupForm(); form.set("comfortableDistance", "0");
     form.delete("strokes");
     expect(await createSwimPlan(form)).toHaveProperty("guidance");
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
