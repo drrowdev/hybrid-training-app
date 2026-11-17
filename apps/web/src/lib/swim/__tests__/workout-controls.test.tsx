@@ -111,7 +111,7 @@ describe("DC-SW3/DC-SW5 swimming workout review without in-app logging", () => {
   ])("DC-SW1/DC-SW3: %s summary distinguishes the course from identical step distances", (_, minutes, time200, time400) => {
     const form = new FormData();
     for (const [name, value] of Object.entries({
-      pool: "50m", goal: "endurance", experience: "regular", comfortableLengths: "12",
+      pool: "50m", goal: "endurance", experience: "regular", comfortableDistance: "600",
       timeBudgetMinutes: minutes, weeks: "2", startDate: "2026-09-10", weekdays: "1",
       strokes: "freestyle", time200, time400, benchmarkDate: "2026-09-10",
       benchmarkStroke: "freestyle", verified: "on",
@@ -145,7 +145,7 @@ describe("DC-SW3/DC-SW5 swimming workout review without in-app logging", () => {
     const form = new FormData();
     for (const [name, value] of Object.entries({
       goal: "base", experience: "beginner", pool: "25yd",
-      comfortableLengths: "4", timeBudgetMinutes: "30", weeks: "4", startDate,
+      comfortableDistance: "92", timeBudgetMinutes: "30", weeks: "4", startDate,
       strokes: "freestyle", time200: "", time400: "", benchmarkDate: "",
       benchmarkStroke: "freestyle", eventDate: "", eventDistance: "", eventUnit: "m",
     })) form.set(name, value);

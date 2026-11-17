@@ -216,7 +216,7 @@ test.describe("ADR0079 mobile swimming assessment decisions and native history",
     expect(serverToday).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
     await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
-    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("16");
+    await page.getByLabel("Recent comfortable non-stop distance (m)", { exact: true }).fill("366");
     await page.getByLabel("Minutes per swim", { exact: true }).fill("30");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     for (const day of ["Mon", "Thu"]) await expect(page.getByRole("checkbox", { name: day, exact: true })).toBeChecked();

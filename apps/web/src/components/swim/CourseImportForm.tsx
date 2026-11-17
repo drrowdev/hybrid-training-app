@@ -179,8 +179,8 @@ export function CourseImportForm({ today, schedule = [], replacePlanId }: { toda
             <option value="beginner">Beginner</option><option value="returning">Returning</option>
             <option value="regular">Regular swimmer</option><option value="trained">Experienced</option>
           </select></label>
-          <label className={styles.field}>Comfortable non-stop lengths in the plan pool
-            <input name="comfortableLengths" type="number" min="1" max="2000" step="1" required />
+          <label className={styles.field}>Comfortable non-stop distance (m)
+            <input name="comfortableDistance" type="number" inputMode="numeric" min="1" step="1" required />
           </label>
           <fieldset className={styles.choices}><legend>Known strokes</legend>
             {[["freestyle", "Freestyle"], ["backstroke", "Backstroke"], ["breaststroke", "Breaststroke"], ["butterfly", "Butterfly"]].map(([value, label]) =>

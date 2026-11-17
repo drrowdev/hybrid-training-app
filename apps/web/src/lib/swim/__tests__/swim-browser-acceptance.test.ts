@@ -1341,7 +1341,7 @@ describe("browser environment and static config", () => {
     for (const pool of ["25yd", "50m"]) {
       const setup = new FormData();
       for (const [key, value] of Object.entries({
-        goal: "base", experience: "beginner", pool, comfortableLengths: "4",
+        goal: "base", experience: "beginner", pool, comfortableDistance: pool === "50m" ? "200" : "92",
         timeBudgetMinutes: "30", weeks: "2", startDate: today, strokes: "freestyle",
       })) setup.set(key, value);
       setup.append("weekdays", "1");
@@ -1404,7 +1404,7 @@ describe("browser environment and static config", () => {
       const form = new FormData();
       for (const [key, value] of Object.entries({
         pool: "50m", goal: "endurance", experience: scenario === "guidance" ? "beginner" : "regular",
-        comfortableLengths: scenario === "guidance" ? "0" : "12",
+        comfortableDistance: scenario === "guidance" ? "0" : "600",
         timeBudgetMinutes: "10", weeks: "2", startDate: today, weekdays: "1",
       })) form.append(key, value);
       if (scenario !== "guidance") {
@@ -1665,7 +1665,7 @@ describe("browser environment and static config", () => {
     expect(defaults).toEqual([]);
     const form = new FormData();
     for (const [key, value] of Object.entries({
-      pool: "25yd", goal: "base", experience: "beginner", comfortableLengths: "4",
+      pool: "25yd", goal: "base", experience: "beginner", comfortableDistance: "92",
       timeBudgetMinutes: "30", startDate: start, weeks: "2", strokes: "freestyle",
     })) form.set(key, value);
     expect(() => parseSetupForm(form)).toThrow();

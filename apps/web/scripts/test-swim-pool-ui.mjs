@@ -1552,7 +1552,7 @@ try {
     await page.getByRole("checkbox", { name: "Mon", exact: true }).check();
     await page.getByRole("checkbox", { name: "Thu", exact: true }).check();
     await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
-    await page.getByRole("spinbutton", { name: "Comfortable non-stop lengths in the plan pool", exact: true }).fill("4");
+    await page.getByRole("spinbutton", { name: "Comfortable non-stop distance (m)", exact: true }).fill("200");
     await page.getByRole("checkbox", { name: "Freestyle", exact: true }).check();
     await page.getByRole("button", { name: "Review plan", exact: true }).click();
     await page.waitForFunction(() => typeof window.resolveCourse === "function");

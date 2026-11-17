@@ -145,7 +145,7 @@ async function budgetSetup(page: Page, times?: readonly [string, string]) {
   await form.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("50m");
   await form.getByRole("combobox", { name: "Goal", exact: true }).selectOption("endurance");
   await form.getByRole("combobox", { name: "Experience", exact: true }).selectOption(times ? "regular" : "beginner");
-  await form.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill(times ? "12" : "0");
+  await form.getByLabel("Recent comfortable non-stop distance (m)", { exact: true }).fill(times ? "600" : "0");
   for (const group of ["Known strokes", "Equipment", "Swim days"]) {
     for (const control of await form.getByRole("group", { name: group, exact: true }).getByRole("checkbox").all()) {
       await control.uncheck();
@@ -386,7 +386,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and retained results", 
     await signInAs(context, freshUser, seedConfig, baseURL!);
     await page.goto("/app/swim/setup");
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("12");
+    await page.getByLabel("Recent comfortable non-stop distance (m)", { exact: true }).fill("275");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
@@ -921,7 +921,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and retained results", 
   }) => {
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const form = await budgetSetup(page);
-    await expect(form.getByLabel("Recent comfortable non-stop lengths", { exact: true })).toHaveAttribute("min", "0");
+    await expect(form.getByLabel("Recent comfortable non-stop distance (m)", { exact: true })).toHaveAttribute("min", "0");
     const preview = await setupPreview(form);
     expect(preview.input.setup.recentComfortableLengths).toBe(0);
     expect(preview.input.setup.knownStrokes).toHaveLength(0);

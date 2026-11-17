@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { DEFAULT_SWIM_POOL, MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type TrainingCommitment } from "@hta/domain";
+import { DEFAULT_SWIM_POOL, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type TrainingCommitment } from "@hta/domain";
 import { createSwimPlan, previewSwimPlan } from "@/lib/swim/actions";
 import type { SwimSetupPreview } from "@/lib/swim/view-types";
 import { PlanPreview } from "./PlanPreview";
@@ -125,8 +125,8 @@ export function SetupForm({ today, schedule = [], replacePlanId }: { today: stri
             <option value="beginner">Beginner</option><option value="returning">Returning</option><option value="regular">Regular swimmer</option><option value="trained">Experienced</option>
           </select>
         </label>
-        <label className={styles.field}>Recent comfortable non-stop lengths
-          <input name="comfortableLengths" type="number" required min="0" max={MAX_POOL_LENGTHS} step="1" defaultValue="1" />
+        <label className={styles.field}>Recent comfortable non-stop distance (m)
+          <input name="comfortableDistance" type="number" inputMode="numeric" required min="0" step="1" defaultValue="50" />
         </label>
         <fieldset className={styles.choices}><legend>Known strokes</legend>
           {[["freestyle", "Freestyle"], ["backstroke", "Backstroke"], ["breaststroke", "Breaststroke"], ["butterfly", "Butterfly"]].map(([value, label]) => (

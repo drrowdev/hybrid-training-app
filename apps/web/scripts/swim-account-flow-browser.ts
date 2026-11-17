@@ -58,7 +58,7 @@ async function importCourse(page: Page, slot: "a" | "b", report: NativeReport) {
   await page.locator('input[name="weekdays"][value="1"]').check();
   await page.locator('input[name="weekdays"][value="3"]').check();
   await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
-  await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("4");
+  await page.getByLabel("Comfortable non-stop distance (m)").fill("200");
   await page.locator('input[name="strokes"][value="freestyle"]').check();
   await expect(page.locator('input[name="timeBudgetMinutes"]')).toHaveCount(0);
   await expect(page.getByLabel("Minutes per swim", { exact: true })).toHaveCount(0);
