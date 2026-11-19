@@ -43,6 +43,12 @@ describe("Today workout adapters", () => {
       { movementId: "run", kind: "cardio_z2", durationMin: 30 },
     ] } }, [block])).toMatchObject({ isCardio: true, isStrength: false });
   });
+  it("DC-K4: carries the edit revision so the drawer can save an already-edited workout", () => {
+    const editRevision = "5f0c1f0e-7a4b-4c3e-9d2a-0b1c2d3e4f50";
+    expect(plannedWeekSession({ ...planned, prescription: { items: [], meta: { editRevision } } }, [block]))
+      .toMatchObject({ prescriptionRevision: editRevision });
+    expect(plannedWeekSession(planned, [block])).toMatchObject({ prescriptionRevision: "0" });
+  });
   it("preserves start, resume, completed and trash destinations", () => {
     expect(plannedTodayWorkout(planned, [block], []).href).toBe("/app/sessions/start/workout");
     const started = plannedTodayWorkout({ ...planned, completedSessionId: "session" }, [block], []);
