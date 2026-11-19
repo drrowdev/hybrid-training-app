@@ -33,6 +33,13 @@ BEGIN
       restored := replace(restored, '(''primary-create'',''primary-update'',''authored-start-date'')', '(''primary-create'',''primary-update'')');
       restored := replace(restored, 'WHEN ''primary-update'', ''authored-start-date'' THEN', 'WHEN ''primary-update'' THEN');
     ELSE
+      -- 0168 changed only the lock statement; going back past 0164 also returns the snapshot to its original exclusive lock.
+      restored := replace(restored, $shared$DECLARE previous_lock_timeout text := pg_catalog.current_setting('lock_timeout');
+  BEGIN
+    PERFORM pg_catalog.set_config('lock_timeout', '5s', true);
+    PERFORM pg_advisory_xact_lock_shared(hashtextextended('program-deploy:' || u::text, 0));
+    PERFORM pg_catalog.set_config('lock_timeout', previous_lock_timeout, true);
+  END;$shared$, $exclusive$PERFORM pg_advisory_xact_lock(hashtextextended('program-deploy:' || u::text, 0));$exclusive$);
       restored := replace(restored, 'RETURN jsonb_build_object(''revision'', md5(snapshot::text), ''entries'', entries, ''authoredStartDateChanges'', true);',
         'RETURN jsonb_build_object(''revision'', md5(snapshot::text), ''entries'', entries);');
     END IF;
