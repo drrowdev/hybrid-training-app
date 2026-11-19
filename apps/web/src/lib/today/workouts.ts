@@ -20,6 +20,7 @@ import type { TodayWorkout, TodayWeekWorkout } from "@/components/today/TodayDas
 import { loadRequestTrainingSchedule } from "@/lib/schedule/storage";
 import { loadScheduleSessionLinks } from "@/lib/schedule/session-links";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
+import { prescriptionRevision } from "@/lib/sessions/prescription-revision";
 
 export function plannedWeekSession(planned: PlannedDay, blocks: ActiveBlock[]): PlanSessionInput {
   const workout = plannedTodayWorkout(planned, blocks, []);
@@ -27,7 +28,7 @@ export function plannedWeekSession(planned: PlannedDay, blocks: ActiveBlock[]): 
   const isRehab = planned.role === "rehab";
   return {
     id: planned.id, weekIndex: planned.weekIndex, dayIndex: planned.dayIndex, date: workout.date,
-    title: workout.title, slot: planned.slot, items, estDurationMin: workout.minutes,
+    title: workout.title, slot: planned.slot,     items, prescriptionRevision: prescriptionRevision(planned.prescription), estDurationMin: workout.minutes,
     isCardio: items.length > 0 && items.every((item) => (item.kind ?? "").startsWith("cardio_")),
     isStrength: !isRehab && items.some((item) => !(item.kind ?? "").startsWith("cardio_")),
     isRehab, done: workout.done, inProgress: !!planned.completedSessionId && !planned.completedAt,
