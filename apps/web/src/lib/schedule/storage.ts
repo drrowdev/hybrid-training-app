@@ -3,6 +3,7 @@ import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { TrainingCommitment } from "@hta/domain";
+import { logFailure, timedCall } from "@/lib/observability/logging";
 
 const entrySchema = z.object({
   id: z.string(), source: z.enum(["primary", "swim", "session"]), programId: z.string().nullable(),
@@ -95,9 +96,12 @@ export async function scheduleReplay(client: SupabaseClient, requestId: string, 
 }
 
 export async function loadTrainingSchedule(client: SupabaseClient): Promise<ScheduleSnapshot> {
-  const result = await client.rpc("training_schedule_snapshot");
+  const { result, durationMs } = await timedCall("schedule_snapshot", {}, () => client.rpc("training_schedule_snapshot"));
   if (isMissingScheduleFunction(result.error, "training_schedule_snapshot")) throw new ScheduleUnavailableError();
-  if (result.error) throw new Error("Could not load your training schedule. Try again.", { cause: result.error });
+  if (result.error) {
+    logFailure("schedule_snapshot_failed", { durationMs, code: result.error.code ?? null, message: result.error.message ?? null });
+    throw new Error("Could not load your training schedule. Try again.", { cause: result.error });
+  }
   const parsed = snapshotSchema.safeParse(result.data);
   if (!parsed.success) throw new Error("Your training schedule could not be read. Try again.");
   return parsed.data;

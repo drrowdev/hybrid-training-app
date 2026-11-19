@@ -3,6 +3,7 @@ import type { Prescription } from "@hta/db";
 import { z } from "zod";
 import { STALE_PRESCRIPTION_MESSAGE } from "./prescription-revision";
 import { isMissingRpc, RPC_SAVE_RETRY_MESSAGE } from "@/lib/supabase/rpc-errors";
+import { failureRef, logFailure, timedCall } from "@/lib/observability/logging";
 
 export type PrescriptionSaveResult = {
   ok?: true;
@@ -17,16 +18,21 @@ export async function savePrescription(
 ): Promise<PrescriptionSaveResult> {
   const revision = z.union([z.literal("0"), z.string().uuid()]).safeParse(expectedRevision);
   if (!revision.success) return { error: "Reload this workout before editing." };
-  const { data, error } = await client.rpc("save_prescription_if_current", {
-    p_target: target, p_id: id, p_expected_revision: revision.data,
-    p_prescription: prescription, p_require_unstarted: requireUnstarted,
-  });
+  const { result: { data, error }, durationMs } = await timedCall("prescription_save", { target, id }, () =>
+    client.rpc("save_prescription_if_current", {
+      p_target: target, p_id: id, p_expected_revision: revision.data,
+      p_prescription: prescription, p_require_unstarted: requireUnstarted,
+    }));
   if (error) {
-    console.error("Could not save the workout prescription.", error);
+    const ref = failureRef();
+    logFailure("prescription_save_failed", {
+      ref, target, id, durationMs, requireUnstarted, items: prescription.items?.length ?? null,
+      code: error.code ?? null, message: error.message ?? null,
+    });
     // Workout rules raised by the database are written for the lifter; anything else stays generic.
     const rule = ["22023", "23503", "40001"].includes(error.code) && /^[A-Z][^\n]{3,160}\.$/.test(error.message);
-    return { error: isMissingRpc(error, "save_prescription_if_current") ? RPC_SAVE_RETRY_MESSAGE
-      : rule ? error.message : "Couldn't save this workout. Reload it and try again." };
+    if (isMissingRpc(error, "save_prescription_if_current")) return { error: RPC_SAVE_RETRY_MESSAGE };
+    return { error: rule ? error.message : `Couldn't save this workout. Reload it and try again. Ref ${ref}.` };
   }
   if (!data || typeof data.conflict !== "boolean" || !data.prescription || !Array.isArray(data.prescription.items)) {
     return { error: "The workout save could not be confirmed. Reload it before trying again." };
