@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Saving a workout
+- Page loads no longer block each other or a workout save while they read the training schedule. A save or schedule read that cannot get the account's lock within five seconds now fails instead of hanging.
+
 ### Page load
 - Each page reads the training schedule once per request instead of up to twice, which shortens the time a page holds the account's schedule lock.
 
