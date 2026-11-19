@@ -6165,3 +6165,7 @@ catalog slug because the authored modality has no sled value. A circuit round
 that ends on a strength station asks for its time after that station; wall ball
 loads use a 6/9/12 kg ladder; a finished workout's date can be changed for up to
 14 days back, writing `performed_at` only.
+
+## [2026-11-19] decision | Shared-lock schedule read
+
+Migration 0168 adds `training_schedule_read()`, a copy of `training_schedule_snapshot()` that takes the per-user `program-deploy` advisory lock in shared mode and waits at most five seconds for it. The app reads the schedule through it. The snapshot itself is unchanged because earlier migrations pin its body and their rollbacks restore it exactly. Evidence: swaps failed with `upstream request timeout` (Vercel runtime log, 2026-11-19 21:37) while the snapshot held the exclusive lock for about 215 ms per call. Not applied to production; rollback `0168_shared_schedule_snapshot_lock.down.sql`.
