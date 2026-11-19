@@ -32,6 +32,23 @@ describe("DC-K4/DC-SW7 shared schedule readiness and review", () => {
     await expect(loadTrainingSchedule(client(snapshot).db)).resolves.toEqual(snapshot);
     await expect(loadTrainingSchedule(client({ ...snapshot, authoredStartDateChanges: "true" }).db)).rejects.toThrow();
   });
+  it("DC-R5 page reads use the shared-lock twin and fall back to the snapshot until its migration lands", async () => {
+    const snapshot = { revision: "a".repeat(32), entries: [] };
+    const read = client(snapshot);
+    await expect(loadAvailableTrainingSchedule(read.db, { shared: true })).resolves.toEqual(snapshot);
+    expect(read.rpc.mock.calls.map(([routine]) => routine)).toEqual(["training_schedule_read"]);
+
+    const gap = client(snapshot);
+    gap.rpc.mockImplementation(async (routine?: string) => routine === "training_schedule_read"
+      ? { data: null, error: { code: "PGRST202", message: "Could not find public.training_schedule_read" } }
+      : { data: snapshot, error: null });
+    await expect(loadAvailableTrainingSchedule(gap.db, { shared: true })).resolves.toEqual(snapshot);
+    expect(gap.rpc.mock.calls.map(([routine]) => routine)).toEqual(["training_schedule_read", "training_schedule_snapshot"]);
+
+    const writer = client(snapshot);
+    await loadAvailableTrainingSchedule(writer.db);
+    expect(writer.rpc.mock.calls.map(([routine]) => routine)).toEqual(["training_schedule_snapshot"]);
+  });
   it("passes the reviewed revision, replacement consent and semantic replay hash to one RPC", async () => {
     const { db, rpc } = client({ block_id: "saved" });
     const input = { dates: ["2026-09-23"] };

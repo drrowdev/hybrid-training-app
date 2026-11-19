@@ -44,6 +44,18 @@ describe("DC-K4 prescription optimistic edits", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("gives an unexplained failure a reference that matches its log line", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ message: "upstream request timeout" }, { status: 504 }));
+    const client = createClient("https://synthetic.invalid", "synthetic-key", { global: { fetch } });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = crypto.randomUUID();
+    const result = await savePrescription(client, "planned_sessions", id, "0", { items: [] });
+    const logged = JSON.parse(String(log.mock.calls[0]![0]));
+    log.mockRestore();
+    expect(logged).toMatchObject({ event: "prescription_save_failed", target: "planned_sessions", id, message: "upstream request timeout" });
+    expect(result.error).toBe(`Couldn't save this workout. Reload it and try again. Ref ${logged.ref}.`);
+  });
+
   it("shows a workout rule raised by the database instead of a generic failure", async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({
       code: "22023", message: "Rehab must retain its library exercise and dose.",

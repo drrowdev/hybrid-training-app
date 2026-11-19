@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { SUPABASE_GLOBAL_OPTIONS } from "@/lib/observability/logging";
 
 /**
  * Supabase client for use in Server Components, Server Actions, and Route
@@ -15,6 +16,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: SUPABASE_GLOBAL_OPTIONS,
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -65,6 +67,7 @@ export function createAdmin() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: SUPABASE_GLOBAL_OPTIONS,
     },
   );
 }
