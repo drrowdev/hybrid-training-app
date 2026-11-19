@@ -23,8 +23,10 @@ export async function savePrescription(
   });
   if (error) {
     console.error("Could not save the workout prescription.", error);
+    // Workout rules raised by the database are written for the lifter; anything else stays generic.
+    const rule = ["22023", "23503", "40001"].includes(error.code) && /^[A-Z][^\n]{3,160}\.$/.test(error.message);
     return { error: isMissingRpc(error, "save_prescription_if_current") ? RPC_SAVE_RETRY_MESSAGE
-      : "Couldn't save this workout. Reload it and try again." };
+      : rule ? error.message : "Couldn't save this workout. Reload it and try again." };
   }
   if (!data || typeof data.conflict !== "boolean" || !data.prescription || !Array.isArray(data.prescription.items)) {
     return { error: "The workout save could not be confirmed. Reload it before trying again." };

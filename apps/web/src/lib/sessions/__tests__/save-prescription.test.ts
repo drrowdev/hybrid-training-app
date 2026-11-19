@@ -44,6 +44,15 @@ describe("DC-K4 prescription optimistic edits", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a workout rule raised by the database instead of a generic failure", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({
+      code: "22023", message: "Rehab must retain its library exercise and dose.",
+    }, { status: 400 }));
+    const client = createClient("https://synthetic.invalid", "synthetic-key", { global: { fetch } });
+    const result = await savePrescription(client, "planned_sessions", crypto.randomUUID(), "0", { items: [] });
+    expect(result.error).toBe("Rehab must retain its library exercise and dose.");
+  });
+
   it("rejects missing revisions without sending any write", async () => {
     const fetch = vi.fn();
     const client = createClient("https://synthetic.invalid", "synthetic-key", { global: { fetch } });

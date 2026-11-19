@@ -387,7 +387,7 @@ export function SwapMovementModal({
           ref={searchRef}
           type="search"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setError(null); }}
           data-testid="swap-modal-search"
           placeholder="Search alternatives…"
           style={{
@@ -447,7 +447,7 @@ export function SwapMovementModal({
               No compatible alternatives in the catalog.
             </div>
           )}
-          {!loading && !error && filtered.length > 0 && (
+          {!loading && filtered.length > 0 && (
             isSearching ? (
               filtered.map(renderCandidate)
             ) : (
