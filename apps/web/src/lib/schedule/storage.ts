@@ -47,22 +47,28 @@ export class ScheduleUnavailableError extends Error {
   constructor() { super("Program setup is temporarily unavailable. Try again shortly."); }
 }
 
+export type ScheduleReadOptions = { shared?: boolean };
+
+function callSchedule(client: SupabaseClient, name: "training_schedule_read" | "training_schedule_snapshot") {
+  return timedCall(name, {}, () => client.rpc(name));
+}
+
 /** Only the app-first migration gap is optional; failed reads never become empty calendars. */
-export async function loadAvailableTrainingSchedule(client: SupabaseClient): Promise<ScheduleSnapshot | null> {
-  try { return await loadTrainingSchedule(client); }
+export async function loadAvailableTrainingSchedule(client: SupabaseClient, options: ScheduleReadOptions = {}): Promise<ScheduleSnapshot | null> {
+  try { return await loadTrainingSchedule(client, options); }
   catch (error) { if (error instanceof ScheduleUnavailableError) return null; throw error; }
 }
 
 const requestSnapshot = cache(() => ({ pending: null as Promise<ScheduleSnapshot | null> | null }));
 
 /**
- * Page renders only. The snapshot holds the account's schedule lock for the
- * whole read, so one render reads it once; writers keep `loadAvailableTrainingSchedule`.
+ * Page renders only. They read through the shared-lock twin, so renders do not queue
+ * behind each other; writers keep the exclusive snapshot.
  */
 export function loadRequestTrainingSchedule(client: SupabaseClient): Promise<ScheduleSnapshot | null> {
   const slot = requestSnapshot();
   if (!slot.pending) {
-    const pending = loadAvailableTrainingSchedule(client);
+    const pending = loadAvailableTrainingSchedule(client, { shared: true });
     slot.pending = pending;
     pending.catch(() => { if (slot.pending === pending) slot.pending = null; });
   }
@@ -95,8 +101,15 @@ export async function scheduleReplay(client: SupabaseClient, requestId: string, 
   return receipt.result;
 }
 
-export async function loadTrainingSchedule(client: SupabaseClient): Promise<ScheduleSnapshot> {
-  const { result, durationMs } = await timedCall("schedule_snapshot", {}, () => client.rpc("training_schedule_snapshot"));
+export async function loadTrainingSchedule(client: SupabaseClient, options: ScheduleReadOptions = {}): Promise<ScheduleSnapshot> {
+  let call: Awaited<ReturnType<typeof callSchedule>> | null = null;
+  if (options.shared) {
+    // The twin shares the account lock; the snapshot covers the gap before its migration lands.
+    call = await callSchedule(client, "training_schedule_read");
+    if (isMissingScheduleFunction(call.result.error, "training_schedule_read")) call = null;
+  }
+  call ??= await callSchedule(client, "training_schedule_snapshot");
+  const { result, durationMs } = call;
   if (isMissingScheduleFunction(result.error, "training_schedule_snapshot")) throw new ScheduleUnavailableError();
   if (result.error) {
     logFailure("schedule_snapshot_failed", { durationMs, code: result.error.code ?? null, message: result.error.message ?? null });
