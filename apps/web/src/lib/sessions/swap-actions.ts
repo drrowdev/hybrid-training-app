@@ -25,6 +25,8 @@ import { isSystemLoadMovementSlug, resolveProgramWorkingMax } from "@hta/domain"
 import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
+import { recomputeAfterCompletedSessionMutation } from "./post-completion-recompute";
+import { failureRef, logFailure } from "@/lib/observability/logging";
 import { savePrescription, type PrescriptionSaveResult } from "./save-prescription";
 import { loadedPrescriptionConflict } from "./prescription-revision";
 import {
@@ -447,4 +449,77 @@ export async function swapActiveMovement(
     warning: loadWarning,
     ...(updatedPrescription ? { prescription: updatedPrescription } : {}),
   };
+}
+
+const retargetCompletedSchema = z.object({
+  sessionId: z.string().uuid(),
+  originalMovementId: z.string().uuid(),
+  newMovementId: z.string().uuid(),
+  reason: z.enum(["pain", "equipment", "other"]),
+  freeformReason: z.string().max(280).optional(),
+});
+
+export type RetargetCompletedResult =
+  | { ok: true; newMovement: { id: string; slug: string; displayName: string } }
+  | { ok: false; error: string };
+
+/**
+ * Change the movement of a FINISHED workout: its logged sets, movement list and
+ * prescription move to the new movement together (migration 0169), then the load,
+ * region and suggestion state derived from the sets is rebuilt. Audited like any swap (DC-K4).
+ */
+export async function retargetCompletedMovement(formData: FormData): Promise<RetargetCompletedResult> {
+  const parsed = retargetCompletedSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    originalMovementId: formData.get("originalMovementId"),
+    newMovementId: formData.get("newMovementId"),
+    reason: formData.get("reason"),
+    freeformReason: (formData.get("freeformReason") as string | null) ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const supabase = await createClient();
+  const { data: { user } } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data, error } = await supabase.rpc("retarget_completed_movement", {
+    p_session_id: parsed.data.sessionId,
+    p_original_movement_id: parsed.data.originalMovementId,
+    p_new_movement_id: parsed.data.newMovementId,
+  });
+  if (error) {
+    const ref = failureRef();
+    logFailure("completed_movement_swap_failed", {
+      ref, sessionId: parsed.data.sessionId, code: error.code ?? null, message: error.message ?? null,
+    });
+    const rule = ["22023", "42501", "40001"].includes(error.code) && /^[A-Z][^\n]{3,160}\.$/.test(error.message);
+    return { ok: false, error: rule ? error.message : `Couldn't change this movement. Try again. Ref ${ref}.` };
+  }
+  const movement = (data as { movement?: { id: string; slug: string; displayName: string } } | null)?.movement;
+  if (!movement) return { ok: false, error: "The change could not be confirmed. Reload the workout." };
+
+  const { data: original } = await supabase.from("movements").select("slug").eq("id", parsed.data.originalMovementId).maybeSingle();
+  await recordOverrideEvent(supabase, {
+    userId: user.id,
+    eventType: "swap",
+    originalMovementSlug: (original?.slug as string | undefined) ?? null,
+    newMovementSlug: movement.slug,
+    reason: parsed.data.freeformReason ?? null,
+    context: {
+      kind: "completed_movement_swap",
+      sessionId: parsed.data.sessionId,
+      originalMovementId: parsed.data.originalMovementId,
+      newMovementId: parsed.data.newMovementId,
+      reasonCategory: parsed.data.reason,
+      freeformReason: parsed.data.freeformReason ?? null,
+    },
+  });
+  try {
+    await recomputeAfterCompletedSessionMutation({ supabase, sessionId: parsed.data.sessionId, userId: user.id });
+  } catch (recomputeError) {
+    console.error("post-completion recompute (retargetCompletedMovement) failed:", recomputeError);
+  }
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  return { ok: true, newMovement: movement };
 }

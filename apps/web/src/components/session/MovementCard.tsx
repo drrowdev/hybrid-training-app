@@ -621,6 +621,19 @@ export function MovementCard({
 
       {!collapsed && readOnly && (
         <div className="cp-reveal" style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
+          {group.items.every((item) => item.meta?.rehab !== true) && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setSwapOpen(true)}
+                data-testid={`movement-card-swap-${group.movementId}`}
+                className="cp-btn"
+                style={{ padding: "6px 10px", fontSize: 11 }}
+              >
+                Swap movement
+              </button>
+            </div>
+          )}
           <CompletedSetsPanel
             group={group}
             loggedSets={loggedSets}
@@ -680,8 +693,9 @@ export function MovementCard({
         </div>
       )}
 
-      {!readOnly && (
+      {(!readOnly || group.items.every((item) => item.meta?.rehab !== true)) && (
         <SwapMovementModal
+          completed={readOnly}
           open={swapOpen}
           onClose={() => setSwapOpen(false)}
           sessionId={sessionId}

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Finished workouts
+- A finished workout has a Swap movement button on each movement. The logged sets, the workout's movement list and its prescription move to the new movement, and the load and stats built from those sets are recalculated. Swimming workouts, rehab movements and movements with bodyweight progress already credited can't be swapped this way.
 ### Failed saves
 - A workout save that fails without a workout rule now shows a short reference. The server writes one structured log line with the same reference, the workout id, the error code and how long the call took. Saves and schedule reads slower than two seconds are logged even when they succeed.
 - Requests to the database are labelled by environment, so the database gateway logs show whether a call came from production, a preview or CI.

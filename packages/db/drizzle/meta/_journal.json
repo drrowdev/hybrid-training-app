@@ -1184,6 +1184,13 @@
       "when": 1791734400000,
       "tag": "0168_shared_schedule_snapshot_lock",
       "breakpoints": false
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1791820800000,
+      "tag": "0169_retarget_completed_movement",
+      "breakpoints": false
     }
   ]
 }
