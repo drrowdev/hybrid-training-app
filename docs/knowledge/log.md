@@ -6169,3 +6169,8 @@ loads use a 6/9/12 kg ladder; a finished workout's date can be changed for up to
 ## [2026-11-19] decision | Shared-lock schedule read
 
 Migration 0168 adds `training_schedule_read()`, a copy of `training_schedule_snapshot()` that takes the per-user `program-deploy` advisory lock in shared mode and waits at most five seconds for it. The app reads the schedule through it. The snapshot itself is unchanged because earlier migrations pin its body and their rollbacks restore it exactly. Evidence: swaps failed with `upstream request timeout` (Vercel runtime log, 2026-11-19 21:37) while the snapshot held the exclusive lock for about 215 ms per call. Not applied to production; rollback `0168_shared_schedule_snapshot_lock.down.sql`.
+
+## [2026-11-20] decision | Changing the movement of a finished workout
+
+Migration 0169 adds `retarget_completed_movement()`: in one transaction it moves a finished workout's logged sets, movement list and prescription to another movement. The prescription guard (`guard_program_prescription`, body pinned by earlier migrations) is untouched; the prescription is updated while the workout is marked unfinished inside the transaction and its completion time is restored before returning. Refuses swimming workouts and movements with credited bodyweight progress. The app then recomputes load, region and suggestion state and records a DC-K4 swap event. Not applied to production; rollback `0169_retarget_completed_movement.down.sql`.
+

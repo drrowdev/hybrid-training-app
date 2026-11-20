@@ -23,7 +23,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { loadSwapPrescription, swapActiveMovement, type SwapActiveResult } from "@/lib/sessions/swap-actions";
+import { loadSwapPrescription, retargetCompletedMovement, swapActiveMovement, type SwapActiveResult } from "@/lib/sessions/swap-actions";
 import { prescriptionRevision } from "@/lib/sessions/prescription-revision";
 import type { Prescription } from "@hta/db";
 
@@ -55,6 +55,8 @@ export type SwapMovementModalProps = {
   onClose: () => void;
   sessionId: string;
   original: { id: string; displayName: string; rehab?: boolean };
+  /** A finished workout: its logged sets move to the new movement too. */
+  completed?: boolean;
   /** Called with the picked movement once the swap is recorded. */
   onSwapped: (
     next: ConfirmedMovementSwap,
@@ -75,6 +77,7 @@ export function SwapMovementModal({
   onClose,
   sessionId,
   original,
+  completed = false,
   onSwapped,
 }: SwapMovementModalProps) {
   const [loading, setLoading] = useState(true);
@@ -97,6 +100,7 @@ export function SwapMovementModal({
 
   useEffect(() => {
     if (!open) return;
+    if (completed) { setExpectedRevision("0"); return; }
     let cancelled = false;
     loadSwapPrescription(sessionId).then((result) => {
       if (cancelled) return;
@@ -104,7 +108,7 @@ export function SwapMovementModal({
       else setExpectedRevision(prescriptionRevision(result.prescription));
     }).catch(() => { if (!cancelled) setError("Couldn't load the workout. Close and try again."); });
     return () => { cancelled = true; };
-  }, [open, sessionId]);
+  }, [open, sessionId, completed]);
 
   const handleClose = useCallback(() => {
     setWarning(null);
@@ -264,6 +268,15 @@ export function SwapMovementModal({
     fd.set("newMovementId", pick.id);
     fd.set("reason", reason);
     if (freeform.trim().length > 0) fd.set("freeformReason", freeform.trim());
+    if (completed) {
+      startTransition(async () => {
+        const res = await retargetCompletedMovement(fd);
+        if (!res.ok) { setError(res.error); return; }
+        onSwapped(res.newMovement);
+        handleClose();
+      });
+      return;
+    }
     startTransition(async () => {
       const res = await swapActiveMovement(fd);
       if (res.error || !res.newMovement) {
