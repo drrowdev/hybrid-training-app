@@ -99,8 +99,7 @@ export function SwapMovementModal({
   const [conflictChoice, setConflictChoice] = useState<SwapMovementCatalogRow | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-    if (completed) { setExpectedRevision("0"); return; }
+    if (!open || completed) return;
     let cancelled = false;
     loadSwapPrescription(sessionId).then((result) => {
       if (cancelled) return;
@@ -202,7 +201,7 @@ export function SwapMovementModal({
       key={c.id}
       type="button"
       onClick={() => confirm(c)}
-      disabled={pending || pendingSwap != null || expectedRevision === null}
+      disabled={pending || pendingSwap != null || (!completed && expectedRevision === null)}
       data-testid={`swap-modal-candidate-${c.slug}`}
       style={{
         textAlign: "left",
