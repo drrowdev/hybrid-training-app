@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Movement library
+- 115 movements added: push-up variations (incline, decline, neutral-grip, deficit, deficit neutral-grip, diamond, archer, hand-release, weighted, ring, pike, handstand, clap, scapular and plus), machine, cable, neutral-grip and floor presses, pin, Spoto and board presses, wide-grip, ring and assisted pull-ups, extra pulldowns and rows, arm and rear-delt variations, single-leg press, reverse hack squat, trap bar RDL, hip thrust and calf variations, thrusters, kettlebell, Turkish get-up, Olympic lifts, sandbag and front-rack carries, core and neck work, and assault bike, hike, trail run, treadmill VO2, sweet-spot bike, ski erg intervals, battle ropes and burpees. Each has how-to text. Push-up is now filed as a press so its variations appear when swapping.
 ### Finished workouts
 - A finished workout has a Swap movement button on each movement. The logged sets, the workout's movement list and its prescription move to the new movement, and the load and stats built from those sets are recalculated. Swimming workouts, rehab movements and movements with bodyweight progress already credited can't be swapped this way.
 ### Failed saves

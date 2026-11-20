@@ -225,7 +225,7 @@ const CHEST_ISO: NewMovement[] = [
   chestIso("db-fly-flat", "DB Fly (flat)", { equipment: "dumbbells-bench" }),
   chestIso("db-fly-incline", "DB Fly (incline)", { equipment: "dumbbells-incline-bench", primaryMuscles: ["upper_chest"] }),
   chestIso("pec-deck", "Pec Deck", { equipment: "machine-pec-deck", stability: "fixed_path" }),
-  chestIso("push-up", "Push-Up", { equipment: "bodyweight", bodyWeightLoaded: true, isCompound: true, primaryMuscles: ["chest", "front_delts", "triceps"] }),
+  chestIso("push-up", "Push-Up", { pattern: "press", equipment: "bodyweight", bodyWeightLoaded: true, isCompound: true, primaryMuscles: ["chest", "front_delts", "triceps"], secondaryMuscles: ["abs"], secondaryRegions: ["elbow_forearm", "lumbar_trunk"] }),
   chestIso("svend-press", "Svend Press", { equipment: "plate", primaryMuscles: ["chest"] }),
 ];
 

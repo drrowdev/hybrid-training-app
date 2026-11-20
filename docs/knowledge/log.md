@@ -6174,3 +6174,8 @@ Migration 0168 adds `training_schedule_read()`, a copy of `training_schedule_sna
 
 Migration 0169 adds `retarget_completed_movement()`: in one transaction it moves a finished workout's logged sets, movement list and prescription to another movement. The prescription guard (`guard_program_prescription`, body pinned by earlier migrations) is untouched; the prescription is updated while the workout is marked unfinished inside the transaction and its completion time is restored before returning. Refuses swimming workouts and movements with credited bodyweight progress. The app then recomputes load, region and suggestion state and records a DC-K4 swap event. Not applied to production; rollback `0169_retarget_completed_movement.down.sql`.
 
+
+## [2026-11-20] decision | Movement library additions
+
+Migration 0170 adds 115 shared movements and their how-to text after an audit of the 336-movement library: push-up and press variations, pull-up, pulldown and row variations, arm and rear-delt work, leg and hip variations, thrusters, kettlebell work, Olympic lifts, carries, core and neck work, and extra cardio modalities. Rows are inserted with `ON CONFLICT DO NOTHING`. The existing push-up becomes a `press` so it swaps with its variations. The rollback refuses with SQLSTATE 55000 while any added movement is referenced. Cardio additions use the existing `metadata.modality` vocabulary only where the planner may substitute them; their slugs sort after the current candidates of the same kind, so existing prescriptions do not change. Clap push-up is excluded from the plyometric durability-floor roles. No planner golden snapshot changed; only the equipment-tag snapshot gained the new tags.
+
