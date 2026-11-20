@@ -64,8 +64,9 @@ export function deriveAccessoryRoles(m: RoleDerivationInput): {
   if (/isometric/.test(isoStr)) bulletproof.add("heavy_isometric");
   // hsr — heavy slow resistance (Kongsgaard) / 3 s eccentric tempo.
   if (/hsr|kongsgaard/.test(proto) || /^3-0-3|^3-0-x/.test(tempo)) bulletproof.add("hsr");
-  // plyometric — jump-type stretch-shortening only (exclude med-ball throws).
-  if (m.pattern === "plyometric" && !/med-ball|throw/.test(slug)) {
+  // plyometric — jump-type stretch-shortening only (exclude med-ball throws
+  // and upper-body push-ups, which load no tendon in the durability sense).
+  if (m.pattern === "plyometric" && !/med-ball|throw|push-up/.test(slug)) {
     bulletproof.add(expMin >= 3 ? "plyometric_high" : "plyometric_low");
   }
   // carry

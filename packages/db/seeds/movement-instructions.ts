@@ -11,6 +11,8 @@
  * accuracy; unmatched slugs are reported, never silently dropped.
  */
 
+import { LIBRARY_ADDITION_INSTRUCTIONS } from "./movement-instructions-library-additions";
+
 export type MovementInstructionSeed = {
   slug: string;
   summary: string;
@@ -3409,4 +3411,5 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     cues: ["Resist hard the whole way down.", "Hips stay extended — no hinging at the waist."],
     commonMistakes: ["Bending at the hips to shorten the lever."],
   },
+  ...LIBRARY_ADDITION_INSTRUCTIONS,
 ];
